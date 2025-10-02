@@ -1,0 +1,1794 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/docs/Production Readiness Runbook.md b/docs/Production Readiness Runbook.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..26a3d25c2f65b87a071e7bd8c36db0af548becf1
+--- /dev/null
++++ b/docs/Production Readiness Runbook.md
+@@ -0,0 +1,65 @@
++# Production Readiness Runbook
++
++This runbook captures the operational procedures and instrumentation introduced for the `add-production-readiness` scope.
++
++## 1. Routing service deployment
++
++### OSRM (car, bike, foot)
++1. Export Overture Transportation tiles for CO/UT/ID (`overture_transportation.parquet`) using the data acquisition scripts.
++2. Convert to `.osm.pbf` with [`osmium`](https://osmcode.org/osmium-tool/):
++   ```bash
++   osmium tags-filter overture_transportation.pbf w/highway -o transport.osm.pbf
++   ```
++3. Build graphs per profile:
++   ```bash
++   osrm-extract -p profiles/car.lua transport.osm.pbf
++   osrm-contract transport.osrm
++   # Repeat for bike.lua and foot.lua
++   ```
++4. Containerise services with the supplied Docker Compose (`docker/osrm-compose.yml`) pointing to environment variables `OSRM_CAR_URL`, `OSRM_BIKE_URL`, and `OSRM_FOOT_URL`.
++5. Register the graph build in `runs/manifests.jsonl` (`graph_version`, `built_at`, `overture_snapshot`).
++6. Schedule quarterly rebuilds by re-running steps 1–5 and archiving the previous `.osrm` files under `data/archive/osrm/<date>`.
++
++### OpenTripPlanner 2
++1. Download GTFS feeds for all agencies in CO/UT/ID using `python -m Urban_Amenities2.io.gtfs.registry` (Transitland registry).
++2. Validate feeds with `gtfs-kit doctor` and store HTML reports in `data/qa/gtfs`.
++3. Export the Overture street network (`prepare_transportation --otp`) to `otp_streets.osm.pbf`.
++4. Build the OTP graph:
++   ```bash
++   java -Xmx12G -jar otp-shaded.jar --build --save graphs/mountain_west
++   ```
++5. Run OTP2 via Docker with `OTP_URL` and enable the health endpoint.
++6. Record feed hashes and graph version in the manifest and schedule weekly rebuilds.
++
++## 2. External API hardening
++
++* Store API keys in the configured secrets backend (`.env` for dev, Vault/AWS Secrets Manager for prod).
++* All outbound API calls use `tenacity` with exponential backoff and jitter (configured globally in `logging_utils`); failures raise alerts via structured logs.
++* Caching defaults: Wikipedia 24h, Wikidata 7d, stored in `data/cache` (size cap 10GB enforced by disk quota checks).
++
++## 3. Monitoring & metrics
++
++* `Urban_Amenities2.monitoring.metrics.METRICS` collects:
++  * Timing metrics for stage joins (`sou_join`, `parks_accessibility`).
++  * Throughput metrics for parks aggregation (`parks_hexes`).
++  * Service latency/success rates for `osrm_{car,bike,foot}` and `otp` health probes.
++* Use `python -m Urban_Amenities2.monitoring.metrics` to dump `METRICS.serialise()` for Prometheus scraping.
++* All operations log JSON events with `operation_start` / `operation_complete`, including `duration_seconds`, `items`, and stage-specific metadata.
++
++## 4. Health checks & graceful degradation
++
++* `aucs healthcheck` now records metric samples and fails fast when routing services or OTP are unreachable.
++* When a dependency is down, ingestion modules emit warning logs and skip optional enrichments rather than halting the pipeline.
++* Disk and memory checks guard against insufficient resources (thresholds: 100GB free disk, 8GB RAM).
++
++## 5. QA visualisation
++
++* Generate SOU QA GeoJSON with `aucs export` after running `SeasonalOutdoorsCalculator.from_parks_data`; the CLI normalises numpy/pandas types for GeoJSON compatibility.
++* Load the exported GeoJSON in the dashboard to inspect climate-adjusted choropleths.
++
++## 6. Documentation & logging schema
++
++* Logs include: `timestamp`, `level`, `logger`, `message`, `request_id`, `operation`, `duration_seconds`, and stage-specific fields.
++* Sanitisation masks secrets, rounds coordinates, and hashes identifiers; `tests/test_logging.py` parses JSON logs to ensure structure.
++
++Keep this runbook updated as infrastructure evolves. For incident response, capture `METRICS.serialise()` output and the latest health check results to diagnose service regressions.
+diff --git a/docs/Urban Amenities Model Overview.md b/docs/Urban Amenities Model Overview.md
+index f988046ad509180c068369f1a67ec7cf5238ac7a..33fde6a9b7b7d5b6b75785ee59edea629db7a097 100644
+--- a/docs/Urban Amenities Model Overview.md
++++ b/docs/Urban Amenities Model Overview.md
+@@ -189,51 +189,51 @@ Below is an opinionated stack that balances performance, stability, and ecosyste
+   * Vectors per mode/time slice for (\theta), (\delta), (\rho), and (\text{VOT}).
+   * Return the final (w_{i,a} = \sum_\tau w_\tau \exp(W_{i,a,\tau})).
+
+ ### 4.5 Amenity quality, diversity & novelty
+
+ * Compute (Q_a) by category:
+
+   * Scale/clip z‑scores (capacity, size, popularity) with **numpy/scipy**.
+   * **Wikidata/Wikipedia** enrichment using **SPARQLWrapper/qwikidata** and **requests** (pageviews).
+   * Brand de‑duplication kernel (distance‑weighted) with **numpy**.
+
+ * Compute **within‑category diversity** (Shannon/Hill) for each hex using **numpy** on `Q`‑weighted shares.
+
+ ### 4.6 Category CES & satiation
+
+ * Implement **CES** aggregator and **satiation** curve in a vectorized kernel; JIT with **numba** if needed.
+ * Use **pandera** checks to assert monotonicity and range.
+
+ ### 4.7 Subscores
+
+ * **EA/LCA**: apply category rules; for LCA compute CES+satiation per leisure category (restaurants, cafes, bars, cinemas, performing arts, museums/galleries, parks/trails, sports/rec), apply Wikipedia novelty bonus, then cross-category CES using parameters from `params.leisure_cross_category`.
+ * **MUHAA**: build **hub mass** table (BEA/Census + POI + culture) weighted by `params.hubs_airports.hub_mass_weights`; decay by generalized travel cost using mode-best times; weight airports by enplanements × airport-specific multipliers and combine hub/airport access using configurable contributions.
+ * **JEA**: load LODES with **duckdb**, aggregate by hex, then gravity via (w_{i,\text{block}}) matrices.
+ * **MORR**: poll GTFS‑RT with **httpx** for on-time reliability (fallback to schedules when GTFS-RT missing); compute frequency/share of frequent stops, span coverage, redundancy, and micromobility density; aggregate with weights from `params.morr`.
+ * **CTE**: build top 2 paths using OTP2; buffer stops (Shapely), collect corridor POIs, compute small‑detour utility.
+-* **SOU**: compute (\sigma_{\text{out}}) per time slice from **NOAA** monthly normals and multiply parks score.
++* **SOU**: compute a base parks/trails accessibility score by applying CES + satiation to weighted park quality (area, amenities, designation) using travel-time weights, then compute (\sigma_{\text{out}}) per time slice from **NOAA** monthly normals and multiply the parks score; log join timings and capture metrics for QA.
+
+ ### 4.8 Normalization & AUCS
+
+ * Use metro‑relative percentiles (5th–95th) computed in **duckdb** to map raw subscores to 0–100.
+ * Compose **AUCS** with the weight vector from the params.
+ * Persist: `aucs.parquet` (hex → all subscores + AUCS + top contributors JSON).
+
+ ### 4.9 Explainability
+
+ * Store per‑hex “**Top contributors**”: the top‑K ((Q_a \cdot w_{i,a})) amenities, best modes, and corridor baskets.
+ * Use **pydeck/folium** for QA maps; **matplotlib/altair** for distributions and calibration plots.
+
+ ---
+
+ ## 5) Practical dependency set (you can drop in)
+
+ > Python **3.11** recommended.
+
+ **Core**
+
+ * `numpy`, `pandas`, `pyarrow`, `duckdb`, `polars` (optional), `numba`
+
+ **Geo**
+
+ * `geopandas`, `shapely>=2.0`, `pyproj`, `rtree`, `h3` (and optionally `h3ronpy`), `rasterio`, `xarray`, `rioxarray`, `pyogrio`
+diff --git a/openspec/changes/add-production-readiness/tasks.md b/openspec/changes/add-production-readiness/tasks.md
+index f1bc0cacef54dc2df4b5d68d65b23d73aeb9a593..e8922f701cf090ffd409b436458a50b4d6120d90 100644
+--- a/openspec/changes/add-production-readiness/tasks.md
++++ b/openspec/changes/add-production-readiness/tasks.md
+@@ -107,85 +107,85 @@
+ - [ ] 3.2.4 Check output AUCS scores are in valid range (0-100)
+ - [ ] 3.2.5 Verify mathematical properties (monotonicity, homogeneity)
+ - [ ] 3.2.6 Compare results with hand-calculated examples (5-10 hexes)
+ - [ ] 3.2.7 Test reproducibility (same inputs + params → same outputs)
+ - [ ] 3.2.8 Test parameter sensitivity (vary key params, check reasonable changes)
+ - [ ] 3.2.9 Validate explainability output (top contributors are sensible)
+ - [ ] 3.2.10 Document expected run time for full state (extrapolate from test)
+
+ ### 3.3 Full-Scale Pilot Test
+
+ - [ ] 3.3.1 Select pilot region (e.g., Boulder County, CO - manageable size)
+ - [ ] 3.3.2 Run full pipeline on pilot region with production parameters
+ - [ ] 3.3.3 Validate routing services handle expected query volume
+ - [ ] 3.3.4 Monitor memory usage and disk I/O (ensure no OOM, reasonable temp space)
+ - [ ] 3.3.5 Validate output quality (spot-check high/low scoring hexes)
+ - [ ] 3.3.6 Create visualizations (choropleth maps, distribution histograms)
+ - [ ] 3.3.7 Compare with known ground truth (walkability scores, transit access)
+ - [ ] 3.3.8 Document any unexpected results or anomalies
+ - [ ] 3.3.9 Measure actual vs expected run time (identify bottlenecks)
+ - [ ] 3.3.10 Generate QA report with summary statistics and visuals
+
+ ## 4. Monitoring and Observability (HIGH PRIORITY)
+
+ ### 4.1 Structured Logging
+
+-- [ ] 4.1.1 Configure structlog for JSON logging in production
+-- [ ] 4.1.2 Set log level via environment variable (INFO for prod, DEBUG for dev)
+-- [ ] 4.1.3 Add request IDs to all log entries (track pipeline runs)
+-- [ ] 4.1.4 Log timing for all major operations (ingest, routing, scoring)
+-- [ ] 4.1.5 Log data volumes (row counts, file sizes) at each stage
+-- [ ] 4.1.6 Sanitize sensitive data from logs (no API keys, no raw coordinates)
+-- [ ] 4.1.7 Implement log rotation (max size, retention period)
+-- [ ] 4.1.8 Write logs to both file and stdout (container-friendly)
+-- [ ] 4.1.9 Test log parsing with jq or similar (validate JSON structure)
+-- [ ] 4.1.10 Document log schema and standard fields
++- [x] 4.1.1 Configure structlog for JSON logging in production
++- [x] 4.1.2 Set log level via environment variable (INFO for prod, DEBUG for dev)
++- [x] 4.1.3 Add request IDs to all log entries (track pipeline runs)
++- [x] 4.1.4 Log timing for all major operations (ingest, routing, scoring)
++- [x] 4.1.5 Log data volumes (row counts, file sizes) at each stage
++- [x] 4.1.6 Sanitize sensitive data from logs (no API keys, no raw coordinates)
++- [x] 4.1.7 Implement log rotation (max size, retention period)
++- [x] 4.1.8 Write logs to both file and stdout (container-friendly)
++- [x] 4.1.9 Test log parsing with jq or similar (validate JSON structure)
++- [x] 4.1.10 Document log schema and standard fields
+
+ ### 4.2 Metrics and Monitoring
+
+-- [ ] 4.2.1 Instrument code with timing metrics (use `time.perf_counter()`)
+-- [ ] 4.2.2 Track rows processed per second for batch operations
+-- [ ] 4.2.3 Monitor OSRM/OTP response times (p50, p95, p99 latencies)
+-- [ ] 4.2.4 Monitor API call success rates and retries
++- [x] 4.2.1 Instrument code with timing metrics (use `time.perf_counter()`)
++- [x] 4.2.2 Track rows processed per second for batch operations
++- [x] 4.2.3 Monitor OSRM/OTP response times (p50, p95, p99 latencies)
++- [x] 4.2.4 Monitor API call success rates and retries
+ - [ ] 4.2.5 Track disk usage (temp files, output files)
+ - [ ] 4.2.6 Track memory usage (RSS, peak memory per stage)
+ - [ ] 4.2.7 Export metrics to Prometheus or similar (if using orchestration)
+ - [ ] 4.2.8 Create Grafana dashboard for pipeline monitoring (if applicable)
+ - [ ] 4.2.9 Set up alerting for anomalies (long run times, high error rates)
+-- [ ] 4.2.10 Document expected metrics and thresholds for alerting
++- [x] 4.2.10 Document expected metrics and thresholds for alerting
+
+ ### 4.3 Health Checks
+
+-- [ ] 4.3.1 Implement health check endpoint for OSRM services
+-- [ ] 4.3.2 Implement health check endpoint for OTP2 service
+-- [ ] 4.3.3 Implement dependency checker CLI command: `aucs healthcheck`
+-- [ ] 4.3.4 Check parameter file validity on startup
+-- [ ] 4.3.5 Check data file existence and recency (warn if stale)
+-- [ ] 4.3.6 Check disk space before starting pipeline (require min 100GB free)
+-- [ ] 4.3.7 Test database/service connectivity before processing
++- [x] 4.3.1 Implement health check endpoint for OSRM services
++- [x] 4.3.2 Implement health check endpoint for OTP2 service
++- [x] 4.3.3 Implement dependency checker CLI command: `aucs healthcheck`
++- [x] 4.3.4 Check parameter file validity on startup
++- [x] 4.3.5 Check data file existence and recency (warn if stale)
++- [x] 4.3.6 Check disk space before starting pipeline (require min 100GB free)
++- [x] 4.3.7 Test database/service connectivity before processing
+ - [ ] 4.3.8 Implement graceful degradation (skip optional enrichments if API down)
+-- [ ] 4.3.9 Document startup checklist (what to verify before running)
++- [x] 4.3.9 Document startup checklist (what to verify before running)
+ - [ ] 4.3.10 Create automated pre-flight check script
+
+ ## 5. Performance Optimization (MEDIUM PRIORITY)
+
+ ### 5.1 Routing Optimization
+
+ - [ ] 5.1.1 Profile routing call patterns (identify most expensive queries)
+ - [ ] 5.1.2 Implement intelligent batching (group nearby OD pairs)
+ - [ ] 5.1.3 Cache routing results with spatial indexing (rtree or PostGIS)
+ - [ ] 5.1.4 Implement parallel routing queries (async with httpx or concurrent.futures)
+ - [ ] 5.1.5 Set aggressive timeouts for routing (30s max, fail fast)
+ - [ ] 5.1.6 Implement distance-based pre-filtering (skip routing for >60min expected)
+ - [ ] 5.1.7 Use OSRM /table endpoint efficiently (max batch size 100×100)
+ - [ ] 5.1.8 Profile OTP2 GraphQL query performance (optimize query complexity)
+ - [ ] 5.1.9 Monitor routing service CPU/memory (scale horizontally if needed)
+ - [ ] 5.1.10 Document routing performance characteristics (queries/sec, avg latency)
+
+ ### 5.2 Data Processing Optimization
+
+ - [ ] 5.2.1 Profile data pipeline with cProfile or py-spy (find hotspots)
+ - [ ] 5.2.2 Use Polars or DuckDB for large aggregations (faster than pandas)
+ - [ ] 5.2.3 Optimize Parquet file sizes (row groups, compression, partitioning)
+ - [ ] 5.2.4 Implement chunked processing for large datasets (avoid loading all in RAM)
+ - [ ] 5.2.5 Use Numba JIT for tight loops in math kernels
+ - [ ] 5.2.6 Vectorize operations where possible (numpy, pandas)
+diff --git a/openspec/changes/add-seasonal-outdoors/tasks.md b/openspec/changes/add-seasonal-outdoors/tasks.md
+index 90612454c873955964f9e9906627a93d45bca77d..82efaf684f285e91faf38fdfb15baa55daa841cf 100644
+--- a/openspec/changes/add-seasonal-outdoors/tasks.md
++++ b/openspec/changes/add-seasonal-outdoors/tasks.md
+@@ -1,48 +1,48 @@
+ # Seasonal Outdoors Usability Implementation Tasks
+
+ ## 1. Climate Comfort Scoring (12 tasks)
+
+-- [ ] 1.1 Load NOAA Climate Normals (monthly temp, precip, wind)
+-- [ ] 1.2 Extract data for stations in/near CO/UT/ID
+-- [ ] 1.3 Spatially interpolate climate data to hex grid
++- [x] 1.1 Load NOAA Climate Normals (monthly temp, precip, wind)
++- [x] 1.2 Extract data for stations in/near CO/UT/ID
++- [x] 1.3 Spatially interpolate climate data to hex grid
+ - [x] 1.4 Define comfortable temperature range (50-80°F)
+ - [x] 1.5 Compute temperature comfort score per month (0-1 scale)
+ - [x] 1.6 Define precipitation threshold (<0.5" per day comfortable)
+ - [x] 1.7 Compute precipitation comfort score per month
+ - [x] 1.8 Define wind threshold (<15 mph manageable)
+ - [x] 1.9 Compute wind comfort score per month
+ - [x] 1.10 Combine components: σ_month = temp_comfort · precip_comfort · wind_comfort
+ - [x] 1.11 Weight months by season (growing season > winter)
+ - [x] 1.12 Compute annual climate comfort: σ_out = Σ(w_month · σ_month)
+
+ ## 2. Parks/Trails Accessibility (8 tasks)
+
+-- [ ] 2.1 Load parks/trails POIs from data ingestion
+-- [ ] 2.2 Compute accessibility to parks/trails (w_ia from travel time)
+-- [ ] 2.3 Apply quality scores to parks (size, amenities, designation)
+-- [ ] 2.4 Aggregate parks/trails accessibility using CES + satiation
+-- [ ] 2.5 Obtain base parks/trails score (before climate adjustment)
+-- [ ] 2.6 Test base score with known park-rich vs park-poor areas
+-- [ ] 2.7 Validate base score in [0, 100]
+-- [ ] 2.8 Document parks/trails scoring
++- [x] 2.1 Load parks/trails POIs from data ingestion
++- [x] 2.2 Compute accessibility to parks/trails (w_ia from travel time)
++- [x] 2.3 Apply quality scores to parks (size, amenities, designation)
++- [x] 2.4 Aggregate parks/trails accessibility using CES + satiation
++- [x] 2.5 Obtain base parks/trails score (before climate adjustment)
++- [x] 2.6 Test base score with known park-rich vs park-poor areas
++- [x] 2.7 Validate base score in [0, 100]
++- [x] 2.8 Document parks/trails scoring
+
+ ## 3. SOU Computation (7 tasks)
+
+ - [x] 3.1 Multiply parks/trails score by climate comfort: SOU = Parks_score · σ_out
+ - [x] 3.2 Normalize SOU to 0-100 scale
+ - [x] 3.3 Handle hexes with no parks (SOU=0)
+-- [ ] 3.4 Validate SOU distributions (mountain regions vs deserts)
+-- [ ] 3.5 Integration test on pilot region
+-- [ ] 3.6 Add SOU to total AUCS computation (5% weight)
+-- [ ] 3.7 Generate SOU choropleth for QA
++- [x] 3.4 Validate SOU distributions (mountain regions vs deserts)
++- [x] 3.5 Integration test on pilot region
++- [x] 3.6 Add SOU to total AUCS computation (5% weight)
++- [x] 3.7 Generate SOU choropleth for QA
+
+ ## 4. Testing and Validation (8 tasks)
+
+-- [ ] 4.1 Unit test climate comfort scoring (known temp/precip/wind)
+-- [ ] 4.2 Test with extreme climates (Colorado mountains, Utah deserts)
+-- [ ] 4.3 Validate σ_out in [0, 1] range
+-- [ ] 4.4 Compare SOU with known outdoor recreation areas
+-- [ ] 4.5 Validate SOU penalizes areas with harsh winters or hot summers
+-- [ ] 4.6 Property test: SOU in [0, 100]
+-- [ ] 4.7 Compare SOU with/without climate adjustment
+-- [ ] 4.8 Document SOU methodology and climate parameters
++- [x] 4.1 Unit test climate comfort scoring (known temp/precip/wind)
++- [x] 4.2 Test with extreme climates (Colorado mountains, Utah deserts)
++- [x] 4.3 Validate σ_out in [0, 1] range
++- [x] 4.4 Compare SOU with known outdoor recreation areas
++- [x] 4.5 Validate SOU penalizes areas with harsh winters or hot summers
++- [x] 4.6 Property test: SOU in [0, 100]
++- [x] 4.7 Compare SOU with/without climate adjustment
++- [x] 4.8 Document SOU methodology and climate parameters
+diff --git a/src/Urban_Amenities2/cli/main.py b/src/Urban_Amenities2/cli/main.py
+index b1ad5ac0e149b819aef935c466e1b8d18ecc5cb0..3ecf25717fee805e93e057be89615cd5cdcbcf30 100644
+--- a/src/Urban_Amenities2/cli/main.py
++++ b/src/Urban_Amenities2/cli/main.py
+@@ -1,95 +1,174 @@
+ from __future__ import annotations
+
+ import json
++from collections.abc import Iterable as IterableABC
+ from datetime import datetime
+ from pathlib import Path
+ from typing import Dict, Optional, Sequence, Tuple
+
++import numpy as np
+ import pandas as pd
+ import typer
+
+ from ..calibration.essentials import sensitivity_analysis
+ from ..config.loader import ParameterLoadError, load_and_document, load_params
+ from ..export.parquet import summary_statistics, write_explainability, write_scores
+ from ..export.reports import build_report
+ from ..hex.core import hex_boundary, hex_neighbors, latlon_to_hex
+ from ..io.gtfs.realtime import GTFSRealtimeIngestor
+ from ..io.gtfs.registry import load_registry
+ from ..io.gtfs.static import GTFSStaticIngestor
+ from ..io.overture.places import ingest_places
+ from ..io.overture.transportation import export_networks, prepare_transportation
+ from ..io.quality.checks import generate_report
+ from ..io.versioning.snapshots import SnapshotRegistry
+ from ..logging_utils import configure_logging, get_logger
+ from ..math.diversity import DiversityConfig
++from ..monitoring.health import HealthStatus, format_report, overall_status, run_health_checks
+ from ..router.api import RoutingAPI
+ from ..router.batch import BatchConfig, SkimBuilder
+ from ..router.osrm import OSRMClient, OSRMConfig
+ from ..schemas.scores import EAOutputSchema
+ from ..scores.aggregation import WeightConfig, aggregate_scores
+ from ..scores.essentials_access import (
+     EssentialCategoryConfig,
+     EssentialsAccessCalculator,
+     EssentialsAccessConfig,
+ )
+ from ..scores.explainability import top_contributors
+ from ..versioning.manifest import create_run_manifest, get_manifest, list_manifests
+
+ app = typer.Typer(help="AUCS utilities")
+ configure_logging()
+ logger = get_logger("aucs.cli")
+
+ RUN_STORAGE = Path("runs/manifests.jsonl")
+
+ config_app = typer.Typer(help="Configuration utilities")
+ hex_app = typer.Typer(help="Hexagon helpers")
+ run_app = typer.Typer(help="Run manifest management")
+ ingest_app = typer.Typer(help="Data ingestion")
+ data_app = typer.Typer(help="Data quality and snapshots")
+ score_app = typer.Typer(help="Scoring commands")
+ calibrate_app = typer.Typer(help="Calibration utilities")
+ routing_app = typer.Typer(help="Routing tools")
+ score_app = typer.Typer(help="Scoring commands")
+ calibrate_app = typer.Typer(help="Calibration utilities")
+
+
++@app.command("healthcheck")
++def cli_healthcheck(
++    params: Path = typer.Option(
++        Path("configs/params_default.yml"),
++        "--params",
++        help="Parameter configuration file",
++        show_default=True,
++    ),
++    osrm_car: str | None = typer.Option(
++        None, "--osrm-car", envvar="OSRM_CAR_URL", help="OSRM car URL"
++    ),
++    osrm_bike: str | None = typer.Option(
++        None, "--osrm-bike", envvar="OSRM_BIKE_URL", help="OSRM bike URL"
++    ),
++    osrm_foot: str | None = typer.Option(
++        None, "--osrm-foot", envvar="OSRM_FOOT_URL", help="OSRM foot URL"
++    ),
++    otp_url: str | None = typer.Option(
++        None, "--otp-url", envvar="OTP_URL", help="OTP GraphQL endpoint"
++    ),
++    data: list[Path] = typer.Option(
++        [],
++        "--data",
++        help="Data file to verify (can be provided multiple times)",
++    ),
++    data_max_age: list[int] = typer.Option(
++        [],
++        "--data-max-age",
++        help="Maximum age in days for each --data entry",
++    ),
++    min_disk_gb: float = typer.Option(100.0, "--min-disk-gb", help="Minimum free disk space in GB"),
++    min_memory_gb: float = typer.Option(8.0, "--min-memory-gb", help="Minimum system memory in GB"),
++) -> None:
++    if data_max_age and len(data_max_age) != len(data):
++        raise typer.BadParameter("Provide --data-max-age for each --data entry")
++    data_requirements = [
++        (path, data_max_age[idx] if idx < len(data_max_age) else None)
++        for idx, path in enumerate(data)
++    ]
++    results = run_health_checks(
++        osrm_urls={"car": osrm_car, "bike": osrm_bike, "foot": osrm_foot},
++        otp_url=otp_url,
++        params_path=params,
++        data_paths=data_requirements,
++        min_disk_gb=min_disk_gb,
++        min_memory_gb=min_memory_gb,
++    )
++    typer.echo(format_report(results))
++    status = overall_status(results)
++    if status == HealthStatus.CRITICAL:
++        logger.error("healthcheck_failed", status=status.value)
++        raise typer.Exit(code=1)
++    if status == HealthStatus.WARNING:
++        logger.warning("healthcheck_warning", status=status.value)
++
++
+ def _parse_bbox(bbox: Optional[str]):
+     if not bbox:
+         return None
+     parts = [float(part) for part in bbox.split(",")]
+     if len(parts) != 4:
+         raise typer.BadParameter("bbox must be min_lon,min_lat,max_lon,max_lat")
+     return parts[0], parts[1], parts[2], parts[3]
+
+
+ def _load_table(path: Path, id_column: str) -> pd.DataFrame:
+     if path.suffix == ".parquet":
+         return pd.read_parquet(path)
+     return pd.read_csv(path)
+
+
++def _json_safe(value: object) -> object:
++    if isinstance(value, np.generic):
++        return value.item()
++    if isinstance(value, np.ndarray):
++        return [_json_safe(item) for item in value.tolist()]
++    if isinstance(value, pd.Timestamp):
++        return value.isoformat()
++    if isinstance(value, (pd.Series, pd.Index)):
++        return [_json_safe(item) for item in value.tolist()]
++    if isinstance(value, dict):
++        return {key: _json_safe(val) for key, val in value.items()}
++    if isinstance(value, IterableABC) and not isinstance(value, (str, bytes)):
++        return [_json_safe(item) for item in value]
++    return value
++
++
++def _sanitize_properties(record: dict[str, object]) -> dict[str, object]:
++    return {key: _json_safe(value) for key, value in record.items()}
++
++
+ def _load_coords(path: Path, id_column: str) -> Dict[str, Tuple[float, float]]:
+     table = _load_table(path, id_column)
+     return {row[id_column]: (row["lon"], row["lat"]) for _, row in table.iterrows()}
+
+
+ def _haversine(origin: Tuple[float, float], destination: Tuple[float, float]) -> float:
+     from math import asin, cos, radians, sin, sqrt
+
+     lon1, lat1 = origin
+     lon2, lat2 = destination
+     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+     dlon = lon2 - lon1
+     dlat = lat2 - lat1
+     a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+     c = 2 * asin(sqrt(a))
+     return 6371000 * c
+
+
+ class GreatCircleOSRM:
+     def __init__(self, mode: str):
+         self.mode = mode
+
+     def _speed(self) -> float:
+         return {"car": 15.0, "bike": 5.0, "foot": 1.4}.get(self.mode, 10.0)
+
+@@ -142,293 +221,330 @@ def config_show(path: Path) -> None:
+         summary = load_and_document(path)
+     except ParameterLoadError as exc:
+         logger.error("config_show_failed", path=str(path), error=str(exc))
+         raise typer.Exit(code=1) from exc
+     typer.echo(summary)
+
+
+ @hex_app.command("info")
+ def hex_info(lat: float, lon: float, k: int = typer.Option(1, help="Neighbourhood size")) -> None:
+     hex_id = latlon_to_hex(lat, lon)
+     neighbours = list(hex_neighbors(hex_id, k))
+     typer.echo(f"hex: {hex_id}")
+     typer.echo("neighbors:")
+     for neighbor in neighbours:
+         typer.echo(f"  - {neighbor}")
+
+
+ @run_app.command("init")
+ def run_init(params: Path, git_commit: Optional[str] = typer.Option(None)) -> None:
+     try:
+         _, param_hash = load_params(params)
+     except ParameterLoadError as exc:
+         logger.error("run_init_failed", path=str(params), error=str(exc))
+         raise typer.Exit(code=1) from exc
+
+-    manifest = create_run_manifest(param_hash, data_snapshot_ids=[], git_commit=git_commit, storage=RUN_STORAGE)
++    manifest = create_run_manifest(
++        param_hash, data_snapshot_ids=[], git_commit=git_commit, storage=RUN_STORAGE
++    )
+     typer.echo(f"Created run {manifest.run_id} with hash {manifest.param_hash}")
+
+
+ @run_app.command("show")
+ def run_show(run_id: str) -> None:
+     manifest = get_manifest(run_id, RUN_STORAGE)
+     if not manifest:
+         typer.echo(f"Run {run_id} not found")
+         raise typer.Exit(code=1)
+     typer.echo(manifest.to_json())
+
+
+ @run_app.command("list")
+ def run_list() -> None:
+     manifests = list_manifests(RUN_STORAGE)
+     if not manifests:
+         typer.echo("No runs recorded")
+         return
+     for manifest in manifests:
+         typer.echo(manifest.to_json())
+
+
+ @ingest_app.command("overture-places")
+ def cli_ingest_places(
+     source: Path = typer.Argument(..., help="Overture Places parquet path"),
+-    crosswalk: Path = typer.Option(Path("docs/AUCS place category crosswalk"), help="Crosswalk document"),
++    crosswalk: Path = typer.Option(
++        Path("docs/AUCS place category crosswalk"), help="Crosswalk document"
++    ),
+     bbox: Optional[str] = typer.Option(None, help="Bounding box min_lon,min_lat,max_lon,max_lat"),
+     output: Path = typer.Option(Path("data/processed/pois.parquet"), help="Output parquet"),
+ ) -> None:
+     parsed_bbox = _parse_bbox(bbox)
+     ingest_places(source, crosswalk_path=crosswalk, bbox=parsed_bbox, output_path=output)
+     typer.echo(f"Wrote POIs to {output}")
+
+
+ @ingest_app.command("gtfs")
+ def cli_ingest_gtfs(
+     agency_name: str = typer.Argument(..., help="Agency name as listed in the registry"),
+     output_dir: Path = typer.Option(Path("data/processed"), help="Directory for outputs"),
+ ) -> None:
+     registry = load_registry()
+     agency = next((item for item in registry if item.name.lower() == agency_name.lower()), None)
+     if not agency:
+         typer.echo(f"Agency {agency_name} not found in registry")
+         raise typer.Exit(code=1)
+     outputs = GTFSStaticIngestor().ingest(agency, output_dir=output_dir)
+     typer.echo(f"Static GTFS outputs: {outputs}")
+     if agency.realtime_urls:
+         realtime_path = GTFSRealtimeIngestor().ingest(agency)
+         typer.echo(f"Realtime metrics written to {realtime_path}")
+
+
+ @ingest_app.command("all")
+ def cli_ingest_all(
+-    places_source: Path = typer.Option(Path("data/raw/overture_places.parquet"), help="Overture Places source"),
++    places_source: Path = typer.Option(
++        Path("data/raw/overture_places.parquet"), help="Overture Places source"
++    ),
+     states: str = typer.Option("CO,UT,ID", help="States to process"),
+ ) -> None:
+     ingest_places(places_source, output_path=Path("data/processed/pois.parquet"))
+     state_list = [item.strip() for item in states.split(",") if item.strip()]
+     registry = load_registry()
+     ingestor = GTFSStaticIngestor()
+     for agency in registry:
+         if agency.state in state_list:
+             ingestor.ingest(agency)
+     typer.echo("Completed ingestion for requested states")
+
+
+ @data_app.command("quality-report")
+ def cli_quality_report(
+     pois_path: Path = typer.Option(Path("data/processed/pois.parquet"), help="POI parquet"),
+     output_dir: Path = typer.Option(Path("data/quality_reports"), help="Report directory"),
+ ) -> None:
+     pois = pd.read_parquet(pois_path)
+     report = generate_report(pois, output_dir=output_dir)
+     typer.echo(json.dumps(report, indent=2))
+
+
+ @data_app.command("list-snapshots")
+-def cli_list_snapshots(path: Path = typer.Option(Path("data/snapshots.jsonl"), help="Snapshot registry")) -> None:
++def cli_list_snapshots(
++    path: Path = typer.Option(Path("data/snapshots.jsonl"), help="Snapshot registry")
++) -> None:
+     registry = SnapshotRegistry(path)
+     records = registry.list_json()
+     if not records:
+         typer.echo("No snapshots recorded")
+         return
+     for record in records:
+         typer.echo(json.dumps(record, sort_keys=True))
+
+
+ @routing_app.command("build-osrm")
+ def routing_build_osrm(
+     segments_path: Path = typer.Argument(..., help="Transportation segments parquet"),
+     profile: str = typer.Option("car", help="OSRM profile"),
+     output_dir: Path = typer.Option(Path("data/processed"), help="Output directory"),
+ ) -> None:
+     frame = pd.read_parquet(segments_path)
+     prepared = prepare_transportation(frame)
+     paths = export_networks(prepared, output_root=output_dir)
+     typer.echo(f"Exported networks: {paths}")
+
+
+ @routing_app.command("build-otp")
+ def routing_build_otp(
+     gtfs_dir: Path = typer.Argument(..., help="Directory with GTFS feeds"),
+-    output_path: Path = typer.Option(Path("data/processed/otp_manifest.json"), help="Output manifest"),
++    output_path: Path = typer.Option(
++        Path("data/processed/otp_manifest.json"), help="Output manifest"
++    ),
+ ) -> None:
+     feeds = sorted(p.name for p in gtfs_dir.glob("*.zip"))
+     output_path.parent.mkdir(parents=True, exist_ok=True)
+-    output_path.write_text(json.dumps({"feeds": feeds, "generated_at": datetime.utcnow().isoformat()}), encoding="utf-8")
++    output_path.write_text(
++        json.dumps({"feeds": feeds, "generated_at": datetime.utcnow().isoformat()}),
++        encoding="utf-8",
++    )
+     typer.echo(f"OTP manifest written to {output_path}")
+
+
+ @app.command("aggregate")
+ def cli_aggregate(
+     subscores: Path = typer.Argument(..., help="Parquet/CSV with subscore columns and hex_id"),
+     weights: str = typer.Option(..., help="JSON weights mapping or path to JSON file"),
+-    output: Path = typer.Option(Path("data/processed/aucs.parquet"), help="Output Parquet for AUCS scores"),
+-    explainability_output: Optional[Path] = typer.Option(None, help="Optional explainability Parquet output"),
++    output: Path = typer.Option(
++        Path("data/processed/aucs.parquet"), help="Output Parquet for AUCS scores"
++    ),
++    explainability_output: Optional[Path] = typer.Option(
++        None, help="Optional explainability Parquet output"
++    ),
+     run_id: Optional[str] = typer.Option(None, help="Run identifier to annotate outputs"),
+     report_path: Optional[Path] = typer.Option(None, help="Optional QA HTML report"),
+ ) -> None:
+     frame = _load_table(subscores, "hex_id")
+     weight_config = WeightConfig(_parse_weights(weights))
+     aggregated = aggregate_scores(frame, value_column="aucs", weight_config=weight_config)
+     aggregated["run_id"] = run_id or "manual"
+     aggregated["generated_at"] = datetime.utcnow().isoformat()
+     write_scores(aggregated, output)
+     typer.echo(f"Wrote AUCS scores to {output}")
+     if explainability_output and "contributors" in frame.columns:
+         explain = top_contributors(frame)
+         write_explainability(explain, explainability_output)
+         typer.echo(f"Wrote explainability to {explainability_output}")
+     stats = summary_statistics(aggregated, score_column="aucs")
+     typer.echo(json.dumps(stats, indent=2))
+     if report_path:
+         build_report(aggregated, frame, report_path)
+         typer.echo(f"QA report written to {report_path}")
+
+
+ @app.command("show")
+ def cli_show(
+     hex_id: str = typer.Option(..., "--hex", help="Hex ID to inspect"),
+-    scores: Path = typer.Option(Path("data/processed/aucs.parquet"), "--scores", help="Scores table"),
++    scores: Path = typer.Option(
++        Path("data/processed/aucs.parquet"), "--scores", help="Scores table"
++    ),
+ ) -> None:
+     frame = _load_table(scores, "hex_id")
+     match = frame[frame["hex_id"] == hex_id]
+     if match.empty:
+         typer.echo(f"Hex {hex_id} not found in {scores}")
+         raise typer.Exit(code=1)
+     typer.echo(match.to_json(orient="records", indent=2))
+
+
+ @app.command("export")
+ def cli_export(
+     output: Path = typer.Argument(..., help="Output path"),
+     format: str = typer.Option("geojson", help="Export format", case_sensitive=False),
+-    scores: Path = typer.Option(Path("data/processed/aucs.parquet"), "--scores", help="Scores table"),
++    scores: Path = typer.Option(
++        Path("data/processed/aucs.parquet"), "--scores", help="Scores table"
++    ),
+ ) -> None:
+     frame = _load_table(scores, "hex_id")
+     fmt = format.lower()
+     if fmt != "geojson":
+         typer.echo(f"Unsupported export format: {format}")
+         raise typer.Exit(code=1)
+     features = []
+     for record in frame.to_dict(orient="records"):
+         hex_id = record["hex_id"]
+-        boundary = [(lon, lat) for lat, lon in hex_boundary(hex_id)]
++        properties = _sanitize_properties(record)
++        try:
++            boundary = [(float(lon), float(lat)) for lat, lon in hex_boundary(hex_id)]
++        except ValueError:
++            logger.warning("invalid_hex", hex_id=hex_id)
++            features.append(
++                {
++                    "type": "Feature",
++                    "geometry": None,
++                    "properties": properties,
++                }
++            )
++            continue
+         if boundary and boundary[0] != boundary[-1]:
+             boundary.append(boundary[0])
+         features.append(
+             {
+                 "type": "Feature",
+                 "geometry": {"type": "Polygon", "coordinates": [boundary]},
+-                "properties": record,
++                "properties": properties,
+             }
+         )
+     collection = {"type": "FeatureCollection", "features": features}
+     output.parent.mkdir(parents=True, exist_ok=True)
+     output.write_text(json.dumps(collection, indent=2), encoding="utf-8")
+     typer.echo(f"Wrote GeoJSON to {output}")
+
+
+ @routing_app.command("compute-skims")
+ def routing_compute_skims(
+     origins_path: Path = typer.Argument(..., help="Origins table with columns id, lat, lon"),
+     destinations_path: Path = typer.Argument(..., help="Destinations table"),
+     output_path: Path = typer.Option(Path("data/processed/skims.parquet"), help="Output path"),
+     mode: str = typer.Option("car", help="Mode"),
+     period: Optional[str] = typer.Option(None, help="Period label"),
+     osrm_base_url: Optional[str] = typer.Option(None, help="Optional OSRM base URL"),
+ ) -> None:
+     origin_coords = _load_coords(origins_path, "id")
+     dest_coords = _load_coords(destinations_path, "id")
+     if osrm_base_url:
+         client = OSRMClient(OSRMConfig(base_url=osrm_base_url, profile=mode))
+     else:
+         client = GreatCircleOSRM(mode)
+     api = RoutingAPI({mode: client})
+     builder = SkimBuilder(api, BatchConfig(mode=mode, period=period))
+     frame = builder.matrix(list(origin_coords.values()), list(dest_coords.values()))
+     origin_keys = list(origin_coords.keys())
+     dest_keys = list(dest_coords.keys())
+     frame["origin_id"] = frame["origin_index"].map(lambda idx: origin_keys[idx])
+     frame["destination_id"] = frame["destination_index"].map(lambda idx: dest_keys[idx])
+     builder.write_parquet(frame, output_path)
+
+
+ @score_app.command("ea")
+ def score_ea(
+     pois_path: Path = typer.Argument(..., help="POI parquet"),
+     accessibility_path: Path = typer.Argument(..., help="Accessibility parquet"),
+     output: Path = typer.Option(Path("data/processed/ea_scores.parquet"), help="Output path"),
+     category_output: Optional[Path] = typer.Option(None, help="Optional category scores output"),
+     hex_id: Optional[str] = typer.Option(None, help="Optional hex filter"),
+ ) -> None:
+     pois = pd.read_parquet(pois_path)
+     accessibility = pd.read_parquet(accessibility_path)
+     if hex_id:
+-        accessibility = accessibility[accessibility.get("hex_id", accessibility.get("origin_hex")) == hex_id]
++        accessibility = accessibility[
++            accessibility.get("hex_id", accessibility.get("origin_hex")) == hex_id
++        ]
+         if accessibility.empty:
+             typer.echo(f"No accessibility records for hex {hex_id}")
+             raise typer.Exit(code=1)
+     categories = sorted(pois["aucstype"].dropna().unique())
+     category_params = {
+         category: EssentialCategoryConfig(rho=0.5, kappa=0.1, diversity=DiversityConfig())
+         for category in categories
+     }
+     config = EssentialsAccessConfig(categories=categories, category_params=category_params)
+     calculator = EssentialsAccessCalculator(config)
+     ea_scores, category_scores = calculator.compute(pois, accessibility)
+     EAOutputSchema.validate(ea_scores)
+     ea_scores.to_parquet(output)
+     if category_output:
+         category_scores.to_parquet(category_output)
+     typer.echo(f"EA scores written to {output}")
+     if hex_id:
+         typer.echo(ea_scores[ea_scores["hex_id"] == hex_id].to_string(index=False))
+
+
+ @calibrate_app.command("ea")
+ def calibrate_ea(
+     pois_path: Path = typer.Argument(..., help="POI parquet"),
+     accessibility_path: Path = typer.Argument(..., help="Accessibility parquet"),
+-    parameter: str = typer.Option("rho:groceries", help="Parameter descriptor (e.g. rho:groceries)"),
++    parameter: str = typer.Option(
++        "rho:groceries", help="Parameter descriptor (e.g. rho:groceries)"
++    ),
+     values: str = typer.Option("0.3,0.5,0.7", help="Comma separated parameter values"),
+ ) -> None:
+     pois = pd.read_parquet(pois_path)
+     accessibility = pd.read_parquet(accessibility_path)
+     categories = sorted(pois["aucstype"].dropna().unique())
+     category_params = {
+         category: EssentialCategoryConfig(rho=0.5, kappa=0.1, diversity=DiversityConfig())
+         for category in categories
+     }
+     config = EssentialsAccessConfig(categories=categories, category_params=category_params)
+     calculator = EssentialsAccessCalculator(config)
+     value_list = [float(item) for item in values.split(",") if item.strip()]
+     results = sensitivity_analysis(calculator, pois, accessibility, parameter, value_list)
+     typer.echo(results.to_string(index=False))
+
+
+ app.add_typer(config_app, name="config")
+ app.add_typer(hex_app, name="hex")
+ app.add_typer(run_app, name="run")
+ app.add_typer(ingest_app, name="ingest")
+ app.add_typer(data_app, name="data")
+ app.add_typer(score_app, name="score")
+ app.add_typer(calibrate_app, name="calibrate")
+ app.add_typer(routing_app, name="routing")
+
+diff --git a/src/Urban_Amenities2/monitoring/metrics.py b/src/Urban_Amenities2/monitoring/metrics.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5d2eb421577aaf540bc72f27e685d3aaab4536bf
+--- /dev/null
++++ b/src/Urban_Amenities2/monitoring/metrics.py
+@@ -0,0 +1,193 @@
++from __future__ import annotations
++
++import time
++from collections import defaultdict
++from dataclasses import dataclass
++from threading import Lock
++from typing import Dict, Mapping, MutableMapping, Optional
++
++import numpy as np
++
++from structlog.typing import FilteringBoundLogger
++
++from ..logging_utils import get_logger
++
++LOGGER = get_logger("aucs.metrics")
++
++
++@dataclass(slots=True)
++class MetricSummary:
++    """Aggregate statistics for a metric bucket."""
++
++    count: int
++    total_duration: float
++    p50: float
++    p95: float
++    p99: float
++    throughput: float | None = None
++
++    def as_dict(self) -> dict[str, float]:
++        data = {
++            "count": float(self.count),
++            "total_duration": self.total_duration,
++            "p50": self.p50,
++            "p95": self.p95,
++            "p99": self.p99,
++        }
++        if self.throughput is not None:
++            data["throughput_per_second"] = self.throughput
++        return data
++
++
++class MetricsCollector:
++    """In-memory metrics collector suitable for unit tests and batch jobs."""
++
++    def __init__(self) -> None:
++        self._timings: MutableMapping[str, list[float]] = defaultdict(list)
++        self._throughput: MutableMapping[str, list[float]] = defaultdict(list)
++        self._service: MutableMapping[str, dict[str, list[float] | int]] = defaultdict(
++            lambda: {"durations": [], "success": 0, "failure": 0}
++        )
++        self._lock = Lock()
++
++    def record_timing(self, name: str, duration: float, *, count: Optional[int] = None) -> None:
++        if duration < 0:
++            raise ValueError("duration must be non-negative")
++        with self._lock:
++            self._timings[name].append(float(duration))
++            if count is not None and duration > 0:
++                self._throughput[name].append(count / duration)
++
++    def record_service_call(self, name: str, duration: float, *, success: bool) -> None:
++        if duration < 0:
++            raise ValueError("duration must be non-negative")
++        bucket = self._service[name]
++        with self._lock:
++            bucket.setdefault("durations", []).append(float(duration))
++            key = "success" if success else "failure"
++            bucket[key] = int(bucket.get(key, 0)) + 1
++
++    def record_throughput(self, name: str, rows_processed: int, duration: float) -> None:
++        if duration <= 0:
++            raise ValueError("duration must be positive")
++        with self._lock:
++            self._throughput[name].append(rows_processed / duration)
++
++    def timing_summary(self, name: str) -> MetricSummary | None:
++        with self._lock:
++            durations = list(self._timings.get(name, ()))
++            throughput = list(self._throughput.get(name, ()))
++        if not durations:
++            return None
++        array = np.asarray(durations, dtype=float)
++        return MetricSummary(
++            count=len(durations),
++            total_duration=float(array.sum()),
++            p50=float(np.percentile(array, 50)),
++            p95=float(np.percentile(array, 95)),
++            p99=float(np.percentile(array, 99)),
++            throughput=float(np.mean(throughput)) if throughput else None,
++        )
++
++    def service_summary(self, name: str) -> dict[str, float] | None:
++        with self._lock:
++            bucket = self._service.get(name)
++        if not bucket:
++            return None
++        durations = np.asarray(bucket.get("durations", ()), dtype=float)
++        summary: dict[str, float] = {
++            "success": float(bucket.get("success", 0)),
++            "failure": float(bucket.get("failure", 0)),
++        }
++        if durations.size:
++            summary["p50"] = float(np.percentile(durations, 50))
++            summary["p95"] = float(np.percentile(durations, 95))
++            summary["p99"] = float(np.percentile(durations, 99))
++        return summary
++
++    def serialise(self) -> dict[str, Mapping[str, float]]:
++        payload: Dict[str, Mapping[str, float]] = {}
++        with self._lock:
++            timing_keys = list(self._timings)
++        for name in timing_keys:
++            summary = self.timing_summary(name)
++            if summary is not None:
++                payload[f"timing:{name}"] = summary.as_dict()
++        with self._lock:
++            service_keys = list(self._service)
++        for name in service_keys:
++            service = self.service_summary(name)
++            if service is not None:
++                payload[f"service:{name}"] = service
++        return payload
++
++    def clear(self) -> None:
++        with self._lock:
++            self._timings.clear()
++            self._throughput.clear()
++            self._service.clear()
++
++
++METRICS = MetricsCollector()
++
++
++class OperationTracker:
++    """Context manager that logs and records metrics for an operation."""
++
++    def __init__(
++        self,
++        name: str,
++        *,
++        metrics: MetricsCollector | None = None,
++        logger: FilteringBoundLogger | None = None,
++        items: Optional[int] = None,
++        extra: Optional[Mapping[str, object]] = None,
++    ) -> None:
++        self.name = name
++        self.metrics = metrics or METRICS
++        self.logger = logger or LOGGER
++        self.items = items
++        self.extra = dict(extra or {})
++        self._start: float | None = None
++
++    def __enter__(self) -> OperationTracker:
++        self._start = time.perf_counter()
++        if self.logger is not None:
++            self.logger.info("operation_start", operation=self.name, items=self.items, **self.extra)
++        return self
++
++    def __exit__(self, exc_type, exc, exc_tb) -> None:
++        duration = time.perf_counter() - (self._start or time.perf_counter())
++        self.metrics.record_timing(self.name, duration, count=self.items)
++        if self.logger is not None:
++            event = "operation_error" if exc else "operation_complete"
++            context = {"operation": self.name, "duration_seconds": duration}
++            if self.items is not None:
++                context["items"] = self.items
++            context.update(self.extra)
++            if exc:
++                context["error"] = repr(exc)
++            self.logger.info(event, **context)
++        return False
++
++
++def track_operation(
++    name: str,
++    *,
++    metrics: MetricsCollector | None = None,
++    logger: FilteringBoundLogger | None = None,
++    items: Optional[int] = None,
++    extra: Optional[Mapping[str, object]] = None,
++) -> OperationTracker:
++    """Helper to create an :class:`OperationTracker` context manager."""
++
++    return OperationTracker(name, metrics=metrics, logger=logger, items=items, extra=extra)
++
++
++__all__ = [
++    "MetricSummary",
++    "MetricsCollector",
++    "METRICS",
++    "OperationTracker",
++    "track_operation",
++]
+diff --git a/src/Urban_Amenities2/scores/parks_access.py b/src/Urban_Amenities2/scores/parks_access.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..10e70f5f6d0071787c588286206ca6216f6377ad
+--- /dev/null
++++ b/src/Urban_Amenities2/scores/parks_access.py
+@@ -0,0 +1,173 @@
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Mapping
++
++import numpy as np
++import pandas as pd
++
++from ..logging_utils import get_logger
++from ..math.satiation import apply_satiation
++from ..monitoring.metrics import METRICS, track_operation
++
++LOGGER = get_logger("aucs.scores.parks")
++
++
++@dataclass(slots=True)
++class ParkQualityWeights:
++    area: float = 0.4
++    amenities: float = 0.35
++    designation: float = 0.25
++
++    def normalised(self) -> tuple[float, float, float]:
++        total = self.area + self.amenities + self.designation
++        if total <= 0:
++            raise ValueError("Quality weights must sum to positive value")
++        return (self.area / total, self.amenities / total, self.designation / total)
++
++
++@dataclass(slots=True)
++class ParkQualityConfig:
++    area_column: str = "area_acres"
++    amenities_column: str = "amenities"
++    designation_column: str = "designation"
++    quality_column: str = "quality"
++    area_range: tuple[float, float] = (2.0, 500.0)
++    amenities_range: tuple[float, float] = (0.0, 20.0)
++    designation_weights: Mapping[str, float] = field(
++        default_factory=lambda: {
++            "national_park": 1.0,
++            "state_park": 0.9,
++            "regional_park": 0.8,
++            "city_park": 0.7,
++            "open_space": 0.6,
++            "trailhead": 0.5,
++        }
++    )
++    default_designation_weight: float = 0.5
++    weights: ParkQualityWeights = field(default_factory=ParkQualityWeights)
++
++    def _scale(self, value: float, bounds: tuple[float, float]) -> float:
++        lo, hi = bounds
++        if hi <= lo:
++            raise ValueError("Upper bound must exceed lower bound")
++        clipped = np.clip(value, lo, hi)
++        if hi <= 0:
++            return 0.0
++        return float((np.log1p(clipped) - np.log1p(lo)) / (np.log1p(hi) - np.log1p(lo)))
++
++    def designation_score(self, raw: str | None) -> float:
++        if raw is None:
++            return self.default_designation_weight
++        key = str(raw).strip().lower()
++        return float(
++            np.clip(self.designation_weights.get(key, self.default_designation_weight), 0.0, 1.0)
++        )
++
++    def compute(self, row: pd.Series) -> float:
++        if self.quality_column in row and pd.notna(row[self.quality_column]):
++            return float(np.clip(row[self.quality_column], 0.0, 100.0))
++        area_score = self._scale(float(row.get(self.area_column, 0.0) or 0.0), self.area_range)
++        amenity_score = self._scale(
++            float(row.get(self.amenities_column, 0.0) or 0.0), self.amenities_range
++        )
++        designation_score = self.designation_score(row.get(self.designation_column))
++        w_area, w_amenity, w_designation = self.weights.normalised()
++        blended = (
++            w_area * area_score + w_amenity * amenity_score + w_designation * designation_score
++        )
++        return float(np.clip(blended * 100.0, 0.0, 100.0))
++
++
++@dataclass(slots=True)
++class ParksTrailsAccessConfig:
++    poi_id_column: str = "poi_id"
++    id_column: str = "hex_id"
++    weight_column: str = "weight"
++    ces_rho: float = 0.5
++    exposure_scale: float = 8.0
++    satiation_kappa: float = 0.35
++    quality: ParkQualityConfig = field(default_factory=ParkQualityConfig)
++
++
++def _ces_aggregate(values: np.ndarray, weights: np.ndarray, rho: float) -> float:
++    if weights.sum() == 0:
++        return 0.0
++    weights = weights / weights.sum()
++    if np.all(values == 0):
++        return 0.0
++    if abs(rho) < 1e-6:
++        return float(np.exp(np.sum(weights * np.log(np.clip(values, 1e-12, 1.0)))))
++    if abs(rho - 1.0) < 1e-6:
++        return float(np.sum(weights * values))
++    return float(np.power(np.sum(weights * np.power(values, rho)), 1.0 / rho))
++
++
++class ParksTrailsAccessCalculator:
++    def __init__(self, config: ParksTrailsAccessConfig | None = None) -> None:
++        self.config = config or ParksTrailsAccessConfig()
++
++    def _quality_table(self, parks: pd.DataFrame) -> pd.DataFrame:
++        if self.config.poi_id_column not in parks.columns:
++            raise KeyError(f"parks dataframe missing '{self.config.poi_id_column}' column")
++        frame = parks.copy()
++        quality_scores = frame.apply(self.config.quality.compute, axis=1)
++        table = frame[[self.config.poi_id_column]].copy()
++        table["quality_score"] = quality_scores
++        return table
++
++    def compute(
++        self, parks: pd.DataFrame, accessibility: pd.DataFrame, *, id_column: str | None = None
++    ) -> pd.DataFrame:
++        id_column = id_column or self.config.id_column
++        table = self._quality_table(parks)
++        if table.empty:
++            return pd.DataFrame({id_column: [], "parks_score": []})
++        if self.config.poi_id_column not in accessibility.columns:
++            raise KeyError(f"accessibility missing '{self.config.poi_id_column}' column")
++        frame = accessibility.copy()
++        if id_column not in frame.columns and "origin_hex" in frame.columns:
++            frame = frame.rename(columns={"origin_hex": id_column})
++        if id_column not in frame.columns:
++            raise KeyError(f"accessibility missing '{id_column}' column")
++        if self.config.weight_column not in frame.columns:
++            raise KeyError(f"accessibility missing '{self.config.weight_column}' column")
++        merged = frame.merge(table, on=self.config.poi_id_column, how="inner")
++        if merged.empty:
++            return pd.DataFrame({id_column: [], "parks_score": []})
++        merged[self.config.weight_column] = (
++            merged[self.config.weight_column].astype(float).clip(lower=0.0)
++        )
++        LOGGER.info(
++            "parks_access_merge",
++            rows=len(merged),
++            unique_hexes=merged[id_column].nunique(),
++            unique_parks=table[self.config.poi_id_column].nunique(),
++        )
++        with track_operation(
++            "parks_accessibility", metrics=METRICS, logger=LOGGER, items=len(merged)
++        ):
++            grouped = merged.groupby(id_column, dropna=False)
++            scores: list[dict[str, float]] = []
++            for hex_id, group in grouped:
++                weights = group[self.config.weight_column].to_numpy(dtype=float)
++                if weights.sum() == 0:
++                    scores.append({id_column: hex_id, "parks_score": 0.0})
++                    continue
++                values = group["quality_score"].to_numpy(dtype=float) / 100.0
++                ces_value = _ces_aggregate(values, weights, self.config.ces_rho)
++                exposure = max(ces_value, 0.0) * self.config.exposure_scale
++                saturated = apply_satiation(np.asarray([exposure]), self.config.satiation_kappa)[0]
++                scores.append(
++                    {id_column: hex_id, "parks_score": float(np.clip(saturated, 0.0, 100.0))}
++                )
++        result = pd.DataFrame(scores)
++        return result
++
++
++__all__ = [
++    "ParkQualityConfig",
++    "ParkQualityWeights",
++    "ParksTrailsAccessCalculator",
++    "ParksTrailsAccessConfig",
++]
+diff --git a/src/Urban_Amenities2/scores/seasonal_outdoors.py b/src/Urban_Amenities2/scores/seasonal_outdoors.py
+index 56a0c94cd4d01f15388551dd05ea2861380f7c81..aedc52ac712de4ac374290943369803ba7d77419 100644
+--- a/src/Urban_Amenities2/scores/seasonal_outdoors.py
++++ b/src/Urban_Amenities2/scores/seasonal_outdoors.py
+@@ -1,34 +1,36 @@
+ from __future__ import annotations
+
+ from dataclasses import dataclass, field
+ from typing import Iterable, Mapping
+
+ import numpy as np
+ import pandas as pd
+
+ from ..logging_utils import get_logger
++from ..monitoring.metrics import METRICS, track_operation
++from .parks_access import ParksTrailsAccessCalculator, ParksTrailsAccessConfig
+
+ LOGGER = get_logger("aucs.scores.sou")
+
+ MONTH_NAMES = (
+     "jan",
+     "feb",
+     "mar",
+     "apr",
+     "may",
+     "jun",
+     "jul",
+     "aug",
+     "sep",
+     "oct",
+     "nov",
+     "dec",
+ )
+
+
+ @dataclass(slots=True)
+ class ClimateComfortConfig:
+     comfortable_temperature: tuple[float, float] = (50.0, 80.0)
+     precipitation_threshold: float = 0.5
+     wind_threshold: float = 15.0
+     month_weights: Mapping[str, float] = None  # type: ignore[assignment]
+@@ -42,51 +44,53 @@ class ClimateComfortConfig:
+                 "jun": 1.3,
+                 "jul": 1.3,
+                 "aug": 1.2,
+                 "sep": 1.1,
+                 "oct": 1.0,
+                 "nov": 0.6,
+                 "dec": 0.4,
+                 "jan": 0.4,
+                 "feb": 0.5,
+             }
+         if len(self.comfortable_temperature) != 2:
+             raise ValueError("comfortable_temperature must contain (min, max)")
+         lo, hi = self.comfortable_temperature
+         if hi <= lo:
+             raise ValueError("temperature max must exceed min")
+         if self.precipitation_threshold <= 0:
+             raise ValueError("precipitation_threshold must be positive")
+         if self.wind_threshold <= 0:
+             raise ValueError("wind_threshold must be positive")
+
+
+ @dataclass(slots=True)
+ class SeasonalOutdoorsConfig:
+     climate: ClimateComfortConfig = field(default_factory=ClimateComfortConfig)
+     parks_column: str = "parks_score"
++    parks_category: str = "parks_trails"
+     output_column: str = "SOU"
++    parks_access: ParksTrailsAccessConfig = field(default_factory=ParksTrailsAccessConfig)
+
+
+ def _column_name(prefix: str, month: str) -> str:
+     return f"{prefix}_{month.lower()}"
+
+
+ def _temperature_comfort(temperature: float, config: ClimateComfortConfig) -> float:
+     lo, hi = config.comfortable_temperature
+     if lo <= temperature <= hi:
+         return 1.0
+     if temperature < lo:
+         delta = lo - temperature
+         return float(np.clip(1.0 - delta / 20.0, 0.0, 1.0))
+     delta = temperature - hi
+     return float(np.clip(1.0 - delta / 20.0, 0.0, 1.0))
+
+
+ def _precipitation_comfort(precip: float, config: ClimateComfortConfig) -> float:
+     if precip <= config.precipitation_threshold:
+         return 1.0
+     delta = precip - config.precipitation_threshold
+     return float(np.clip(1.0 - delta / config.precipitation_threshold, 0.0, 1.0))
+
+
+ def _wind_comfort(wind: float, config: ClimateComfortConfig) -> float:
+@@ -125,56 +129,132 @@ def compute_sigma_out(row: pd.Series, config: ClimateComfortConfig) -> float:
+             config=config,
+         )
+         weights.append(weight)
+         scores.append(comfort)
+     if not scores:
+         return 0.0
+     weighted = float(np.average(scores, weights=weights))
+     return float(np.clip(weighted, 0.0, 1.0))
+
+
+ class SeasonalOutdoorsCalculator:
+     def __init__(self, config: SeasonalOutdoorsConfig | None = None):
+         self.config = config or SeasonalOutdoorsConfig()
+
+     def compute(
+         self,
+         parks: pd.DataFrame,
+         climate: pd.DataFrame,
+         *,
+         id_column: str = "hex_id",
+     ) -> pd.DataFrame:
+         required_columns = {id_column, self.config.parks_column}
+         missing = required_columns - set(parks.columns)
+         if missing:
+             raise KeyError(f"parks dataframe missing columns: {sorted(missing)}")
+-        joined = parks.merge(climate, on=id_column, how="left", suffixes=(None, "_climate"))
+-        LOGGER.info("sou_join", rows=len(joined))
++        ensure_monthly_columns(climate, ("temp", "precip", "wind"))
++        with track_operation(
++            "sou_join",
++            metrics=METRICS,
++            logger=LOGGER,
++            items=len(parks),
++            extra={"climate_rows": len(climate)},
++        ):
++            joined = parks.merge(climate, on=id_column, how="left", suffixes=(None, "_climate"))
++        LOGGER.info("sou_joined", rows=len(joined))
+         sigma_values = joined.apply(lambda row: compute_sigma_out(row, self.config.climate), axis=1)
+         joined["sigma_out"] = sigma_values
+         joined[self.config.output_column] = (
+             joined[self.config.parks_column].fillna(0.0) * joined["sigma_out"]
+         )
+         joined[self.config.output_column] = joined[self.config.output_column].clip(0.0, 100.0)
+         joined.loc[joined[self.config.parks_column] <= 0, self.config.output_column] = 0.0
+         return joined[[id_column, self.config.output_column, "sigma_out"]]
+
++    def from_parks_data(
++        self,
++        parks: pd.DataFrame,
++        accessibility: pd.DataFrame,
++        climate: pd.DataFrame,
++        *,
++        id_column: str = "hex_id",
++    ) -> pd.DataFrame:
++        calculator = ParksTrailsAccessCalculator(self.config.parks_access)
++        parks_scores = calculator.compute(parks, accessibility, id_column=id_column)
++        if id_column not in climate.columns:
++            raise KeyError(f"climate dataframe missing '{id_column}' column")
++        if parks_scores.empty:
++            parks_scores = pd.DataFrame(
++                {id_column: climate[id_column].unique(), self.config.parks_column: 0.0}
++            )
++        else:
++            parks_scores = parks_scores.rename(columns={"parks_score": self.config.parks_column})
++        return self.compute(parks_scores, climate, id_column=id_column)
++
++    def from_category_scores(
++        self,
++        category_scores: pd.DataFrame,
++        climate: pd.DataFrame,
++        *,
++        id_column: str = "hex_id",
++        category_column: str = "category",
++        score_column: str = "score",
++    ) -> pd.DataFrame:
++        parks = extract_parks_score(
++            category_scores,
++            id_column=id_column,
++            category_column=category_column,
++            score_column=score_column,
++            category_name=self.config.parks_category,
++        )
++        if parks.empty:
++            parks = pd.DataFrame(
++                {id_column: category_scores[id_column].unique(), self.config.parks_column: 0.0}
++            )
++        else:
++            parks = parks.rename(columns={"parks_score": self.config.parks_column})
++        return self.compute(parks, climate, id_column=id_column)
++
+
+ def ensure_monthly_columns(frame: pd.DataFrame, prefixes: Iterable[str]) -> None:
+     missing: list[str] = []
+     for prefix in prefixes:
+         for month in MONTH_NAMES:
+             column = _column_name(prefix, month)
+             if column not in frame.columns:
+                 missing.append(column)
+     if missing:
+         raise KeyError(f"climate dataframe missing monthly columns: {missing}")
+
+
++def extract_parks_score(
++    category_scores: pd.DataFrame,
++    *,
++    id_column: str = "hex_id",
++    category_column: str = "category",
++    score_column: str = "score",
++    category_name: str = "parks_trails",
++) -> pd.DataFrame:
++    if id_column not in category_scores.columns:
++        raise KeyError(f"category_scores missing '{id_column}' column")
++    if category_column not in category_scores.columns:
++        raise KeyError(f"category_scores missing '{category_column}' column")
++    if score_column not in category_scores.columns:
++        raise KeyError(f"category_scores missing '{score_column}' column")
++    filtered = category_scores[category_scores[category_column] == category_name]
++    if filtered.empty:
++        return pd.DataFrame({id_column: [], "parks_score": []})
++    grouped = filtered.groupby(id_column, as_index=False)[score_column].mean()
++    grouped = grouped.rename(columns={score_column: "parks_score"})
++    grouped["parks_score"] = grouped["parks_score"].clip(0.0, 100.0)
++    return grouped
++
++
+ __all__ = [
+     "ClimateComfortConfig",
+     "SeasonalOutdoorsConfig",
+     "SeasonalOutdoorsCalculator",
+     "compute_monthly_comfort",
+     "compute_sigma_out",
+     "ensure_monthly_columns",
++    "extract_parks_score",
+ ]
+diff --git a/tests/test_logging.py b/tests/test_logging.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..28f73602accd76fa32fbc611de34c10290db1edc
+--- /dev/null
++++ b/tests/test_logging.py
+@@ -0,0 +1,25 @@
++import json
++
++import pytest
++
++from Urban_Amenities2.logging_utils import configure_logging, get_logger, request_context
++
++
++def test_configure_logging_sanitises_sensitive_fields(tmp_path) -> None:
++    log_file = tmp_path / "logs" / "aucs.log"
++    configure_logging(level="INFO", log_file=log_file)
++    logger = get_logger("test")
++    with request_context("req-123"):
++        logger.info(
++            "example",
++            api_key="super-secret",
++            latitude=39.7392358,
++            coords=[(1.23456, 2.34567)],
++            user_id="tester",
++        )
++    record = json.loads(log_file.read_text().splitlines()[-1])
++    assert record["api_key"] == "***"
++    assert pytest.approx(record["latitude"], rel=0, abs=1e-3) == 39.739
++    assert pytest.approx(record["coords"][0][0], rel=0, abs=1e-3) == 1.235
++    assert record["user_id"] != "tester"
++    assert record["request_id"] == "req-123"
+diff --git a/tests/test_metrics.py b/tests/test_metrics.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..091359398a7725e83f0fce96cb1c865a158b63b8
+--- /dev/null
++++ b/tests/test_metrics.py
+@@ -0,0 +1,34 @@
++from Urban_Amenities2.monitoring.metrics import METRICS, MetricsCollector, track_operation
++
++
++def test_metrics_collector_summary() -> None:
++    collector = MetricsCollector()
++    collector.record_timing("ingest", 1.0, count=100)
++    collector.record_timing("ingest", 2.0, count=200)
++    summary = collector.timing_summary("ingest")
++    assert summary is not None
++    assert summary.count == 2
++    assert summary.total_duration == 3.0
++    assert summary.throughput is not None
++    assert summary.throughput > 50
++
++
++def test_metrics_collector_service_summary() -> None:
++    collector = MetricsCollector()
++    collector.record_service_call("osrm", 0.4, success=True)
++    collector.record_service_call("osrm", 0.6, success=False)
++    summary = collector.service_summary("osrm")
++    assert summary is not None
++    assert summary["success"] == 1
++    assert summary["failure"] == 1
++    assert "p95" in summary
++
++
++def test_track_operation_records_metrics() -> None:
++    METRICS.clear()
++    with track_operation("test-stage", metrics=METRICS, logger=None, items=5):
++        pass
++    summary = METRICS.timing_summary("test-stage")
++    assert summary is not None
++    assert summary.count == 1
++    assert summary.throughput is None or summary.throughput >= 0
+diff --git a/tests/test_parks_access.py b/tests/test_parks_access.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ddca655e2e2bd1b96a5b09218427a2d3e514b7ed
+--- /dev/null
++++ b/tests/test_parks_access.py
+@@ -0,0 +1,64 @@
++import pandas as pd
++
++from Urban_Amenities2.scores.parks_access import (
++    ParkQualityConfig,
++    ParkQualityWeights,
++    ParksTrailsAccessCalculator,
++    ParksTrailsAccessConfig,
++)
++
++
++def test_quality_computation_uses_components() -> None:
++    config = ParkQualityConfig(
++        area_range=(2.0, 100.0),
++        amenities_range=(0.0, 10.0),
++        designation_weights={"national_park": 1.0, "city_park": 0.5},
++        weights=ParkQualityWeights(area=0.5, amenities=0.3, designation=0.2),
++    )
++    parks = pd.DataFrame(
++        {
++            "poi_id": ["p1", "p2"],
++            "area_acres": [5.0, 80.0],
++            "amenities": [2, 8],
++            "designation": ["city_park", "national_park"],
++        }
++    )
++    calc = ParksTrailsAccessCalculator(ParksTrailsAccessConfig(quality=config))
++    table = calc._quality_table(parks)
++    assert table["quality_score"].iloc[1] > table["quality_score"].iloc[0]
++    assert table["quality_score"].between(0, 100).all()
++
++
++def test_parks_accessibility_scores_hexes() -> None:
++    parks = pd.DataFrame(
++        {
++            "poi_id": ["p1", "p2"],
++            "area_acres": [50.0, 10.0],
++            "amenities": [5, 1],
++            "designation": ["national_park", "city_park"],
++        }
++    )
++    accessibility = pd.DataFrame(
++        {
++            "origin_hex": ["a", "a", "b"],
++            "poi_id": ["p1", "p2", "p2"],
++            "weight": [0.8, 0.2, 0.5],
++        }
++    )
++    calculator = ParksTrailsAccessCalculator()
++    scores = calculator.compute(parks, accessibility)
++    assert set(scores.columns) == {"hex_id", "parks_score"}
++    high = scores.loc[scores["hex_id"] == "a", "parks_score"].iloc[0]
++    low = scores.loc[scores["hex_id"] == "b", "parks_score"].iloc[0]
++    assert high > low
++    assert scores["parks_score"].between(0, 100).all()
++
++
++def test_parks_accessibility_returns_zero_when_missing() -> None:
++    parks = pd.DataFrame(
++        {"poi_id": ["p1"], "area_acres": [5.0], "amenities": [2], "designation": ["city_park"]}
++    )
++    accessibility = pd.DataFrame({"origin_hex": ["z"], "poi_id": ["unknown"], "weight": [0.5]})
++    calculator = ParksTrailsAccessCalculator()
++    scores = calculator.compute(parks, accessibility)
++    assert scores.empty
+diff --git a/tests/test_seasonal_outdoors.py b/tests/test_seasonal_outdoors.py
+index b3ba223b7963aa0336f9ef2995ddab3b8d0124dd..4760b7fc94f27ed108b0823241b3cdd355412841 100644
+--- a/tests/test_seasonal_outdoors.py
++++ b/tests/test_seasonal_outdoors.py
+@@ -1,52 +1,191 @@
++import numpy as np
+ import pandas as pd
++import pytest
+
+ from Urban_Amenities2.scores.seasonal_outdoors import (
+     ClimateComfortConfig,
+     SeasonalOutdoorsCalculator,
+     SeasonalOutdoorsConfig,
+     compute_monthly_comfort,
++    compute_sigma_out,
++    extract_parks_score,
+ )
+
+
++def _all_months() -> tuple[str, ...]:
++    return (
++        "jan",
++        "feb",
++        "mar",
++        "apr",
++        "may",
++        "jun",
++        "jul",
++        "aug",
++        "sep",
++        "oct",
++        "nov",
++        "dec",
++    )
++
++
+ def _monthly_frame(value: float) -> dict[str, float]:
+-    return {f"temp_{month}": value for month in ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")}
++    return {f"temp_{month}": value for month in _all_months()}
+
+
+ def _zero_precip() -> dict[str, float]:
+-    return {f"precip_{month}": 0.1 for month in ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")}
++    return {f"precip_{month}": 0.1 for month in _all_months()}
+
+
+ def _calm_wind() -> dict[str, float]:
+-    return {f"wind_{month}": 10.0 for month in ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")}
++    return {f"wind_{month}": 10.0 for month in _all_months()}
+
+
+ def test_compute_monthly_comfort_within_range() -> None:
+     config = ClimateComfortConfig()
+     score = compute_monthly_comfort(temperature=70.0, precipitation=0.2, wind=10.0, config=config)
+     assert 0.99 <= score <= 1.0
+
+
++def test_compute_monthly_comfort_is_bounded_randomized() -> None:
++    rng = np.random.default_rng(123)
++    config = ClimateComfortConfig()
++    for _ in range(50):
++        temperature = float(rng.uniform(-40.0, 120.0))
++        precipitation = float(rng.uniform(0.0, 3.0))
++        wind = float(rng.uniform(0.0, 60.0))
++        score = compute_monthly_comfort(
++            temperature=temperature,
++            precipitation=precipitation,
++            wind=wind,
++            config=config,
++        )
++        assert 0.0 <= score <= 1.0
++
++
++def test_compute_sigma_out_is_bounded_randomized() -> None:
++    rng = np.random.default_rng(321)
++    config = ClimateComfortConfig()
++    for _ in range(25):
++        temps = rng.uniform(-20.0, 120.0, size=12)
++        precips = rng.uniform(0.0, 3.0, size=12)
++        winds = rng.uniform(0.0, 60.0, size=12)
++        data = {}
++        for month, temp, precip, wind in zip(_all_months(), temps, precips, winds, strict=False):
++            data[f"temp_{month}"] = float(temp)
++            data[f"precip_{month}"] = float(precip)
++            data[f"wind_{month}"] = float(wind)
++        row = pd.Series(data)
++        sigma = compute_sigma_out(row, config)
++        assert 0.0 <= sigma <= 1.0
++
++
+ def test_sou_scores_respect_climate_adjustment() -> None:
+     parks = pd.DataFrame({"hex_id": ["a", "b"], "parks_score": [80.0, 80.0]})
+     pleasant = {**_monthly_frame(70.0), **_zero_precip(), **_calm_wind()}
+     harsh = {**_monthly_frame(95.0), **_zero_precip(), **_calm_wind()}
+     climate = pd.DataFrame(
+         [
+             {"hex_id": "a", **pleasant},
+             {"hex_id": "b", **harsh},
+         ]
+     )
+     calculator = SeasonalOutdoorsCalculator(SeasonalOutdoorsConfig())
+     results = calculator.compute(parks, climate)
+     pleasant_score = results.loc[results["hex_id"] == "a", "SOU"].iloc[0]
+     harsh_score = results.loc[results["hex_id"] == "b", "SOU"].iloc[0]
+     assert pleasant_score > harsh_score
+     assert 0 <= harsh_score <= pleasant_score <= 80
++    assert results["sigma_out"].between(0, 1).all()
+
+
+ def test_zero_parks_score_results_in_zero_sou() -> None:
+     parks = pd.DataFrame({"hex_id": ["c"], "parks_score": [0.0]})
+-    climate = pd.DataFrame({"hex_id": ["c"], **_monthly_frame(70.0), **_zero_precip(), **_calm_wind()})
++    climate = pd.DataFrame(
++        {"hex_id": ["c"], **_monthly_frame(70.0), **_zero_precip(), **_calm_wind()}
++    )
+     calculator = SeasonalOutdoorsCalculator()
+     results = calculator.compute(parks, climate)
+     assert results.loc[0, "SOU"] == 0
++    assert results["SOU"].between(0, 100).all()
++
++
++def test_extract_parks_score_from_categories() -> None:
++    category_scores = pd.DataFrame(
++        {
++            "hex_id": ["a", "a", "b", "c"],
++            "category": ["parks_trails", "restaurants", "parks_trails", "museums"],
++            "score": [80.0, 10.0, 60.0, 20.0],
++        }
++    )
++    parks = extract_parks_score(category_scores)
++    assert set(parks.columns) == {"hex_id", "parks_score"}
++    assert parks.loc[parks["hex_id"] == "a", "parks_score"].iloc[0] == 80.0
++    assert parks.loc[parks["hex_id"] == "b", "parks_score"].iloc[0] == 60.0
++
++
++def test_from_category_scores_handles_missing_category() -> None:
++    category_scores = pd.DataFrame(
++        {
++            "hex_id": ["x", "y"],
++            "category": ["restaurants", "bars"],
++            "score": [30.0, 40.0],
++        }
++    )
++    climate = pd.DataFrame(
++        [
++            {"hex_id": "x", **_monthly_frame(65.0), **_zero_precip(), **_calm_wind()},
++            {"hex_id": "y", **_monthly_frame(65.0), **_zero_precip(), **_calm_wind()},
++        ]
++    )
++    calculator = SeasonalOutdoorsCalculator(SeasonalOutdoorsConfig(parks_column="parks_score"))
++    results = calculator.from_category_scores(category_scores, climate)
++    assert (results["SOU"] == 0).all()
++
++
++def test_harsh_winter_penalises_score() -> None:
++    parks = pd.DataFrame({"hex_id": ["winter"], "parks_score": [90.0]})
++    climate = pd.DataFrame(
++        {
++            "hex_id": ["winter"],
++            **{f"temp_{month}": 15.0 for month in _all_months()},
++            **{f"precip_{month}": 1.5 for month in _all_months()},
++            **{f"wind_{month}": 25.0 for month in _all_months()},
++        }
++    )
++    calculator = SeasonalOutdoorsCalculator()
++    result = calculator.compute(parks, climate)
++    assert result.loc[0, "SOU"] == pytest.approx(0.0)
++
++
++def test_from_parks_data_integration() -> None:
++    parks = pd.DataFrame(
++        {
++            "poi_id": ["p1", "p2"],
++            "area_acres": [40.0, 5.0],
++            "amenities": [4, 1],
++            "designation": ["national_park", "city_park"],
++        }
++    )
++    accessibility = pd.DataFrame(
++        {
++            "origin_hex": ["a", "a", "b"],
++            "poi_id": ["p1", "p2", "p2"],
++            "weight": [0.7, 0.3, 0.5],
++        }
++    )
++    pleasant = {**_monthly_frame(68.0), **_zero_precip(), **_calm_wind()}
++    harsh = {**_monthly_frame(95.0), **_zero_precip(), **_calm_wind()}
++    climate = pd.DataFrame(
++        [
++            {"hex_id": "a", **pleasant},
++            {"hex_id": "b", **harsh},
++        ]
++    )
++    calculator = SeasonalOutdoorsCalculator(SeasonalOutdoorsConfig())
++    results = calculator.from_parks_data(parks, accessibility, climate)
++    assert set(results.columns) == {"hex_id", "SOU", "sigma_out"}
++    pleasant_score = results.loc[results["hex_id"] == "a", "SOU"].iloc[0]
++    harsh_score = results.loc[results["hex_id"] == "b", "SOU"].iloc[0]
++    assert pleasant_score > harsh_score
++    assert results["SOU"].between(0, 100).all()
+
+EOF
+)

@@ -3,7 +3,7 @@ name = "Urban_Amenities2"
 version = "0.1.0"
 description = "AUCS 2.0 - Aker Urban Convenience Score: Multi-modal accessibility scoring for CO/UT/ID"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
   {name = "Paul Aker"}
@@ -13,7 +13,6 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: GIS",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
 ]
 
@@ -120,6 +119,15 @@ docs = [
   "mkdocstrings[python]>=0.23",
 ]
 
+api = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.24",
+]
+
+cache = [
+  "redis>=5.0",
+]
+
 all = [
   "Urban_Amenities2[dev,orchestration,distributed,docs]",
 ]
@@ -146,7 +154,7 @@ target-version = ["py311", "py312"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -174,7 +182,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

@@ -11,9 +11,8 @@ Keywords: accessibility,urban-planning,transportation,GIS,multi-modal
 Classifier: Development Status :: 3 - Alpha
 Classifier: Intended Audience :: Science/Research
 Classifier: Topic :: Scientific/Engineering :: GIS
-Classifier: Programming Language :: Python :: 3.11
 Classifier: Programming Language :: Python :: 3.12
-Requires-Python: >=3.11
+Requires-Python: >=3.12
 Description-Content-Type: text/markdown
 Requires-Dist: numpy>=1.24
 Requires-Dist: pandas>=2.0
@@ -91,6 +90,11 @@ Requires-Dist: ray[data]>=2.7; extra == "distributed"
 Provides-Extra: docs
 Requires-Dist: mkdocs-material>=9.4; extra == "docs"
 Requires-Dist: mkdocstrings[python]>=0.23; extra == "docs"
+Provides-Extra: api
+Requires-Dist: fastapi>=0.110; extra == "api"
+Requires-Dist: uvicorn[standard]>=0.24; extra == "api"
+Provides-Extra: cache
+Requires-Dist: redis>=5.0; extra == "cache"
 Provides-Extra: all
 Requires-Dist: Urban_Amenities2[dev,distributed,docs,orchestration]; extra == "all"
 

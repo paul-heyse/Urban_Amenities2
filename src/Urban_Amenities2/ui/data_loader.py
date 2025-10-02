@@ -7,7 +7,16 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional
+from typing import Dict, Iterable, List, Mapping, Optional, Tuple
+
+try:  # pragma: no cover - optional dependency handled gracefully
+    from shapely import wkt as shapely_wkt
+    from shapely.geometry import mapping as shapely_mapping
+    from shapely.ops import unary_union
+except ImportError:  # pragma: no cover - shapely is an optional runtime dependency
+    shapely_wkt = None
+    unary_union = None
+    shapely_mapping = None
 
 import pandas as pd
 
@@ -54,6 +63,12 @@ class DataContext:
     geometries: pd.DataFrame = field(default_factory=pd.DataFrame)
     version: DatasetVersion | None = None
     hex_cache: HexGeometryCache = field(default_factory=HexGeometryCache)
+    base_resolution: int | None = None
+    bounds: Tuple[float, float, float, float] | None = None
+    _aggregation_cache: Dict[Tuple[int, Tuple[str, ...]], pd.DataFrame] = field(default_factory=dict)
+    _aggregation_version: str | None = None
+    overlays: Dict[str, dict] = field(default_factory=dict)
+    _overlay_version: str | None = None
 
     @classmethod
     def from_settings(cls, settings: UISettings) -> "DataContext":
@@ -90,8 +105,12 @@ class DataContext:
         if not self.metadata.empty:
             self.scores = self.scores.merge(self.metadata, on="hex_id", how="left")
         self.version = latest
+        self._aggregation_cache.clear()
+        self._aggregation_version = latest.identifier
         self._prepare_geometries()
         self.validate_geometries()
+        self._record_base_resolution()
+        self._build_overlays(force=True)
 
     def _prepare_geometries(self) -> None:
         if "hex_id" not in self.scores.columns:
@@ -99,6 +118,7 @@ class DataContext:
         hex_ids = self.scores["hex_id"].astype(str).unique()
         geometries = self.hex_cache.ensure_geometries(hex_ids)
         self.geometries = geometries
+        self._update_bounds()
 
     def validate_geometries(self) -> None:
         if "hex_id" not in self.scores.columns:
@@ -116,7 +136,8 @@ class DataContext:
 
         if self.scores.empty:
             return self.scores
-        subset = self.scores[list(columns)].copy()
+        unique_columns = list(dict.fromkeys(columns))
+        subset = self.scores[unique_columns].copy()
         return subset
 
     def filter_scores(
@@ -214,21 +235,23 @@ class DataContext:
     ) -> pd.DataFrame:
         if self.scores.empty:
             return pd.DataFrame()
-        index = self.get_hex_index(resolution)
-        if not index:
-            return pd.DataFrame()
         columns = list(dict.fromkeys(columns or ["aucs"]))
-        records: list[dict[str, object]] = []
-        for parent, children in index.items():
-            subset = self.scores[self.scores["hex_id"].isin(children)]
-            if subset.empty:
-                continue
-            record = {"hex_id": parent, "count": int(len(subset))}
-            for column in columns:
-                if column in subset:
-                    record[column] = float(subset[column].mean())
-            records.append(record)
-        frame = pd.DataFrame.from_records(records)
+        subset_columns = ["hex_id", *columns]
+        subset = self.scores[subset_columns].copy()
+        if subset.empty:
+            return subset
+        subset["hex_id"] = subset["hex_id"].astype(str)
+        h3 = __import__("h3")
+        subset["parent_hex"] = [
+            h3.cell_to_parent(hex_id, resolution) for hex_id in subset["hex_id"]
+        ]
+        aggregations = {column: "mean" for column in columns if column in subset.columns}
+        aggregations["hex_id"] = "count"
+        frame = (
+            subset.groupby("parent_hex", as_index=False)
+            .agg(aggregations)
+            .rename(columns={"parent_hex": "hex_id", "hex_id": "count"})
+        )
         if frame.empty:
             return frame
         new_geoms = self.hex_cache.ensure_geometries(frame["hex_id"].astype(str).tolist())
@@ -240,7 +263,177 @@ class DataContext:
                 .drop_duplicates(subset=["hex_id"], keep="last")
                 .reset_index(drop=True)
             )
+        self._update_bounds()
         return frame
+
+    def _record_base_resolution(self) -> None:
+        if self.scores.empty:
+            self.base_resolution = None
+            return
+        sample = str(self.scores["hex_id"].astype(str).iloc[0])
+        h3 = __import__("h3")
+        self.base_resolution = h3.get_resolution(sample)
+
+    def _update_bounds(self) -> None:
+        if self.geometries.empty:
+            self.bounds = None
+            return
+        lon = self.geometries["centroid_lon"].astype(float)
+        lat = self.geometries["centroid_lat"].astype(float)
+        self.bounds = (float(lon.min()), float(lat.min()), float(lon.max()), float(lat.max()))
+
+    def frame_for_resolution(
+        self, resolution: int, columns: Iterable[str] | None = None
+    ) -> pd.DataFrame:
+        columns = list(dict.fromkeys(columns or ["aucs"]))
+        base_resolution = self.base_resolution or resolution
+        if resolution >= base_resolution:
+            required = ["hex_id", *columns]
+            available = [col for col in required if col in self.scores.columns]
+            return self.scores.loc[:, available].copy()
+        cache_key = (resolution, tuple(sorted(columns)))
+        cached = self._aggregation_cache.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+        frame = self.aggregate_by_resolution(resolution, columns=columns)
+        self._aggregation_cache[cache_key] = frame
+        return frame.copy()
+
+    def ids_in_viewport(
+        self,
+        bounds: Tuple[float, float, float, float] | None,
+        *,
+        resolution: int | None = None,
+        buffer: float = 0.0,
+    ) -> List[str]:
+        if bounds is None or self.geometries.empty:
+            return []
+        lon_min, lat_min, lon_max, lat_max = bounds
+        lon_min -= buffer
+        lat_min -= buffer
+        lon_max += buffer
+        lat_max += buffer
+        frame = self.geometries
+        mask = (
+            (frame["centroid_lon"] >= lon_min)
+            & (frame["centroid_lon"] <= lon_max)
+            & (frame["centroid_lat"] >= lat_min)
+            & (frame["centroid_lat"] <= lat_max)
+        )
+        if resolution is not None and "resolution" in frame.columns:
+            mask &= frame["resolution"] == resolution
+        return frame.loc[mask, "hex_id"].astype(str).tolist()
+
+    def apply_viewport(
+        self, frame: pd.DataFrame, resolution: int, bounds: Tuple[float, float, float, float] | None
+    ) -> pd.DataFrame:
+        if bounds is None or frame.empty:
+            return frame
+        candidates = self.ids_in_viewport(bounds, resolution=resolution, buffer=0.1)
+        if not candidates:
+            return frame
+        subset = frame[frame["hex_id"].isin(candidates)]
+        return subset if not subset.empty else frame
+
+    def attach_geometries(self, frame: pd.DataFrame) -> pd.DataFrame:
+        if frame.empty:
+            return frame
+        columns = ["hex_id", "centroid_lat", "centroid_lon"]
+        if "geometry_wkt" in self.geometries.columns:
+            columns.append("geometry_wkt")
+        if "resolution" in self.geometries.columns:
+            columns.append("resolution")
+        merged = frame.merge(
+            self.geometries[columns].drop_duplicates("hex_id"),
+            on="hex_id",
+            how="left",
+        )
+        return merged
+
+    def rebuild_overlays(self, force: bool = False) -> None:
+        """Public helper to recompute overlay GeoJSON payloads."""
+
+        self._build_overlays(force=force)
+
+    def get_overlay(self, key: str) -> dict:
+        """Return a GeoJSON overlay by key, ensuring an empty payload on miss."""
+
+        payload = self.overlays.get(key, {})
+        if not payload:
+            return {"type": "FeatureCollection", "features": []}
+        return payload
+
+    def _build_overlays(self, force: bool = False) -> None:
+        """Construct GeoJSON overlays for boundaries and external layers."""
+
+        if not force and self._overlay_version == self._aggregation_version:
+            return
+        if self.scores.empty or self.geometries.empty:
+            self.overlays.clear()
+            self._overlay_version = self._aggregation_version
+            return
+        if shapely_wkt is None or unary_union is None or shapely_mapping is None:
+            LOGGER.warning(
+                "ui_overlays_shapely_missing",
+                msg="Install shapely to enable boundary overlays",
+            )
+            self.overlays.clear()
+            self._overlay_version = self._aggregation_version
+            return
+
+        merged = self.scores.merge(
+            self.geometries[["hex_id", "geometry_wkt"]],
+            on="hex_id",
+            how="left",
+        )
+        overlays: Dict[str, dict] = {}
+        for column, key in (("state", "states"), ("county", "counties"), ("metro", "metros")):
+            if column not in merged.columns:
+                continue
+            features = []
+            for value, group in merged.groupby(column):
+                if not value or group.empty:
+                    continue
+                shapes = [
+                    shapely_wkt.loads(wkt)
+                    for wkt in group["geometry_wkt"].dropna().unique()
+                ]
+                if not shapes:
+                    continue
+                geometry = unary_union(shapes)
+                if geometry.is_empty:
+                    continue
+                simplified = geometry.simplify(0.01, preserve_topology=True)
+                features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": shapely_mapping(simplified),
+                        "properties": {"label": value},
+                    }
+                )
+            if features:
+                overlays[key] = {"type": "FeatureCollection", "features": features}
+
+        overlays.update(self._load_external_overlays())
+        self.overlays = overlays
+        self._overlay_version = self._aggregation_version
+
+    def _load_external_overlays(self) -> Dict[str, dict]:
+        """Load optional overlay GeoJSON files from the data directory."""
+
+        result: Dict[str, dict] = {}
+        base = self.settings.data_path / "overlays"
+        for name in ("transit_lines", "transit_stops", "parks"):
+            path = base / f"{name}.geojson"
+            if not path.exists():
+                continue
+            try:
+                payload = json.loads(path.read_text())
+            except json.JSONDecodeError as exc:
+                LOGGER.warning("ui_overlay_invalid", name=name, error=str(exc))
+                continue
+            result[name] = payload
+        return result
 
 
 __all__ = ["DataContext", "DatasetVersion"]

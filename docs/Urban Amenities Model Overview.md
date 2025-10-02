@@ -211,7 +211,7 @@ Below is an opinionated stack that balances performance, stability, and ecosyste
 * **JEA**: load LODES with **duckdb**, aggregate by hex, then gravity via (w_{i,\text{block}}) matrices.
 * **MORR**: poll GTFS‑RT with **httpx** for on-time reliability (fallback to schedules when GTFS-RT missing); compute frequency/share of frequent stops, span coverage, redundancy, and micromobility density; aggregate with weights from `params.morr`.
 * **CTE**: build top 2 paths using OTP2; buffer stops (Shapely), collect corridor POIs, compute small‑detour utility.
-* **SOU**: compute (\sigma_{\text{out}}) per time slice from **NOAA** monthly normals and multiply parks score.
+* **SOU**: compute a base parks/trails accessibility score by applying CES + satiation to weighted park quality (area, amenities, designation) using travel-time weights, then compute (\sigma_{\text{out}}) per time slice from **NOAA** monthly normals and multiply the parks score; log join timings and capture metrics for QA.
 
 ### 4.8 Normalization & AUCS
 

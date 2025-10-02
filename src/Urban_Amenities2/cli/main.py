@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable as IterableABC
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 import typer
 
@@ -22,6 +24,7 @@ from ..io.quality.checks import generate_report
 from ..io.versioning.snapshots import SnapshotRegistry
 from ..logging_utils import configure_logging, get_logger
 from ..math.diversity import DiversityConfig
+from ..monitoring.health import HealthStatus, format_report, overall_status, run_health_checks
 from ..router.api import RoutingAPI
 from ..router.batch import BatchConfig, SkimBuilder
 from ..router.osrm import OSRMClient, OSRMConfig
@@ -53,6 +56,62 @@ score_app = typer.Typer(help="Scoring commands")
 calibrate_app = typer.Typer(help="Calibration utilities")
 
 
+@app.command("healthcheck")
+def cli_healthcheck(
+    params: Path = typer.Option(
+        Path("configs/params_default.yml"),
+        "--params",
+        help="Parameter configuration file",
+        show_default=True,
+    ),
+    osrm_car: str | None = typer.Option(
+        None, "--osrm-car", envvar="OSRM_CAR_URL", help="OSRM car URL"
+    ),
+    osrm_bike: str | None = typer.Option(
+        None, "--osrm-bike", envvar="OSRM_BIKE_URL", help="OSRM bike URL"
+    ),
+    osrm_foot: str | None = typer.Option(
+        None, "--osrm-foot", envvar="OSRM_FOOT_URL", help="OSRM foot URL"
+    ),
+    otp_url: str | None = typer.Option(
+        None, "--otp-url", envvar="OTP_URL", help="OTP GraphQL endpoint"
+    ),
+    data: list[Path] = typer.Option(
+        [],
+        "--data",
+        help="Data file to verify (can be provided multiple times)",
+    ),
+    data_max_age: list[int] = typer.Option(
+        [],
+        "--data-max-age",
+        help="Maximum age in days for each --data entry",
+    ),
+    min_disk_gb: float = typer.Option(100.0, "--min-disk-gb", help="Minimum free disk space in GB"),
+    min_memory_gb: float = typer.Option(8.0, "--min-memory-gb", help="Minimum system memory in GB"),
+) -> None:
+    if data_max_age and len(data_max_age) != len(data):
+        raise typer.BadParameter("Provide --data-max-age for each --data entry")
+    data_requirements = [
+        (path, data_max_age[idx] if idx < len(data_max_age) else None)
+        for idx, path in enumerate(data)
+    ]
+    results = run_health_checks(
+        osrm_urls={"car": osrm_car, "bike": osrm_bike, "foot": osrm_foot},
+        otp_url=otp_url,
+        params_path=params,
+        data_paths=data_requirements,
+        min_disk_gb=min_disk_gb,
+        min_memory_gb=min_memory_gb,
+    )
+    typer.echo(format_report(results))
+    status = overall_status(results)
+    if status == HealthStatus.CRITICAL:
+        logger.error("healthcheck_failed", status=status.value)
+        raise typer.Exit(code=1)
+    if status == HealthStatus.WARNING:
+        logger.warning("healthcheck_warning", status=status.value)
+
+
 def _parse_bbox(bbox: Optional[str]):
     if not bbox:
         return None
@@ -66,6 +125,26 @@ def _load_table(path: Path, id_column: str) -> pd.DataFrame:
     if path.suffix == ".parquet":
         return pd.read_parquet(path)
     return pd.read_csv(path)
+
+
+def _json_safe(value: object) -> object:
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return [_json_safe(item) for item in value.tolist()]
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, (pd.Series, pd.Index)):
+        return [_json_safe(item) for item in value.tolist()]
+    if isinstance(value, dict):
+        return {key: _json_safe(val) for key, val in value.items()}
+    if isinstance(value, IterableABC) and not isinstance(value, (str, bytes)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _sanitize_properties(record: dict[str, object]) -> dict[str, object]:
+    return {key: _json_safe(value) for key, value in record.items()}
 
 
 def _load_coords(path: Path, id_column: str) -> Dict[str, Tuple[float, float]]:
@@ -164,7 +243,9 @@ def run_init(params: Path, git_commit: Optional[str] = typer.Option(None)) -> No
         logger.error("run_init_failed", path=str(params), error=str(exc))
         raise typer.Exit(code=1) from exc
 
-    manifest = create_run_manifest(param_hash, data_snapshot_ids=[], git_commit=git_commit, storage=RUN_STORAGE)
+    manifest = create_run_manifest(
+        param_hash, data_snapshot_ids=[], git_commit=git_commit, storage=RUN_STORAGE
+    )
     typer.echo(f"Created run {manifest.run_id} with hash {manifest.param_hash}")
 
 
@@ -190,7 +271,9 @@ def run_list() -> None:
 @ingest_app.command("overture-places")
 def cli_ingest_places(
     source: Path = typer.Argument(..., help="Overture Places parquet path"),
-    crosswalk: Path = typer.Option(Path("docs/AUCS place category crosswalk"), help="Crosswalk document"),
+    crosswalk: Path = typer.Option(
+        Path("docs/AUCS place category crosswalk"), help="Crosswalk document"
+    ),
     bbox: Optional[str] = typer.Option(None, help="Bounding box min_lon,min_lat,max_lon,max_lat"),
     output: Path = typer.Option(Path("data/processed/pois.parquet"), help="Output parquet"),
 ) -> None:
@@ -218,7 +301,9 @@ def cli_ingest_gtfs(
 
 @ingest_app.command("all")
 def cli_ingest_all(
-    places_source: Path = typer.Option(Path("data/raw/overture_places.parquet"), help="Overture Places source"),
+    places_source: Path = typer.Option(
+        Path("data/raw/overture_places.parquet"), help="Overture Places source"
+    ),
     states: str = typer.Option("CO,UT,ID", help="States to process"),
 ) -> None:
     ingest_places(places_source, output_path=Path("data/processed/pois.parquet"))
@@ -242,7 +327,9 @@ def cli_quality_report(
 
 
 @data_app.command("list-snapshots")
-def cli_list_snapshots(path: Path = typer.Option(Path("data/snapshots.jsonl"), help="Snapshot registry")) -> None:
+def cli_list_snapshots(
+    path: Path = typer.Option(Path("data/snapshots.jsonl"), help="Snapshot registry")
+) -> None:
     registry = SnapshotRegistry(path)
     records = registry.list_json()
     if not records:
@@ -267,11 +354,16 @@ def routing_build_osrm(
 @routing_app.command("build-otp")
 def routing_build_otp(
     gtfs_dir: Path = typer.Argument(..., help="Directory with GTFS feeds"),
-    output_path: Path = typer.Option(Path("data/processed/otp_manifest.json"), help="Output manifest"),
+    output_path: Path = typer.Option(
+        Path("data/processed/otp_manifest.json"), help="Output manifest"
+    ),
 ) -> None:
     feeds = sorted(p.name for p in gtfs_dir.glob("*.zip"))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps({"feeds": feeds, "generated_at": datetime.utcnow().isoformat()}), encoding="utf-8")
+    output_path.write_text(
+        json.dumps({"feeds": feeds, "generated_at": datetime.utcnow().isoformat()}),
+        encoding="utf-8",
+    )
     typer.echo(f"OTP manifest written to {output_path}")
 
 
@@ -279,8 +371,12 @@ def routing_build_otp(
 def cli_aggregate(
     subscores: Path = typer.Argument(..., help="Parquet/CSV with subscore columns and hex_id"),
     weights: str = typer.Option(..., help="JSON weights mapping or path to JSON file"),
-    output: Path = typer.Option(Path("data/processed/aucs.parquet"), help="Output Parquet for AUCS scores"),
-    explainability_output: Optional[Path] = typer.Option(None, help="Optional explainability Parquet output"),
+    output: Path = typer.Option(
+        Path("data/processed/aucs.parquet"), help="Output Parquet for AUCS scores"
+    ),
+    explainability_output: Optional[Path] = typer.Option(
+        None, help="Optional explainability Parquet output"
+    ),
     run_id: Optional[str] = typer.Option(None, help="Run identifier to annotate outputs"),
     report_path: Optional[Path] = typer.Option(None, help="Optional QA HTML report"),
 ) -> None:
@@ -305,7 +401,9 @@ def cli_aggregate(
 @app.command("show")
 def cli_show(
     hex_id: str = typer.Option(..., "--hex", help="Hex ID to inspect"),
-    scores: Path = typer.Option(Path("data/processed/aucs.parquet"), "--scores", help="Scores table"),
+    scores: Path = typer.Option(
+        Path("data/processed/aucs.parquet"), "--scores", help="Scores table"
+    ),
 ) -> None:
     frame = _load_table(scores, "hex_id")
     match = frame[frame["hex_id"] == hex_id]
@@ -319,7 +417,9 @@ def cli_show(
 def cli_export(
     output: Path = typer.Argument(..., help="Output path"),
     format: str = typer.Option("geojson", help="Export format", case_sensitive=False),
-    scores: Path = typer.Option(Path("data/processed/aucs.parquet"), "--scores", help="Scores table"),
+    scores: Path = typer.Option(
+        Path("data/processed/aucs.parquet"), "--scores", help="Scores table"
+    ),
 ) -> None:
     frame = _load_table(scores, "hex_id")
     fmt = format.lower()
@@ -329,14 +429,26 @@ def cli_export(
     features = []
     for record in frame.to_dict(orient="records"):
         hex_id = record["hex_id"]
-        boundary = [(lon, lat) for lat, lon in hex_boundary(hex_id)]
+        properties = _sanitize_properties(record)
+        try:
+            boundary = [(float(lon), float(lat)) for lat, lon in hex_boundary(hex_id)]
+        except ValueError:
+            logger.warning("invalid_hex", hex_id=hex_id)
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": None,
+                    "properties": properties,
+                }
+            )
+            continue
         if boundary and boundary[0] != boundary[-1]:
             boundary.append(boundary[0])
         features.append(
             {
                 "type": "Feature",
                 "geometry": {"type": "Polygon", "coordinates": [boundary]},
-                "properties": record,
+                "properties": properties,
             }
         )
     collection = {"type": "FeatureCollection", "features": features}
@@ -381,7 +493,9 @@ def score_ea(
     pois = pd.read_parquet(pois_path)
     accessibility = pd.read_parquet(accessibility_path)
     if hex_id:
-        accessibility = accessibility[accessibility.get("hex_id", accessibility.get("origin_hex")) == hex_id]
+        accessibility = accessibility[
+            accessibility.get("hex_id", accessibility.get("origin_hex")) == hex_id
+        ]
         if accessibility.empty:
             typer.echo(f"No accessibility records for hex {hex_id}")
             raise typer.Exit(code=1)
@@ -406,7 +520,9 @@ def score_ea(
 def calibrate_ea(
     pois_path: Path = typer.Argument(..., help="POI parquet"),
     accessibility_path: Path = typer.Argument(..., help="Accessibility parquet"),
-    parameter: str = typer.Option("rho:groceries", help="Parameter descriptor (e.g. rho:groceries)"),
+    parameter: str = typer.Option(
+        "rho:groceries", help="Parameter descriptor (e.g. rho:groceries)"
+    ),
     values: str = typer.Option("0.3,0.5,0.7", help="Comma separated parameter values"),
 ) -> None:
     pois = pd.read_parquet(pois_path)

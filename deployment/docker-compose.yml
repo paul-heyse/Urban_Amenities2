@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+    # Main AUCS UI application
+    aucs-ui:
+        build:
+            context: ..
+            dockerfile: deployment/Dockerfile.ui
+        container_name: aucs-ui
+        ports:
+            - "8050:8050"
+        environment:
+            - AUCS_ENV=production
+            - AUCS_HOST=0.0.0.0
+            - AUCS_PORT=8050
+            - AUCS_WORKERS=4
+            - AUCS_CACHE_BACKEND=redis
+            - AUCS_REDIS_HOST=redis
+            - AUCS_REDIS_PORT=6379
+        volumes:
+            - ../data:/app/data:ro
+            - ../output:/app/output:ro
+            - cache-data:/app/.cache
+        depends_on:
+            - redis
+        restart: unless-stopped
+        healthcheck:
+            test: [ "CMD", "curl", "-f", "http://localhost:8050/health" ]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+
+    # Redis cache (optional, can use DiskCache instead)
+    redis:
+        image: redis:7-alpine
+        container_name: aucs-redis
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis-data:/data
+        restart: unless-stopped
+        command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru
+
+    # Nginx reverse proxy
+    nginx:
+        image: nginx:alpine
+        container_name: aucs-nginx
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./nginx.conf:/etc/nginx/nginx.conf:ro
+            - ./ssl:/etc/nginx/ssl:ro
+            - nginx-logs:/var/log/nginx
+        depends_on:
+            - aucs-ui
+        restart: unless-stopped
+
+volumes:
+    cache-data:
+    redis-data:
+    nginx-logs:
+
+

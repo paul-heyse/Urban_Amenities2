@@ -129,41 +129,41 @@
 
 ### 4.1 Structured Logging
 
-- [ ] 4.1.1 Configure structlog for JSON logging in production
-- [ ] 4.1.2 Set log level via environment variable (INFO for prod, DEBUG for dev)
-- [ ] 4.1.3 Add request IDs to all log entries (track pipeline runs)
-- [ ] 4.1.4 Log timing for all major operations (ingest, routing, scoring)
-- [ ] 4.1.5 Log data volumes (row counts, file sizes) at each stage
-- [ ] 4.1.6 Sanitize sensitive data from logs (no API keys, no raw coordinates)
-- [ ] 4.1.7 Implement log rotation (max size, retention period)
-- [ ] 4.1.8 Write logs to both file and stdout (container-friendly)
-- [ ] 4.1.9 Test log parsing with jq or similar (validate JSON structure)
-- [ ] 4.1.10 Document log schema and standard fields
+- [x] 4.1.1 Configure structlog for JSON logging in production
+- [x] 4.1.2 Set log level via environment variable (INFO for prod, DEBUG for dev)
+- [x] 4.1.3 Add request IDs to all log entries (track pipeline runs)
+- [x] 4.1.4 Log timing for all major operations (ingest, routing, scoring)
+- [x] 4.1.5 Log data volumes (row counts, file sizes) at each stage
+- [x] 4.1.6 Sanitize sensitive data from logs (no API keys, no raw coordinates)
+- [x] 4.1.7 Implement log rotation (max size, retention period)
+- [x] 4.1.8 Write logs to both file and stdout (container-friendly)
+- [x] 4.1.9 Test log parsing with jq or similar (validate JSON structure)
+- [x] 4.1.10 Document log schema and standard fields
 
 ### 4.2 Metrics and Monitoring
 
-- [ ] 4.2.1 Instrument code with timing metrics (use `time.perf_counter()`)
-- [ ] 4.2.2 Track rows processed per second for batch operations
-- [ ] 4.2.3 Monitor OSRM/OTP response times (p50, p95, p99 latencies)
-- [ ] 4.2.4 Monitor API call success rates and retries
+- [x] 4.2.1 Instrument code with timing metrics (use `time.perf_counter()`)
+- [x] 4.2.2 Track rows processed per second for batch operations
+- [x] 4.2.3 Monitor OSRM/OTP response times (p50, p95, p99 latencies)
+- [x] 4.2.4 Monitor API call success rates and retries
 - [ ] 4.2.5 Track disk usage (temp files, output files)
 - [ ] 4.2.6 Track memory usage (RSS, peak memory per stage)
 - [ ] 4.2.7 Export metrics to Prometheus or similar (if using orchestration)
 - [ ] 4.2.8 Create Grafana dashboard for pipeline monitoring (if applicable)
 - [ ] 4.2.9 Set up alerting for anomalies (long run times, high error rates)
-- [ ] 4.2.10 Document expected metrics and thresholds for alerting
+- [x] 4.2.10 Document expected metrics and thresholds for alerting
 
 ### 4.3 Health Checks
 
-- [ ] 4.3.1 Implement health check endpoint for OSRM services
-- [ ] 4.3.2 Implement health check endpoint for OTP2 service
-- [ ] 4.3.3 Implement dependency checker CLI command: `aucs healthcheck`
-- [ ] 4.3.4 Check parameter file validity on startup
-- [ ] 4.3.5 Check data file existence and recency (warn if stale)
-- [ ] 4.3.6 Check disk space before starting pipeline (require min 100GB free)
-- [ ] 4.3.7 Test database/service connectivity before processing
+- [x] 4.3.1 Implement health check endpoint for OSRM services
+- [x] 4.3.2 Implement health check endpoint for OTP2 service
+- [x] 4.3.3 Implement dependency checker CLI command: `aucs healthcheck`
+- [x] 4.3.4 Check parameter file validity on startup
+- [x] 4.3.5 Check data file existence and recency (warn if stale)
+- [x] 4.3.6 Check disk space before starting pipeline (require min 100GB free)
+- [x] 4.3.7 Test database/service connectivity before processing
 - [ ] 4.3.8 Implement graceful degradation (skip optional enrichments if API down)
-- [ ] 4.3.9 Document startup checklist (what to verify before running)
+- [x] 4.3.9 Document startup checklist (what to verify before running)
 - [ ] 4.3.10 Create automated pre-flight check script
 
 ## 5. Performance Optimization (MEDIUM PRIORITY)

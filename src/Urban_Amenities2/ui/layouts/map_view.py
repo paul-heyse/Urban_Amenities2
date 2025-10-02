@@ -7,6 +7,8 @@ from dash import dcc, html, register_page
 from ..config import UISettings
 from ..scores_controls import SUBSCORE_OPTIONS, SUBSCORE_DESCRIPTIONS
 from ..components.filters import build_filter_panel, build_parameter_panel
+from ..components.overlay_controls import build_overlay_panel
+from ..layers import basemap_options
 from . import DATA_CONTEXT, SETTINGS
 
 register_page(__name__, path="/map", name="Map Explorer")
@@ -41,16 +43,12 @@ def layout(**_) -> html.Div:
                     ),
                     html.Label("Base Map"),
                     dcc.Dropdown(
-                        options=[
-                            {"label": "Streets", "value": "mapbox://styles/mapbox/streets-v11"},
-                            {"label": "Outdoors", "value": "mapbox://styles/mapbox/outdoors-v11"},
-                            {"label": "Satellite", "value": "mapbox://styles/mapbox/satellite-streets-v12"},
-                            {"label": "Dark", "value": "mapbox://styles/mapbox/dark-v10"},
-                        ],
+                        options=basemap_options(),
                         value="mapbox://styles/mapbox/streets-v11",
                         id="basemap-select",
                         clearable=False,
                     ),
+                    build_overlay_panel(),
                 ],
             ),
             dcc.Loading(

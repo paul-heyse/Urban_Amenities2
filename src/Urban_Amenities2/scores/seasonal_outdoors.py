@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 
 from ..logging_utils import get_logger
+from ..monitoring.metrics import METRICS, track_operation
+from .parks_access import ParksTrailsAccessCalculator, ParksTrailsAccessConfig
 
 LOGGER = get_logger("aucs.scores.sou")
 
@@ -64,7 +66,9 @@ class ClimateComfortConfig:
 class SeasonalOutdoorsConfig:
     climate: ClimateComfortConfig = field(default_factory=ClimateComfortConfig)
     parks_column: str = "parks_score"
+    parks_category: str = "parks_trails"
     output_column: str = "SOU"
+    parks_access: ParksTrailsAccessConfig = field(default_factory=ParksTrailsAccessConfig)
 
 
 def _column_name(prefix: str, month: str) -> str:
@@ -147,8 +151,16 @@ class SeasonalOutdoorsCalculator:
         missing = required_columns - set(parks.columns)
         if missing:
             raise KeyError(f"parks dataframe missing columns: {sorted(missing)}")
-        joined = parks.merge(climate, on=id_column, how="left", suffixes=(None, "_climate"))
-        LOGGER.info("sou_join", rows=len(joined))
+        ensure_monthly_columns(climate, ("temp", "precip", "wind"))
+        with track_operation(
+            "sou_join",
+            metrics=METRICS,
+            logger=LOGGER,
+            items=len(parks),
+            extra={"climate_rows": len(climate)},
+        ):
+            joined = parks.merge(climate, on=id_column, how="left", suffixes=(None, "_climate"))
+        LOGGER.info("sou_joined", rows=len(joined))
         sigma_values = joined.apply(lambda row: compute_sigma_out(row, self.config.climate), axis=1)
         joined["sigma_out"] = sigma_values
         joined[self.config.output_column] = (
@@ -157,6 +169,50 @@ class SeasonalOutdoorsCalculator:
         joined[self.config.output_column] = joined[self.config.output_column].clip(0.0, 100.0)
         joined.loc[joined[self.config.parks_column] <= 0, self.config.output_column] = 0.0
         return joined[[id_column, self.config.output_column, "sigma_out"]]
+
+    def from_parks_data(
+        self,
+        parks: pd.DataFrame,
+        accessibility: pd.DataFrame,
+        climate: pd.DataFrame,
+        *,
+        id_column: str = "hex_id",
+    ) -> pd.DataFrame:
+        calculator = ParksTrailsAccessCalculator(self.config.parks_access)
+        parks_scores = calculator.compute(parks, accessibility, id_column=id_column)
+        if id_column not in climate.columns:
+            raise KeyError(f"climate dataframe missing '{id_column}' column")
+        if parks_scores.empty:
+            parks_scores = pd.DataFrame(
+                {id_column: climate[id_column].unique(), self.config.parks_column: 0.0}
+            )
+        else:
+            parks_scores = parks_scores.rename(columns={"parks_score": self.config.parks_column})
+        return self.compute(parks_scores, climate, id_column=id_column)
+
+    def from_category_scores(
+        self,
+        category_scores: pd.DataFrame,
+        climate: pd.DataFrame,
+        *,
+        id_column: str = "hex_id",
+        category_column: str = "category",
+        score_column: str = "score",
+    ) -> pd.DataFrame:
+        parks = extract_parks_score(
+            category_scores,
+            id_column=id_column,
+            category_column=category_column,
+            score_column=score_column,
+            category_name=self.config.parks_category,
+        )
+        if parks.empty:
+            parks = pd.DataFrame(
+                {id_column: category_scores[id_column].unique(), self.config.parks_column: 0.0}
+            )
+        else:
+            parks = parks.rename(columns={"parks_score": self.config.parks_column})
+        return self.compute(parks, climate, id_column=id_column)
 
 
 def ensure_monthly_columns(frame: pd.DataFrame, prefixes: Iterable[str]) -> None:
@@ -170,6 +226,29 @@ def ensure_monthly_columns(frame: pd.DataFrame, prefixes: Iterable[str]) -> None
         raise KeyError(f"climate dataframe missing monthly columns: {missing}")
 
 
+def extract_parks_score(
+    category_scores: pd.DataFrame,
+    *,
+    id_column: str = "hex_id",
+    category_column: str = "category",
+    score_column: str = "score",
+    category_name: str = "parks_trails",
+) -> pd.DataFrame:
+    if id_column not in category_scores.columns:
+        raise KeyError(f"category_scores missing '{id_column}' column")
+    if category_column not in category_scores.columns:
+        raise KeyError(f"category_scores missing '{category_column}' column")
+    if score_column not in category_scores.columns:
+        raise KeyError(f"category_scores missing '{score_column}' column")
+    filtered = category_scores[category_scores[category_column] == category_name]
+    if filtered.empty:
+        return pd.DataFrame({id_column: [], "parks_score": []})
+    grouped = filtered.groupby(id_column, as_index=False)[score_column].mean()
+    grouped = grouped.rename(columns={score_column: "parks_score"})
+    grouped["parks_score"] = grouped["parks_score"].clip(0.0, 100.0)
+    return grouped
+
+
 __all__ = [
     "ClimateComfortConfig",
     "SeasonalOutdoorsConfig",
@@ -177,4 +256,5 @@ __all__ = [
     "compute_monthly_comfort",
     "compute_sigma_out",
     "ensure_monthly_columns",
+    "extract_parks_score",
 ]

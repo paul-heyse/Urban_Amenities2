@@ -11,6 +11,7 @@ from dash import Input, Output, State, callback_context, dcc, html, no_update
 from .components.choropleth import create_choropleth
 from .data_loader import DataContext
 from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
+from .layers import basemap_attribution, build_overlay_payload, resolve_basemap_style
 
 SUBSCORE_VALUES = [option["value"] for option in SUBSCORE_OPTIONS]
 
@@ -35,6 +36,28 @@ def _resolution_for_zoom(zoom: Optional[float]) -> int:
     return 9
 
 
+def _extract_viewport_bounds(relayout_data, fallback: Optional[tuple[float, float, float, float]]):
+    if not isinstance(relayout_data, dict):
+        return fallback
+    derived = relayout_data.get("mapbox._derived") if isinstance(relayout_data, dict) else None
+    if isinstance(derived, dict):
+        coordinates = derived.get("coordinates")
+        if coordinates:
+            points = [point for ring in coordinates for point in ring]
+            if points:
+                lons = [point[0] for point in points]
+                lats = [point[1] for point in points]
+                return min(lons), min(lats), max(lons), max(lats)
+    lon = relayout_data.get("mapbox.center.lon")
+    lat = relayout_data.get("mapbox.center.lat")
+    if lon is not None and lat is not None and "mapbox.zoom" in relayout_data:
+        # Fallback heuristic: approximate span based on zoom level
+        zoom = relayout_data.get("mapbox.zoom")
+        span = max(0.1, 360 / (2 ** max(zoom, 0)))
+        return lon - span, lat - span, lon + span, lat + span
+    return fallback
+
+
 def register_callbacks(app, data_context: DataContext, settings) -> None:
     @app.callback(
         Output("hex-map", "figure"),
@@ -42,6 +65,8 @@ def register_callbacks(app, data_context: DataContext, settings) -> None:
         Output("subscore-description", "children"),
         Input("subscore-select", "value"),
         Input("basemap-select", "value"),
+        Input("overlay-layers", "value"),
+        Input("overlay-opacity", "value"),
         Input("apply-filters", "n_clicks"),
         Input("clear-filters", "n_clicks"),
         Input("hex-map", "relayoutData"),
@@ -54,6 +79,8 @@ def register_callbacks(app, data_context: DataContext, settings) -> None:
     def _update_map(
         subscore: str,
         basemap: str,
+        overlay_values,
+        overlay_opacity,
         *_events,
         relayout_data,
         state_values,
@@ -75,29 +102,51 @@ def register_callbacks(app, data_context: DataContext, settings) -> None:
         if isinstance(relayout_data, dict):
             zoom = relayout_data.get("mapbox.zoom")
         resolution = _resolution_for_zoom(zoom)
+        bounds = _extract_viewport_bounds(relayout_data, data_context.bounds)
+        base_resolution = data_context.base_resolution or 9
         source = filtered if not filtered.empty else data_context.scores
-        if resolution >= 9:
+        if resolution >= base_resolution:
             base_columns = ["hex_id", "aucs", "state", "metro", "county"]
             if subscore not in base_columns:
                 base_columns.append(subscore)
             frame = source[base_columns].copy()
-            hover_columns = [subscore, "aucs", "state", "metro", "centroid_lat", "centroid_lon"]
+            trimmed = data_context.apply_viewport(frame, base_resolution, bounds)
+            if not trimmed.empty:
+                frame = trimmed
+            hover_candidates = [
+                subscore,
+                "aucs",
+                "state",
+                "metro",
+                "county",
+                "centroid_lat",
+                "centroid_lon",
+            ]
         else:
-            frame = data_context.aggregate_by_resolution(resolution, columns=["aucs", subscore])
-            hover_columns = [subscore, "aucs", "count", "centroid_lat", "centroid_lon"]
-        frame = frame.merge(
-            data_context.geometries[["hex_id", "centroid_lat", "centroid_lon"]],
-            on="hex_id",
-            how="left",
-        )
+            frame = data_context.frame_for_resolution(resolution, columns=["aucs", subscore])
+            trimmed = data_context.apply_viewport(frame, resolution, bounds)
+            if not trimmed.empty:
+                frame = trimmed
+            hover_candidates = [subscore, "aucs", "count", "centroid_lat", "centroid_lon"]
+        frame = data_context.attach_geometries(frame)
+        hover_columns = [column for column in hover_candidates if column in frame.columns]
         geojson = data_context.to_geojson(frame)
+        basemap_style = resolve_basemap_style(basemap)
+        overlay_payload = build_overlay_payload(
+            overlay_values or [],
+            data_context,
+            opacity=overlay_opacity if overlay_opacity is not None else 0.35,
+        )
         figure = create_choropleth(
             geojson=geojson,
             frame=frame.fillna(0.0),
             score_column=subscore,
             hover_columns=hover_columns,
             mapbox_token=settings.mapbox_token,
-            map_style=basemap,
+            map_style=basemap_style,
+            layers=overlay_payload.layers,
+            extra_traces=overlay_payload.traces,
+            attribution=basemap_attribution(basemap_style),
         )
         total = len(data_context.scores)
         filtered_count = len(source)

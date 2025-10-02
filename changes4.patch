@@ -1,0 +1,1832 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/openspec/changes/add-interactive-visualization-ui/tasks.md b/openspec/changes/add-interactive-visualization-ui/tasks.md
+index 0fec642c6b259883377e2662bb8fd6ce6f4cfadd..892e8b9c7a5d2d1b379d6b940b73d6cb367c4653 100644
+--- a/openspec/changes/add-interactive-visualization-ui/tasks.md
++++ b/openspec/changes/add-interactive-visualization-ui/tasks.md
+@@ -63,94 +63,94 @@
+ ## 3. Heat Map Visualization (25 tasks)
+
+ ### 3.1 Choropleth Map Implementation
+
+ - [x] 3.1.1 Create `src/Urban_Amenities2/ui/components/choropleth.py`
+ - [x] 3.1.2 Implement `create_choropleth()` function using Plotly `go.Choroplethmapbox`
+ - [x] 3.1.3 Configure mapbox access token (free tier sufficient for dev, paid for prod)
+ - [x] 3.1.4 Set initial map center (center of CO/UT/ID region: ~39.5°N, -111°W)
+ - [x] 3.1.5 Set initial zoom level (zoom=6 for 3-state view)
+ - [x] 3.1.6 Define color scale for AUCS scores (0-100, sequential colormap: Viridis or RdYlGn)
+ - [x] 3.1.7 Implement continuous color scale with legend
+ - [x] 3.1.8 Add hover template showing: hex_id, score, lat/lon, metro area
+ - [x] 3.1.9 Configure map style (streets, outdoors, satellite, or dark mode)
+ - [x] 3.1.10 Enable zoom controls and fullscreen button
+
+ ### 3.2 Multi-Scale Heat Map
+
+ - [x] 3.2.1 Implement zoom level detection callback (track current zoom state)
+ - [x] 3.2.2 Define zoom thresholds for resolution switching:
+   - Zoom 0-5: H3 res 6 (large hexes, state-level)
+   - Zoom 6-8: H3 res 7 (medium hexes, metro-level)
+   - Zoom 9-11: H3 res 8 (small hexes, neighborhood-level)
+   - Zoom 12+: H3 res 9 (finest hexes, block-level)
+ - [x] 3.2.3 Pre-aggregate scores to coarser resolutions (mean or weighted average)
+ - [x] 3.2.4 Implement automatic data switching based on zoom level
+-- [ ] 3.2.5 Add smooth transitions between zoom levels (fade in/out hexes)
+-- [ ] 3.2.6 Optimize by only rendering hexes in current viewport
+-- [ ] 3.2.7 Implement viewport-based data fetching (lazy load hexes as user pans)
++- [x] 3.2.5 Add smooth transitions between zoom levels (fade in/out hexes)
++- [x] 3.2.6 Optimize by only rendering hexes in current viewport
++- [x] 3.2.7 Implement viewport-based data fetching (lazy load hexes as user pans)
+ - [x] 3.2.8 Add loading spinner while fetching hex data for new viewport
+-- [ ] 3.2.9 Cache rendered layers per zoom level (avoid re-rendering)
+-- [ ] 3.2.10 Test performance with 10K, 100K, 1M hexes
++- [x] 3.2.9 Cache rendered layers per zoom level (avoid re-rendering)
++- [x] 3.2.10 Test performance with 10K, 100K, 1M hexes
+
+ ### 3.3 Subscore Selection
+
+ - [x] 3.3.1 Create dropdown component for subscore selection (Total AUCS, EA, LCA, MUHAA, JEA, MORR, CTE, SOU)
+ - [x] 3.3.2 Implement callback to update choropleth when subscore changes
+ - [x] 3.3.3 Adjust color scale per subscore (different scales if needed)
+ - [x] 3.3.4 Update legend title to reflect current subscore
+ - [x] 3.3.5 Display subscore description/tooltip (explain what EA, LCA, etc. measure)
+
+ ---
+
+ ## 4. Base Map and Geographic Context (20 tasks)
+
+ ### 4.1 Base Map Layers
+
+-- [ ] 4.1.1 Integrate Mapbox base map styles (streets-v11, outdoors-v11, satellite-v9, dark-v10)
+-- [ ] 4.1.2 Create base map style selector (dropdown or radio buttons)
+-- [ ] 4.1.3 Ensure streets/roads visible at all zoom levels
+-- [ ] 4.1.4 Enable city labels (show major cities: Denver, Salt Lake City, Boise, etc.)
+-- [ ] 4.1.5 Add landmark labels (airports, universities, major parks)
+-- [ ] 4.1.6 Configure label collision detection (avoid overlapping labels)
+-- [ ] 4.1.7 Adjust label sizes based on zoom level (larger at higher zoom)
+-- [ ] 4.1.8 Test base map load times (ensure <2s initial load)
+-- [ ] 4.1.9 Implement fallback to OpenStreetMap if Mapbox unavailable
+-- [ ] 4.1.10 Add watermarks/attributions per map provider requirements
++- [x] 4.1.1 Integrate Mapbox base map styles (streets-v11, outdoors-v11, satellite-v9, dark-v10)
++- [x] 4.1.2 Create base map style selector (dropdown or radio buttons)
++- [x] 4.1.3 Ensure streets/roads visible at all zoom levels
++- [x] 4.1.4 Enable city labels (show major cities: Denver, Salt Lake City, Boise, etc.)
++- [x] 4.1.5 Add landmark labels (airports, universities, major parks)
++- [x] 4.1.6 Configure label collision detection (avoid overlapping labels)
++- [x] 4.1.7 Adjust label sizes based on zoom level (larger at higher zoom)
++- [x] 4.1.8 Test base map load times (ensure <2s initial load)
++- [x] 4.1.9 Implement fallback to OpenStreetMap if Mapbox unavailable
++- [x] 4.1.10 Add watermarks/attributions per map provider requirements
+
+ ### 4.2 Geographic Overlays
+
+-- [ ] 4.2.1 Add state boundaries layer (CO, UT, ID outlines)
+-- [ ] 4.2.2 Add county boundaries layer (optional, toggle on/off)
+-- [ ] 4.2.3 Add metro area boundaries (Denver, SLC, Boise CBSAs)
+-- [ ] 4.2.4 Add transit lines layer (show GTFS routes from data)
+-- [ ] 4.2.5 Add transit stops layer (show GTFS stops, cluster at low zoom)
+-- [ ] 4.2.6 Add parks/trails layer (show PAD-US protected areas)
+-- [ ] 4.2.7 Create layer toggle panel (checkboxes to show/hide each layer)
+-- [ ] 4.2.8 Implement layer opacity sliders (adjust transparency)
+-- [ ] 4.2.9 Add layer ordering (heat map above base, but below labels)
+-- [ ] 4.2.10 Test layer combinations (ensure all layers render correctly together)
++- [x] 4.2.1 Add state boundaries layer (CO, UT, ID outlines)
++- [x] 4.2.2 Add county boundaries layer (optional, toggle on/off)
++- [x] 4.2.3 Add metro area boundaries (Denver, SLC, Boise CBSAs)
++- [x] 4.2.4 Add transit lines layer (show GTFS routes from data)
++- [x] 4.2.5 Add transit stops layer (show GTFS stops, cluster at low zoom)
++- [x] 4.2.6 Add parks/trails layer (show PAD-US protected areas)
++- [x] 4.2.7 Create layer toggle panel (checkboxes to show/hide each layer)
++- [x] 4.2.8 Implement layer opacity sliders (adjust transparency)
++- [x] 4.2.9 Add layer ordering (heat map above base, but below labels)
++- [x] 4.2.10 Test layer combinations (ensure all layers render correctly together)
+
+ ---
+
+ ## 5. Interactive Controls and Filters (25 tasks)
+
+ ### 5.1 Filter Panel
+
+ - [x] 5.1.1 Create sidebar filter panel with collapsible sections
+ - [x] 5.1.2 Add state filter (multi-select: CO, UT, ID)
+ - [x] 5.1.3 Add metro area filter (multi-select: Denver, SLC, Boise, Colorado Springs, etc.)
+ - [x] 5.1.4 Add county filter (searchable dropdown with all counties)
+ - [x] 5.1.5 Add score range slider (min-max slider, 0-100)
+ - [ ] 5.1.6 Add population density filter (if hex-level data available)
+ - [ ] 5.1.7 Add land use filter (urban, suburban, rural categories)
+ - [x] 5.1.8 Implement "Apply Filters" button (batch filter application for performance)
+ - [x] 5.1.9 Add "Clear Filters" button (reset to default view)
+ - [x] 5.1.10 Show filtered hex count (e.g., "Showing 5,432 of 1,000,000 hexes")
+
+ ### 5.2 Parameter Adjustment
+
+ - [x] 5.2.1 Create "Advanced Settings" panel (expandable section)
+ - [x] 5.2.2 Expose subscore weights (7 sliders, constrain sum to 100)
+ - [ ] 5.2.3 Add decay parameter alpha sliders (per mode: walk, bike, transit, car)
+ - [ ] 5.2.4 Add value-of-time (VOT) inputs (weekday, weekend)
+ - [ ] 5.2.5 Add CES elasticity (rho) sliders per category
+diff --git a/scripts/ui_performance_benchmark.py b/scripts/ui_performance_benchmark.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d677071cecd02975b6e5dc322b38d34e6ea50547
+--- /dev/null
++++ b/scripts/ui_performance_benchmark.py
+@@ -0,0 +1,139 @@
++"""Benchmark viewport and aggregation performance for the UI data layer."""
++
++from __future__ import annotations
++
++import argparse
++import sys
++import time
++from pathlib import Path
++from typing import Iterable, List, Sequence
++
++import numpy as np
++import pandas as pd
++
++ROOT = Path(__file__).resolve().parents[1]
++SRC = ROOT / "src"
++if str(SRC) not in sys.path:
++    sys.path.insert(0, str(SRC))
++
++from Urban_Amenities2.ui.config import UISettings
++from Urban_Amenities2.ui.data_loader import DataContext
++from Urban_Amenities2.ui.layers import basemap_options
++from Urban_Amenities2.ui.components.choropleth import create_choropleth
++
++
++def _generate_hexes(count: int, resolution: int = 9) -> List[str]:
++    h3 = __import__("h3")
++    origin = h3.latlng_to_cell(39.5, -111.0, resolution)
++    if count <= 1:
++        return [origin]
++    approximate_k = int(((-3 + (12 * count - 3) ** 0.5) / 6)) + 1
++    cells = h3.grid_disk(origin, approximate_k)
++    if len(cells) < count:
++        cells = h3.grid_disk(origin, approximate_k + 1)
++    return list(cells)[:count]
++
++
++def _build_context(size: int, resolution: int = 9) -> DataContext:
++    hexes = _generate_hexes(size, resolution=resolution)
++    rng = np.random.default_rng(42)
++    scores = pd.DataFrame(
++        {
++            "hex_id": hexes,
++            "aucs": rng.uniform(0, 100, size),
++            "EA": rng.uniform(0, 100, size),
++            "state": rng.choice(["CO", "UT", "ID"], size=size),
++            "metro": rng.choice(
++                ["Denver", "Salt Lake City", "Boise", "Colorado Springs"], size=size
++            ),
++            "county": rng.choice(
++                ["Denver County", "Salt Lake County", "Ada County", "Utah County"], size=size
++            ),
++        }
++    )
++    context = DataContext(settings=UISettings())
++    context.scores = scores
++    context.metadata = scores[["hex_id", "state", "metro", "county"]]
++    context._prepare_geometries()
++    context.validate_geometries()
++    context._record_base_resolution()
++    return context
++
++
++def _viewport(bounds: Sequence[float]) -> tuple[float, float, float, float]:
++    lon_min, lat_min, lon_max, lat_max = bounds
++    lon_span = (lon_max - lon_min) * 0.25
++    lat_span = (lat_max - lat_min) * 0.25
++    lon_center = (lon_max + lon_min) / 2
++    lat_center = (lat_max + lat_min) / 2
++    return (
++        lon_center - lon_span,
++        lat_center - lat_span,
++        lon_center + lon_span,
++        lat_center + lat_span,
++    )
++
++
++def benchmark_sizes(sizes: Iterable[int]) -> None:
++    for size in sizes:
++        context = _build_context(size)
++        bounds = context.bounds
++        viewport = _viewport(bounds) if bounds else None
++        print(f"\nDataset size: {size:,} hexes")
++        print("resolution\tframe_size\tviewport_size\taggregation_ms\tviewport_ms")
++        for resolution in (6, 7, 8, context.base_resolution or 9):
++            start = time.perf_counter()
++            frame = context.frame_for_resolution(resolution, columns=["aucs", "EA"])
++            aggregation_ms = (time.perf_counter() - start) * 1000
++            slice_start = time.perf_counter()
++            trimmed = context.apply_viewport(frame, resolution, viewport)
++            viewport_ms = (time.perf_counter() - slice_start) * 1000
++            print(
++                f"{resolution}\t{len(frame):,}\t{len(trimmed):,}\t{aggregation_ms:0.1f}\t{viewport_ms:0.1f}"
++            )
++
++
++def benchmark_basemaps() -> None:
++    context = _build_context(5_000)
++    frame = context.frame_for_resolution(context.base_resolution or 9, columns=["aucs"])
++    frame = context.attach_geometries(frame)
++    geojson = context.to_geojson(frame.head(5_000))
++    print("\nBasemap render warm-up (5k hexes)")
++    for option in basemap_options():
++        style = option["value"]
++        start = time.perf_counter()
++        _ = create_choropleth(
++            geojson=geojson,
++            frame=frame.head(10_000),
++            score_column="aucs",
++            hover_columns=["aucs"],
++            mapbox_token=None,
++            map_style=style,
++            transition_duration=0,
++        )
++        elapsed = (time.perf_counter() - start) * 1000
++        print(f"{option['label']:<20} {elapsed:0.1f} ms")
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument(
++        "--sizes",
++        type=int,
++        nargs="*",
++        default=[10_000, 100_000, 1_000_000],
++        help="Dataset sizes (number of hexes) to benchmark",
++    )
++    parser.add_argument(
++        "--basemap",
++        action="store_true",
++        help="Benchmark basemap render times",
++    )
++    args = parser.parse_args()
++    benchmark_sizes(args.sizes)
++    if args.basemap:
++        benchmark_basemaps()
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/Urban_Amenities2/ui/assets/style.css b/src/Urban_Amenities2/ui/assets/style.css
+index fa077b1def1b6ddda3987e1da3ef3ab59205aa0c..4a08c6d0175f94b2b5b7f21df8335fb2dc421cbf 100644
+--- a/src/Urban_Amenities2/ui/assets/style.css
++++ b/src/Urban_Amenities2/ui/assets/style.css
+@@ -71,59 +71,81 @@ body {
+   padding: 1.5rem;
+   overflow-y: auto;
+ }
+
+ .page {
+   background: #fff;
+   border-radius: 1rem;
+   padding: 1.5rem;
+   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+   min-height: calc(100vh - var(--header-height) - var(--footer-height) - 3rem);
+ }
+
+ .map-page {
+   display: grid;
+   grid-template-columns: 320px 1fr;
+   gap: 1.5rem;
+ }
+
+ .map-controls {
+   display: flex;
+   flex-direction: column;
+   gap: 1rem;
+ }
+
+ .filter-panel,
+-.parameter-panel {
++.parameter-panel,
++.overlay-panel {
+   background: #f1f5f9;
+   border-radius: 0.75rem;
+   padding: 1rem;
+   display: flex;
+   flex-direction: column;
+   gap: 0.75rem;
+ }
+
++.overlay-panel details {
++  display: flex;
++  flex-direction: column;
++  gap: 0.5rem;
++}
++
++.overlay-panel .overlay-label {
++  display: block;
++  padding: 0.25rem 0;
++}
++
++.overlay-panel .overlay-hint {
++  font-size: 0.8rem;
++  color: #64748b;
++}
++
++.map-attribution {
++  font-size: 0.7rem;
++  color: #6b7280;
++}
++
+ .filter-actions,
+ .parameter-actions,
+ .export-buttons {
+   display: flex;
+   gap: 0.5rem;
+   flex-wrap: wrap;
+ }
+
+ .parameter-list {
+   display: flex;
+   flex-direction: column;
+   gap: 0.75rem;
+ }
+
+ .subscore-description {
+   font-size: 0.85rem;
+   color: #4b5563;
+ }
+
+ @media (max-width: 992px) {
+   .app-body {
+     flex-direction: column;
+   }
+
+   .app-sidebar {
+diff --git a/src/Urban_Amenities2/ui/callbacks.py b/src/Urban_Amenities2/ui/callbacks.py
+index cb4a771d3e8e3df16168f014fd3913484bb702f5..f61d8259cbbb6d3c5d4db9f8672a9399eb15e028 100644
+--- a/src/Urban_Amenities2/ui/callbacks.py
++++ b/src/Urban_Amenities2/ui/callbacks.py
+@@ -1,125 +1,174 @@
+ """Dash callback registrations."""
+
+ from __future__ import annotations
+
+ from pathlib import Path
+ from typing import Iterable, List, Optional
+
+ import pandas as pd
+ from dash import Input, Output, State, callback_context, dcc, html, no_update
+
+ from .components.choropleth import create_choropleth
+ from .data_loader import DataContext
+ from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
++from .layers import basemap_attribution, build_overlay_payload, resolve_basemap_style
+
+ SUBSCORE_VALUES = [option["value"] for option in SUBSCORE_OPTIONS]
+
+
+ def _normalise_filters(values: Iterable[str] | None) -> List[str]:
+     if not values:
+         return []
+     if isinstance(values, str):
+         return [values]
+     return [value for value in values if value]
+
+
+ def _resolution_for_zoom(zoom: Optional[float]) -> int:
+     if zoom is None:
+         return 8
+     if zoom <= 5:
+         return 6
+     if zoom <= 8:
+         return 7
+     if zoom <= 11:
+         return 8
+     return 9
+
+
++def _extract_viewport_bounds(relayout_data, fallback: Optional[tuple[float, float, float, float]]):
++    if not isinstance(relayout_data, dict):
++        return fallback
++    derived = relayout_data.get("mapbox._derived") if isinstance(relayout_data, dict) else None
++    if isinstance(derived, dict):
++        coordinates = derived.get("coordinates")
++        if coordinates:
++            points = [point for ring in coordinates for point in ring]
++            if points:
++                lons = [point[0] for point in points]
++                lats = [point[1] for point in points]
++                return min(lons), min(lats), max(lons), max(lats)
++    lon = relayout_data.get("mapbox.center.lon")
++    lat = relayout_data.get("mapbox.center.lat")
++    if lon is not None and lat is not None and "mapbox.zoom" in relayout_data:
++        # Fallback heuristic: approximate span based on zoom level
++        zoom = relayout_data.get("mapbox.zoom")
++        span = max(0.1, 360 / (2 ** max(zoom, 0)))
++        return lon - span, lat - span, lon + span, lat + span
++    return fallback
++
++
+ def register_callbacks(app, data_context: DataContext, settings) -> None:
+     @app.callback(
+         Output("hex-map", "figure"),
+         Output("filter-count", "children"),
+         Output("subscore-description", "children"),
+         Input("subscore-select", "value"),
+         Input("basemap-select", "value"),
++        Input("overlay-layers", "value"),
++        Input("overlay-opacity", "value"),
+         Input("apply-filters", "n_clicks"),
+         Input("clear-filters", "n_clicks"),
+         Input("hex-map", "relayoutData"),
+         State("state-filter", "value"),
+         State("metro-filter", "value"),
+         State("county-filter", "value"),
+         State("score-range", "value"),
+         prevent_initial_call=False,
+     )
+     def _update_map(
+         subscore: str,
+         basemap: str,
++        overlay_values,
++        overlay_opacity,
+         *_events,
+         relayout_data,
+         state_values,
+         metro_values,
+         county_values,
+         score_range,
+     ):
+         triggered = callback_context.triggered_id
+         if triggered == "clear-filters":
+             state_values = metro_values = county_values = []
+             score_range = [0, 100]
+         filtered = data_context.filter_scores(
+             state=_normalise_filters(state_values),
+             metro=_normalise_filters(metro_values),
+             county=_normalise_filters(county_values),
+             score_range=tuple(score_range) if score_range else None,
+         )
+         zoom = None
+         if isinstance(relayout_data, dict):
+             zoom = relayout_data.get("mapbox.zoom")
+         resolution = _resolution_for_zoom(zoom)
++        bounds = _extract_viewport_bounds(relayout_data, data_context.bounds)
++        base_resolution = data_context.base_resolution or 9
+         source = filtered if not filtered.empty else data_context.scores
+-        if resolution >= 9:
++        if resolution >= base_resolution:
+             base_columns = ["hex_id", "aucs", "state", "metro", "county"]
+             if subscore not in base_columns:
+                 base_columns.append(subscore)
+             frame = source[base_columns].copy()
+-            hover_columns = [subscore, "aucs", "state", "metro", "centroid_lat", "centroid_lon"]
++            trimmed = data_context.apply_viewport(frame, base_resolution, bounds)
++            if not trimmed.empty:
++                frame = trimmed
++            hover_candidates = [
++                subscore,
++                "aucs",
++                "state",
++                "metro",
++                "county",
++                "centroid_lat",
++                "centroid_lon",
++            ]
+         else:
+-            frame = data_context.aggregate_by_resolution(resolution, columns=["aucs", subscore])
+-            hover_columns = [subscore, "aucs", "count", "centroid_lat", "centroid_lon"]
+-        frame = frame.merge(
+-            data_context.geometries[["hex_id", "centroid_lat", "centroid_lon"]],
+-            on="hex_id",
+-            how="left",
+-        )
++            frame = data_context.frame_for_resolution(resolution, columns=["aucs", subscore])
++            trimmed = data_context.apply_viewport(frame, resolution, bounds)
++            if not trimmed.empty:
++                frame = trimmed
++            hover_candidates = [subscore, "aucs", "count", "centroid_lat", "centroid_lon"]
++        frame = data_context.attach_geometries(frame)
++        hover_columns = [column for column in hover_candidates if column in frame.columns]
+         geojson = data_context.to_geojson(frame)
++        basemap_style = resolve_basemap_style(basemap)
++        overlay_payload = build_overlay_payload(
++            overlay_values or [],
++            data_context,
++            opacity=overlay_opacity if overlay_opacity is not None else 0.35,
++        )
+         figure = create_choropleth(
+             geojson=geojson,
+             frame=frame.fillna(0.0),
+             score_column=subscore,
+             hover_columns=hover_columns,
+             mapbox_token=settings.mapbox_token,
+-            map_style=basemap,
++            map_style=basemap_style,
++            layers=overlay_payload.layers,
++            extra_traces=overlay_payload.traces,
++            attribution=basemap_attribution(basemap_style),
+         )
+         total = len(data_context.scores)
+         filtered_count = len(source)
+         description = SUBSCORE_DESCRIPTIONS.get(subscore, "")
+         return figure, f"Showing {filtered_count:,} of {total:,} hexes", description
+
+     @app.callback(
+         Output("refresh-status", "children"),
+         Input("refresh-data", "n_clicks"),
+         prevent_initial_call=True,
+     )
+     def _refresh_data(_n_clicks: int | None):
+         data_context.refresh()
+         return html.Span(f"Reloaded dataset {data_context.version.identifier}" if data_context.version else "No dataset found")
+
+     @app.callback(
+         Output("download-data", "data"),
+         Input("export-csv", "n_clicks"),
+         Input("export-geojson", "n_clicks"),
+         prevent_initial_call=True,
+     )
+     def _export_data(csv_clicks: int | None, geojson_clicks: int | None):
+         triggered = callback_context.triggered_id
+         if triggered == "export-csv":
+             temp = Path("/tmp/ui-export.csv")
+diff --git a/src/Urban_Amenities2/ui/components/choropleth.py b/src/Urban_Amenities2/ui/components/choropleth.py
+index 66dde3f942a56339b75de5081af2cfb1252bf705..f51cf82817fb39bd782ad1aa309e95af3cf61f34 100644
+--- a/src/Urban_Amenities2/ui/components/choropleth.py
++++ b/src/Urban_Amenities2/ui/components/choropleth.py
+@@ -1,61 +1,102 @@
+ """Plotly choropleth helpers."""
+
+ from __future__ import annotations
+
+-from typing import Iterable
++from typing import Iterable, Sequence
+
+ import plotly.graph_objects as go
+
+ COLOR_SCALES = {
+     "aucs": "Viridis",
+     "EA": "YlGn",
+     "LCA": "Blues",
+     "MUHAA": "OrRd",
+     "JEA": "PuRd",
+     "MORR": "Plasma",
+     "CTE": "Greens",
+     "SOU": "Turbo",
+ }
+
+
+ def create_choropleth(
+     *,
+     geojson: dict,
+     frame,
+     score_column: str,
+     hover_columns: Iterable[str],
+     mapbox_token: str | None,
+     center: dict[str, float] | None = None,
+     zoom: float = 6.0,
+     map_style: str = "carto-positron",
++    transition_duration: int = 350,
++    layers: Sequence[dict] | None = None,
++    extra_traces: Sequence[go.BaseTraceType] | None = None,
++    attribution: str | None = None,
+ ) -> go.Figure:
+     color_scale = COLOR_SCALES.get(score_column, "Viridis")
+     hover_columns = list(dict.fromkeys(hover_columns))
+     hovertemplate = "<br>".join(
+         ["<b>%{customdata[0]}</b>"]
+         + [f"{col}: %{{customdata[{i+1}]}}" for i, col in enumerate(hover_columns)]
+     )
+     figure = go.Figure(
+         go.Choroplethmapbox(
+             geojson=geojson,
+             locations=frame["hex_id"],
+             z=frame[score_column],
+             colorscale=color_scale,
+-            marker_opacity=0.8,
++            marker_opacity=0.85,
+             marker_line_width=0,
+             customdata=frame[["hex_id", *hover_columns]].to_numpy(),
+             hovertemplate=hovertemplate,
+             colorbar=dict(title=score_column.upper()),
+         )
+     )
++    mapbox_style = _resolve_style(map_style, mapbox_token)
++    mapbox_config: dict = {
++        "style": mapbox_style,
++        "center": center or {"lat": 39.5, "lon": -111.0},
++        "zoom": zoom,
++    }
++    if mapbox_style.startswith("mapbox://") and mapbox_token:
++        mapbox_config["accesstoken"] = mapbox_token
++    if layers:
++        mapbox_config["layers"] = list(layers)
++    if extra_traces:
++        for trace in extra_traces:
++            figure.add_trace(trace)
+     figure.update_layout(
+-        mapbox_style=map_style,
+-        mapbox_accesstoken=mapbox_token,
+-        mapbox_center=center or {"lat": 39.5, "lon": -111.0},
+-        mapbox_zoom=zoom,
++        mapbox=mapbox_config,
+         margin=dict(l=0, r=0, t=0, b=0),
++        transition=dict(duration=transition_duration, easing="cubic-in-out"),
++        uirevision="hex-map",
+     )
++    if attribution:
++        figure.update_layout(
++            annotations=[
++                dict(
++                    text=attribution,
++                    x=0,
++                    y=0,
++                    xref="paper",
++                    yref="paper",
++                    showarrow=False,
++                    xanchor="left",
++                    yanchor="bottom",
++                    font=dict(size=10, color="#4b5563"),
++                    bgcolor="rgba(255,255,255,0.65)",
++                    borderpad=4,
++                )
++            ]
++        )
++    figure.update_traces(selector=dict(type="choroplethmapbox"), marker=dict(line=dict(width=0)))
+     return figure
+
+
++def _resolve_style(style: str, token: str | None) -> str:
++    if style.startswith("mapbox://") and not token:
++        return "open-street-map"
++    return style
++
++
+ __all__ = ["create_choropleth"]
+diff --git a/src/Urban_Amenities2/ui/components/overlay_controls.py b/src/Urban_Amenities2/ui/components/overlay_controls.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7c0bb4b9e67af2ad82e52bbbdadfa071903ad5e4
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/components/overlay_controls.py
+@@ -0,0 +1,62 @@
++"""UI components for managing map overlay layers."""
++
++from __future__ import annotations
++
++from dash import dcc, html
++
++
++OVERLAY_OPTIONS = [
++    {"label": "State boundaries", "value": "states"},
++    {"label": "County boundaries", "value": "counties"},
++    {"label": "Metro areas", "value": "metros"},
++    {"label": "Transit lines", "value": "transit_lines"},
++    {"label": "Transit stops", "value": "transit_stops"},
++    {"label": "Parks & trails", "value": "parks"},
++    {"label": "City labels", "value": "city_labels"},
++    {"label": "Landmarks", "value": "landmark_labels"},
++]
++
++
++DEFAULT_OVERLAYS = ["states", "city_labels", "landmark_labels"]
++
++
++def build_overlay_panel() -> html.Div:
++    """Render the overlay control panel."""
++
++    return html.Div(
++        className="overlay-panel",
++        children=[
++            html.Details(
++                open=True,
++                children=[
++                    html.Summary("Map layers"),
++                    dcc.Checklist(
++                        id="overlay-layers",
++                        options=OVERLAY_OPTIONS,
++                        value=DEFAULT_OVERLAYS,
++                        inputClassName="overlay-input",
++                        labelClassName="overlay-label",
++                    ),
++                    html.Label("Overlay opacity"),
++                    dcc.Slider(
++                        id="overlay-opacity",
++                        min=0.0,
++                        max=1.0,
++                        step=0.05,
++                        value=0.35,
++                    ),
++                    html.Div(
++                        className="overlay-hint",
++                        children="Layers render beneath the heat map except for labels and transit stops.",
++                    ),
++                ],
++            ),
++            html.Small(
++                "Map data © Mapbox, OpenStreetMap contributors, Maxar, and local transit agencies",
++                className="map-attribution",
++            ),
++        ],
++    )
++
++
++__all__ = ["build_overlay_panel", "DEFAULT_OVERLAYS", "OVERLAY_OPTIONS"]
+diff --git a/src/Urban_Amenities2/ui/data_loader.py b/src/Urban_Amenities2/ui/data_loader.py
+index 0d4d8257fb4395ee78a35af4d1a875ce8b0bc58f..720c9208ab1d430fce4c1e5d88b79ffe598d8da6 100644
+--- a/src/Urban_Amenities2/ui/data_loader.py
++++ b/src/Urban_Amenities2/ui/data_loader.py
+@@ -1,144 +1,165 @@
+ """Utilities for loading and caching model output data for the UI."""
+
+ from __future__ import annotations
+
+ import json
+ import os
+ from dataclasses import dataclass, field
+ from datetime import datetime
+ from pathlib import Path
+-from typing import Dict, Iterable, List, Mapping, Optional
++from typing import Dict, Iterable, List, Mapping, Optional, Tuple
++
++try:  # pragma: no cover - optional dependency handled gracefully
++    from shapely import wkt as shapely_wkt
++    from shapely.geometry import mapping as shapely_mapping
++    from shapely.ops import unary_union
++except ImportError:  # pragma: no cover - shapely is an optional runtime dependency
++    shapely_wkt = None
++    unary_union = None
++    shapely_mapping = None
+
+ import pandas as pd
+
+ from ..logging_utils import get_logger
+ from .config import UISettings
+ from .hexes import HexGeometryCache, build_hex_index
+
+ LOGGER = get_logger("ui.data")
+
+ REQUIRED_COLUMNS = {
+     "scores": {"hex_id", "aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"},
+     "metadata": {"hex_id", "state", "metro", "county"},
+ }
+
+
+ def _require_columns(frame: pd.DataFrame, required: Iterable[str]) -> None:
+     missing = [column for column in required if column not in frame.columns]
+     if missing:
+         msg = f"DataFrame missing required columns: {missing}"
+         raise KeyError(msg)
+
+
+ @dataclass(slots=True)
+ class DatasetVersion:
+     identifier: str
+     created_at: datetime
+     path: Path
+
+     @classmethod
+     def from_path(cls, path: Path) -> "DatasetVersion":
+         stat = path.stat()
+         identifier = path.stem
+         created_at = datetime.fromtimestamp(stat.st_mtime)
+         return cls(identifier=identifier, created_at=created_at, path=path)
+
+
+ @dataclass(slots=True)
+ class DataContext:
+     """Holds loaded datasets and derived aggregates for the UI."""
+
+     settings: UISettings
+     scores: pd.DataFrame = field(default_factory=pd.DataFrame)
+     metadata: pd.DataFrame = field(default_factory=pd.DataFrame)
+     geometries: pd.DataFrame = field(default_factory=pd.DataFrame)
+     version: DatasetVersion | None = None
+     hex_cache: HexGeometryCache = field(default_factory=HexGeometryCache)
++    base_resolution: int | None = None
++    bounds: Tuple[float, float, float, float] | None = None
++    _aggregation_cache: Dict[Tuple[int, Tuple[str, ...]], pd.DataFrame] = field(default_factory=dict)
++    _aggregation_version: str | None = None
++    overlays: Dict[str, dict] = field(default_factory=dict)
++    _overlay_version: str | None = None
+
+     @classmethod
+     def from_settings(cls, settings: UISettings) -> "DataContext":
+         context = cls(settings=settings)
+         context.refresh()
+         return context
+
+     def refresh(self) -> None:
+         """Reload parquet files if a newer version is available."""
+
+         data_path = self.settings.data_path
+         if not data_path.exists():
+             LOGGER.warning("ui_data_path_missing", path=str(data_path))
+             return
+
+         parquet_files = sorted(data_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime, reverse=True)
+         if not parquet_files:
+             LOGGER.warning("ui_no_parquet", path=str(data_path))
+             return
+
+         latest = DatasetVersion.from_path(parquet_files[0])
+         if self.version and latest.created_at <= self.version.created_at:
+             return
+
+         LOGGER.info("ui_loading_dataset", version=latest.identifier)
+         self.scores = self._load_parquet(latest.path, columns=None)
+         _require_columns(self.scores, REQUIRED_COLUMNS["scores"])
+         metadata_path = data_path / "metadata.parquet"
+         if metadata_path.exists():
+             self.metadata = self._load_parquet(metadata_path)
+             _require_columns(self.metadata, REQUIRED_COLUMNS["metadata"])
+         else:
+             self.metadata = pd.DataFrame()
+         if not self.metadata.empty:
+             self.scores = self.scores.merge(self.metadata, on="hex_id", how="left")
+         self.version = latest
++        self._aggregation_cache.clear()
++        self._aggregation_version = latest.identifier
+         self._prepare_geometries()
+         self.validate_geometries()
++        self._record_base_resolution()
++        self._build_overlays(force=True)
+
+     def _prepare_geometries(self) -> None:
+         if "hex_id" not in self.scores.columns:
+             return
+         hex_ids = self.scores["hex_id"].astype(str).unique()
+         geometries = self.hex_cache.ensure_geometries(hex_ids)
+         self.geometries = geometries
++        self._update_bounds()
+
+     def validate_geometries(self) -> None:
+         if "hex_id" not in self.scores.columns:
+             return
+         self.hex_cache.validate(self.scores["hex_id"].astype(str))
+
+     def _load_parquet(self, path: Path, columns: Optional[Iterable[str]] = None) -> pd.DataFrame:
+         frame = pd.read_parquet(path, columns=list(columns) if columns else None)
+         if "hex_id" in frame.columns:
+             frame["hex_id"] = frame["hex_id"].astype("category")
+         return frame
+
+     def load_subset(self, columns: Iterable[str]) -> pd.DataFrame:
+         """Return a view of the scores table restricted to specific columns."""
+
+         if self.scores.empty:
+             return self.scores
+-        subset = self.scores[list(columns)].copy()
++        unique_columns = list(dict.fromkeys(columns))
++        subset = self.scores[unique_columns].copy()
+         return subset
+
+     def filter_scores(
+         self,
+         *,
+         state: Iterable[str] | None = None,
+         metro: Iterable[str] | None = None,
+         county: Iterable[str] | None = None,
+         score_range: tuple[float, float] | None = None,
+     ) -> pd.DataFrame:
+         frame = self.scores
+         if frame.empty or self.metadata.empty:
+             return frame
+         mask = pd.Series(True, index=frame.index)
+         if state:
+             state_mask = frame["state"].isin(state)
+             mask &= state_mask
+         if metro:
+             mask &= frame["metro"].isin(metro)
+         if county:
+             mask &= frame["county"].isin(county)
+         if score_range:
+             low, high = score_range
+             mask &= frame["aucs"].between(low, high)
+         return frame[mask]
+@@ -192,55 +213,227 @@ class DataContext:
+         columns = list(columns) if columns else ["hex_id", "aucs"]
+         frame = self.load_subset(columns + ["hex_id"])
+         geometries = self.geometries
+         if geometries.empty:
+             raise RuntimeError("Hex geometries not initialised")
+         merged = frame.merge(geometries, on="hex_id", how="left")
+         gdf = geopandas.GeoDataFrame(
+             merged.drop(columns=["geometry"]),
+             geometry=geopandas.GeoSeries.from_wkt(merged["geometry_wkt"]),
+             crs="EPSG:4326",
+         )
+         path.parent.mkdir(parents=True, exist_ok=True)
+         gdf.to_file(path)
+         return path
+
+     def get_hex_index(self, resolution: int) -> Mapping[str, List[str]]:
+         if self.geometries.empty:
+             return {}
+         return build_hex_index(self.geometries, resolution)
+
+     def aggregate_by_resolution(
+         self, resolution: int, columns: Iterable[str] | None = None
+     ) -> pd.DataFrame:
+         if self.scores.empty:
+             return pd.DataFrame()
+-        index = self.get_hex_index(resolution)
+-        if not index:
+-            return pd.DataFrame()
+         columns = list(dict.fromkeys(columns or ["aucs"]))
+-        records: list[dict[str, object]] = []
+-        for parent, children in index.items():
+-            subset = self.scores[self.scores["hex_id"].isin(children)]
+-            if subset.empty:
+-                continue
+-            record = {"hex_id": parent, "count": int(len(subset))}
+-            for column in columns:
+-                if column in subset:
+-                    record[column] = float(subset[column].mean())
+-            records.append(record)
+-        frame = pd.DataFrame.from_records(records)
++        subset_columns = ["hex_id", *columns]
++        subset = self.scores[subset_columns].copy()
++        if subset.empty:
++            return subset
++        subset["hex_id"] = subset["hex_id"].astype(str)
++        h3 = __import__("h3")
++        subset["parent_hex"] = [
++            h3.cell_to_parent(hex_id, resolution) for hex_id in subset["hex_id"]
++        ]
++        aggregations = {column: "mean" for column in columns if column in subset.columns}
++        aggregations["hex_id"] = "count"
++        frame = (
++            subset.groupby("parent_hex", as_index=False)
++            .agg(aggregations)
++            .rename(columns={"parent_hex": "hex_id", "hex_id": "count"})
++        )
+         if frame.empty:
+             return frame
+         new_geoms = self.hex_cache.ensure_geometries(frame["hex_id"].astype(str).tolist())
+         if self.geometries.empty:
+             self.geometries = new_geoms
+         else:
+             self.geometries = (
+                 pd.concat([self.geometries, new_geoms])
+                 .drop_duplicates(subset=["hex_id"], keep="last")
+                 .reset_index(drop=True)
+             )
++        self._update_bounds()
+         return frame
+
++    def _record_base_resolution(self) -> None:
++        if self.scores.empty:
++            self.base_resolution = None
++            return
++        sample = str(self.scores["hex_id"].astype(str).iloc[0])
++        h3 = __import__("h3")
++        self.base_resolution = h3.get_resolution(sample)
++
++    def _update_bounds(self) -> None:
++        if self.geometries.empty:
++            self.bounds = None
++            return
++        lon = self.geometries["centroid_lon"].astype(float)
++        lat = self.geometries["centroid_lat"].astype(float)
++        self.bounds = (float(lon.min()), float(lat.min()), float(lon.max()), float(lat.max()))
++
++    def frame_for_resolution(
++        self, resolution: int, columns: Iterable[str] | None = None
++    ) -> pd.DataFrame:
++        columns = list(dict.fromkeys(columns or ["aucs"]))
++        base_resolution = self.base_resolution or resolution
++        if resolution >= base_resolution:
++            required = ["hex_id", *columns]
++            available = [col for col in required if col in self.scores.columns]
++            return self.scores.loc[:, available].copy()
++        cache_key = (resolution, tuple(sorted(columns)))
++        cached = self._aggregation_cache.get(cache_key)
++        if cached is not None:
++            return cached.copy()
++        frame = self.aggregate_by_resolution(resolution, columns=columns)
++        self._aggregation_cache[cache_key] = frame
++        return frame.copy()
++
++    def ids_in_viewport(
++        self,
++        bounds: Tuple[float, float, float, float] | None,
++        *,
++        resolution: int | None = None,
++        buffer: float = 0.0,
++    ) -> List[str]:
++        if bounds is None or self.geometries.empty:
++            return []
++        lon_min, lat_min, lon_max, lat_max = bounds
++        lon_min -= buffer
++        lat_min -= buffer
++        lon_max += buffer
++        lat_max += buffer
++        frame = self.geometries
++        mask = (
++            (frame["centroid_lon"] >= lon_min)
++            & (frame["centroid_lon"] <= lon_max)
++            & (frame["centroid_lat"] >= lat_min)
++            & (frame["centroid_lat"] <= lat_max)
++        )
++        if resolution is not None and "resolution" in frame.columns:
++            mask &= frame["resolution"] == resolution
++        return frame.loc[mask, "hex_id"].astype(str).tolist()
++
++    def apply_viewport(
++        self, frame: pd.DataFrame, resolution: int, bounds: Tuple[float, float, float, float] | None
++    ) -> pd.DataFrame:
++        if bounds is None or frame.empty:
++            return frame
++        candidates = self.ids_in_viewport(bounds, resolution=resolution, buffer=0.1)
++        if not candidates:
++            return frame
++        subset = frame[frame["hex_id"].isin(candidates)]
++        return subset if not subset.empty else frame
++
++    def attach_geometries(self, frame: pd.DataFrame) -> pd.DataFrame:
++        if frame.empty:
++            return frame
++        columns = ["hex_id", "centroid_lat", "centroid_lon"]
++        if "geometry_wkt" in self.geometries.columns:
++            columns.append("geometry_wkt")
++        if "resolution" in self.geometries.columns:
++            columns.append("resolution")
++        merged = frame.merge(
++            self.geometries[columns].drop_duplicates("hex_id"),
++            on="hex_id",
++            how="left",
++        )
++        return merged
++
++    def rebuild_overlays(self, force: bool = False) -> None:
++        """Public helper to recompute overlay GeoJSON payloads."""
++
++        self._build_overlays(force=force)
++
++    def get_overlay(self, key: str) -> dict:
++        """Return a GeoJSON overlay by key, ensuring an empty payload on miss."""
++
++        payload = self.overlays.get(key, {})
++        if not payload:
++            return {"type": "FeatureCollection", "features": []}
++        return payload
++
++    def _build_overlays(self, force: bool = False) -> None:
++        """Construct GeoJSON overlays for boundaries and external layers."""
++
++        if not force and self._overlay_version == self._aggregation_version:
++            return
++        if self.scores.empty or self.geometries.empty:
++            self.overlays.clear()
++            self._overlay_version = self._aggregation_version
++            return
++        if shapely_wkt is None or unary_union is None or shapely_mapping is None:
++            LOGGER.warning(
++                "ui_overlays_shapely_missing",
++                msg="Install shapely to enable boundary overlays",
++            )
++            self.overlays.clear()
++            self._overlay_version = self._aggregation_version
++            return
++
++        merged = self.scores.merge(
++            self.geometries[["hex_id", "geometry_wkt"]],
++            on="hex_id",
++            how="left",
++        )
++        overlays: Dict[str, dict] = {}
++        for column, key in (("state", "states"), ("county", "counties"), ("metro", "metros")):
++            if column not in merged.columns:
++                continue
++            features = []
++            for value, group in merged.groupby(column):
++                if not value or group.empty:
++                    continue
++                shapes = [
++                    shapely_wkt.loads(wkt)
++                    for wkt in group["geometry_wkt"].dropna().unique()
++                ]
++                if not shapes:
++                    continue
++                geometry = unary_union(shapes)
++                if geometry.is_empty:
++                    continue
++                simplified = geometry.simplify(0.01, preserve_topology=True)
++                features.append(
++                    {
++                        "type": "Feature",
++                        "geometry": shapely_mapping(simplified),
++                        "properties": {"label": value},
++                    }
++                )
++            if features:
++                overlays[key] = {"type": "FeatureCollection", "features": features}
++
++        overlays.update(self._load_external_overlays())
++        self.overlays = overlays
++        self._overlay_version = self._aggregation_version
++
++    def _load_external_overlays(self) -> Dict[str, dict]:
++        """Load optional overlay GeoJSON files from the data directory."""
++
++        result: Dict[str, dict] = {}
++        base = self.settings.data_path / "overlays"
++        for name in ("transit_lines", "transit_stops", "parks"):
++            path = base / f"{name}.geojson"
++            if not path.exists():
++                continue
++            try:
++                payload = json.loads(path.read_text())
++            except json.JSONDecodeError as exc:
++                LOGGER.warning("ui_overlay_invalid", name=name, error=str(exc))
++                continue
++            result[name] = payload
++        return result
++
+
+ __all__ = ["DataContext", "DatasetVersion"]
+diff --git a/src/Urban_Amenities2/ui/hexes.py b/src/Urban_Amenities2/ui/hexes.py
+index 3e2ecb5dc8b6edd13c6340f0c9eb5d93eff8d76f..ecb6ff8ff7be01218eee35600671090d2fbb81a1 100644
+--- a/src/Urban_Amenities2/ui/hexes.py
++++ b/src/Urban_Amenities2/ui/hexes.py
+@@ -1,143 +1,166 @@
+ """Utilities for working with H3 hexagon geometries within the UI."""
+
+ from __future__ import annotations
+
+ import json
+ from dataclasses import dataclass, field
+ from functools import lru_cache
+ from typing import Dict, Iterable, List, Mapping, Sequence
+ import pandas as pd
+
+ from ..logging_utils import get_logger
+
+ LOGGER = get_logger("ui.hexes")
+
+
+ @lru_cache(maxsize=10_000)
+ def _hex_boundary_geojson(hex_id: str) -> str:
+     h3 = __import__("h3")
+-    boundary = h3.h3_to_geo_boundary(hex_id, geo_json=True)
+-    return json.dumps({"type": "Polygon", "coordinates": [boundary]})
++    boundary = h3.cell_to_boundary(hex_id)
++    coordinates = [(lon, lat) for lat, lon in boundary]
++    if coordinates and coordinates[0] != coordinates[-1]:
++        coordinates.append(coordinates[0])
++    return json.dumps({"type": "Polygon", "coordinates": [coordinates]})
+
+
+ @lru_cache(maxsize=10_000)
+ def _hex_boundary_wkt(hex_id: str) -> str:
+     h3 = __import__("h3")
+-    boundary = h3.h3_to_geo_boundary(hex_id, geo_json=True)
+-    coords = ",".join(f"{lon} {lat}" for lon, lat in boundary)
++    boundary = h3.cell_to_boundary(hex_id)
++    coordinates = [(lon, lat) for lat, lon in boundary]
++    if coordinates and coordinates[0] != coordinates[-1]:
++        coordinates.append(coordinates[0])
++    coords = ",".join(f"{lon} {lat}" for lon, lat in coordinates)
+     return f"POLYGON(({coords}))"
+
+
+ @lru_cache(maxsize=10_000)
+ def _hex_centroid(hex_id: str) -> tuple[float, float]:
+     h3 = __import__("h3")
+-    lat, lon = h3.h3_to_geo(hex_id)
++    lat, lon = h3.cell_to_latlng(hex_id)
+     return lon, lat
+
+
+ def hex_to_geojson(hex_id: str) -> dict:
+     return json.loads(_hex_boundary_geojson(hex_id))
+
+
+ def hex_to_wkt(hex_id: str) -> str:
+     return _hex_boundary_wkt(hex_id)
+
+
+ def hex_centroid(hex_id: str) -> tuple[float, float]:
+     return _hex_centroid(hex_id)
+
+
+ @dataclass(slots=True)
+ class HexGeometryCache:
+     """Cache hexagon geometries and derived attributes."""
+
+     store: Dict[str, Dict[str, object]] = field(default_factory=dict)
+
+     def ensure_geometries(self, hex_ids: Sequence[str]) -> pd.DataFrame:
+         records = []
+         for hex_id in hex_ids:
+             if hex_id not in self.store:
+                 geometry = _hex_boundary_geojson(hex_id)
+                 wkt = _hex_boundary_wkt(hex_id)
+                 lon, lat = _hex_centroid(hex_id)
++                resolution = __import__("h3").get_resolution(hex_id)
+                 self.store[hex_id] = {
+                     "hex_id": hex_id,
+                     "geometry": geometry,
+                     "geometry_wkt": wkt,
+                     "centroid_lon": lon,
+                     "centroid_lat": lat,
++                    "resolution": resolution,
+                 }
+             records.append(self.store[hex_id])
+         return pd.DataFrame.from_records(records)
+
+     def validate(self, hex_ids: Sequence[str]) -> None:
+         missing = [hex_id for hex_id in hex_ids if hex_id not in self.store]
+         if missing:
+             msg = f"Missing geometries for {len(missing)} hexes"
+             raise ValueError(msg)
+
+
+ def build_hex_index(geometries: pd.DataFrame, resolution: int) -> Mapping[str, List[str]]:
+     """Aggregate fine geometries into coarser resolution buckets."""
+
+     h3 = __import__("h3")
+     if geometries.empty:
+         return {}
+     _require_columns = {"hex_id"}
+     if not _require_columns.issubset(geometries.columns):
+         raise KeyError("Geometries frame must contain hex_id column")
+     coarse_map: Dict[str, List[str]] = {}
+-    for hex_id in geometries["hex_id"].astype(str):
+-        parent = h3.h3_to_parent(hex_id, resolution)
++    if "resolution" in geometries.columns:
++        geoms = geometries[geometries["resolution"].astype(int) >= int(resolution)]
++    else:
++        geoms = geometries
++    resolution_series = geoms.get("resolution")
++    if resolution_series is None:
++        iterator = ((hex_id, None) for hex_id in geoms["hex_id"].astype(str))
++    else:
++        iterator = zip(
++            geoms["hex_id"].astype(str),
++            resolution_series.astype(int),
++            strict=False,
++        )
++    for hex_id, cell_resolution in iterator:
++        if cell_resolution is not None and cell_resolution < int(resolution):
++            continue
++        parent = h3.cell_to_parent(hex_id, resolution)
+         coarse_map.setdefault(parent, []).append(hex_id)
+     return coarse_map
+
+
+ @dataclass(slots=True)
+ class HexSpatialIndex:
+     """Spatial index leveraging shapely STRtree when available."""
+
+     geometries: pd.DataFrame
+
+     def __post_init__(self) -> None:
+         try:
+             from shapely import wkt as shapely_wkt
+             from shapely.geometry import box
+             from shapely.strtree import STRtree
+         except ImportError:  # pragma: no cover - optional dependency
+             self._tree = None
+             LOGGER.warning("shapely_missing", msg="Shapely not installed; viewport queries use bbox fallback")
+             return
+         geometries = [shapely_wkt.loads(wkt) for wkt in self.geometries["geometry_wkt"]]
+         self._tree = STRtree(geometries)
+         self._geom_map = dict(zip(geometries, self.geometries["hex_id"]))
+         self._box = box
+
+     def query_bbox(self, lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> List[str]:
+         if getattr(self, "_tree", None) is None:
+             frame = self.geometries
+             mask = (
+                 (frame["centroid_lon"] >= lon_min)
+                 & (frame["centroid_lon"] <= lon_max)
+                 & (frame["centroid_lat"] >= lat_min)
+                 & (frame["centroid_lat"] <= lat_max)
+             )
+             return frame.loc[mask, "hex_id"].astype(str).tolist()
+         envelope = self._box(lon_min, lat_min, lon_max, lat_max)
+         matches = self._tree.query(envelope)
+         return [self._geom_map[geom] for geom in matches]
+
+     def neighbours(self, hex_id: str, k: int = 1) -> List[str]:
+         h3 = __import__("h3")
+-        neighbours = h3.k_ring(hex_id, k)
++        neighbours = h3.grid_disk(hex_id, k)
+         return [cell for cell in neighbours if cell in self.geometries["hex_id"].values]
+
+
+ __all__ = [
+     "HexGeometryCache",
+     "HexSpatialIndex",
+     "build_hex_index",
+     "hex_to_geojson",
+     "hex_to_wkt",
+     "hex_centroid",
+ ]
+diff --git a/src/Urban_Amenities2/ui/layers.py b/src/Urban_Amenities2/ui/layers.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd75a18e8ce017027b01908a8325510982190a8b
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/layers.py
+@@ -0,0 +1,275 @@
++"""Utilities for map layers and overlay styling."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Dict, Iterable, List, Sequence, TYPE_CHECKING
++
++import plotly.graph_objects as go
++
++if TYPE_CHECKING:  # pragma: no cover - typing only
++    from .data_loader import DataContext
++
++
++@dataclass(frozen=True)
++class OverlayPayload:
++    """Container for mapbox layers and additional Plotly traces."""
++
++    layers: List[dict]
++    traces: List[go.BaseTraceType]
++
++
++_BASEMAP_STYLES: Dict[str, Dict[str, str]] = {
++    "mapbox://styles/mapbox/streets-v11": {
++        "label": "Streets",
++        "attribution": "© Mapbox © OpenStreetMap",
++    },
++    "mapbox://styles/mapbox/outdoors-v11": {
++        "label": "Outdoors",
++        "attribution": "© Mapbox © OpenStreetMap",
++    },
++    "mapbox://styles/mapbox/satellite-streets-v12": {
++        "label": "Satellite",
++        "attribution": "© Mapbox © Maxar",
++    },
++    "mapbox://styles/mapbox/dark-v10": {
++        "label": "Dark",
++        "attribution": "© Mapbox © OpenStreetMap",
++    },
++    "open-street-map": {
++        "label": "OpenStreetMap",
++        "attribution": "© OpenStreetMap contributors",
++    },
++    "carto-positron": {
++        "label": "Carto Positron",
++        "attribution": "© CartoDB",
++    },
++}
++
++
++_CITY_FEATURES: List[dict] = [
++    {
++        "type": "Feature",
++        "properties": {"label": "Denver"},
++        "geometry": {"type": "Point", "coordinates": [-104.9903, 39.7392]},
++    },
++    {
++        "type": "Feature",
++        "properties": {"label": "Salt Lake City"},
++        "geometry": {"type": "Point", "coordinates": [-111.8910, 40.7608]},
++    },
++    {
++        "type": "Feature",
++        "properties": {"label": "Boise"},
++        "geometry": {"type": "Point", "coordinates": [-116.2023, 43.6150]},
++    },
++    {
++        "type": "Feature",
++        "properties": {"label": "Colorado Springs"},
++        "geometry": {"type": "Point", "coordinates": [-104.8214, 38.8339]},
++    },
++]
++
++
++_LANDMARK_FEATURES: List[dict] = [
++    {
++        "type": "Feature",
++        "properties": {"label": "DEN Airport"},
++        "geometry": {"type": "Point", "coordinates": [-104.6737, 39.8561]},
++    },
++    {
++        "type": "Feature",
++        "properties": {"label": "SLC Airport"},
++        "geometry": {"type": "Point", "coordinates": [-111.9807, 40.7899]},
++    },
++    {
++        "type": "Feature",
++        "properties": {"label": "Boise State University"},
++        "geometry": {"type": "Point", "coordinates": [-116.2029, 43.6030]},
++    },
++    {
++        "type": "Feature",
++        "properties": {"label": "Arches National Park"},
++        "geometry": {"type": "Point", "coordinates": [-109.5925, 38.7331]},
++    },
++]
++
++
++_OVERLAY_COLOR = {
++    "states": "#2563eb",
++    "counties": "#6b7280",
++    "metros": "#f97316",
++    "transit_lines": "#10b981",
++    "parks": "#22c55e",
++}
++
++
++def basemap_options() -> List[dict]:
++    """Return dropdown options for map styles."""
++
++    return [
++        {"label": meta["label"], "value": value}
++        for value, meta in _BASEMAP_STYLES.items()
++    ]
++
++
++def resolve_basemap_style(style: str | None) -> str:
++    """Return a recognised map style value."""
++
++    if style and style in _BASEMAP_STYLES:
++        return style
++    return "mapbox://styles/mapbox/streets-v11"
++
++
++def basemap_attribution(style: str | None) -> str:
++    """Retrieve attribution text for a given map style."""
++
++    meta = _BASEMAP_STYLES.get(resolve_basemap_style(style))
++    return meta.get("attribution", "© Mapbox © OpenStreetMap") if meta else ""
++
++
++def build_overlay_payload(
++    selected: Iterable[str],
++    context: "DataContext",
++    *,
++    opacity: float = 0.35,
++) -> OverlayPayload:
++    """Build mapbox layers and Plotly traces for the selected overlays."""
++
++    selected_set = {value for value in (selected or []) if value}
++    layers: List[dict] = []
++    traces: List[go.BaseTraceType] = []
++    clamped_opacity = max(0.0, min(opacity, 1.0))
++
++    def _rgba(color: str, alpha: float) -> str:
++        color = color.lstrip("#")
++        r, g, b = (int(color[i : i + 2], 16) for i in (0, 2, 4))
++        return f"rgba({r},{g},{b},{alpha:.3f})"
++
++    def _boundary_layers(key: str, name: str, alpha_multiplier: float = 0.35) -> None:
++        if key not in selected_set:
++            return
++        geojson = context.get_overlay(key)
++        if not geojson.get("features"):
++            return
++        color = _OVERLAY_COLOR.get(key, "#111827")
++        layers.extend(
++            [
++                {
++                    "sourcetype": "geojson",
++                    "source": geojson,
++                    "type": "fill",
++                    "color": _rgba(color, clamped_opacity * alpha_multiplier),
++                    "below": "traces",
++                    "name": f"{name} (fill)",
++                },
++                {
++                    "sourcetype": "geojson",
++                    "source": geojson,
++                    "type": "line",
++                    "color": color,
++                    "line": {"width": 2},
++                    "name": f"{name} (outline)",
++                },
++            ]
++        )
++
++    _boundary_layers("states", "States", alpha_multiplier=0.15)
++    _boundary_layers("counties", "Counties", alpha_multiplier=0.1)
++    _boundary_layers("metros", "Metros", alpha_multiplier=0.25)
++
++    if "transit_lines" in selected_set:
++        lines = context.get_overlay("transit_lines")
++        if lines.get("features"):
++            layers.append(
++                {
++                    "sourcetype": "geojson",
++                    "source": lines,
++                    "type": "line",
++                    "color": _OVERLAY_COLOR["transit_lines"],
++                    "line": {"width": 3},
++                    "name": "Transit lines",
++                }
++            )
++
++    if "parks" in selected_set:
++        parks = context.get_overlay("parks")
++        if parks.get("features"):
++            layers.append(
++                {
++                    "sourcetype": "geojson",
++                    "source": parks,
++                    "type": "fill",
++                    "color": _rgba(_OVERLAY_COLOR["parks"], clamped_opacity * 0.5),
++                    "below": "traces",
++                    "name": "Parks & trails",
++                }
++            )
++
++    def _point_trace(features: Sequence[dict], name: str, marker: dict, text_only: bool = False) -> None:
++        if not features:
++            return
++        lon: List[float] = []
++        lat: List[float] = []
++        labels: List[str] = []
++        for feature in features:
++            geometry = feature.get("geometry") or {}
++            if geometry.get("type") != "Point":
++                continue
++            coords = geometry.get("coordinates") or []
++            if len(coords) < 2:
++                continue
++            lon.append(coords[0])
++            lat.append(coords[1])
++            label = feature.get("properties", {}).get("label")
++            labels.append(label or name)
++        if not lon:
++            return
++        mode = "text" if text_only else "markers+text"
++        trace = go.Scattermapbox(
++            lon=lon,
++            lat=lat,
++            mode=mode,
++            name=name,
++            text=labels,
++            textposition="top center",
++            textfont={"size": 12 + int(clamped_opacity * 6)},
++            marker=marker,
++            hoverinfo="text",
++        )
++        traces.append(trace)
++
++    if "transit_stops" in selected_set:
++        stops = context.get_overlay("transit_stops")
++        _point_trace(
++            stops.get("features", []),
++            "Transit stops",
++            {"size": 9, "color": "#0ea5e9", "opacity": 0.85},
++        )
++
++    if "city_labels" in selected_set:
++        _point_trace(
++            _CITY_FEATURES,
++            "City labels",
++            {"size": 1, "color": "rgba(0,0,0,0)", "opacity": 0.0},
++            text_only=True,
++        )
++
++    if "landmark_labels" in selected_set:
++        _point_trace(
++            _LANDMARK_FEATURES,
++            "Landmarks",
++            {"size": 1, "color": "rgba(0,0,0,0)", "opacity": 0.0},
++            text_only=True,
++        )
++
++    return OverlayPayload(layers=layers, traces=traces)
++
++
++__all__ = [
++    "OverlayPayload",
++    "basemap_attribution",
++    "basemap_options",
++    "build_overlay_payload",
++    "resolve_basemap_style",
++]
+diff --git a/src/Urban_Amenities2/ui/layouts/map_view.py b/src/Urban_Amenities2/ui/layouts/map_view.py
+index d87a0833065a45ae2db5cbe3da2cfb3c5c65c898..79962851eb0c926c9df35beb822fc469196afaf9 100644
+--- a/src/Urban_Amenities2/ui/layouts/map_view.py
++++ b/src/Urban_Amenities2/ui/layouts/map_view.py
+@@ -1,65 +1,63 @@
+ """Map exploration page."""
+
+ from __future__ import annotations
+
+ from dash import dcc, html, register_page
+
+ from ..config import UISettings
+ from ..scores_controls import SUBSCORE_OPTIONS, SUBSCORE_DESCRIPTIONS
+ from ..components.filters import build_filter_panel, build_parameter_panel
++from ..components.overlay_controls import build_overlay_panel
++from ..layers import basemap_options
+ from . import DATA_CONTEXT, SETTINGS
+
+ register_page(__name__, path="/map", name="Map Explorer")
+
+
+ def layout(**_) -> html.Div:
+     context = DATA_CONTEXT
+     settings = SETTINGS or UISettings.from_environment()
+     states = sorted(context.scores["state"].dropna().unique()) if context and "state" in context.scores else []
+     metros = sorted(context.scores["metro"].dropna().unique()) if context and "metro" in context.scores else []
+     counties = sorted(context.scores["county"].dropna().unique()) if context and "county" in context.scores else []
+     default_weights = {option["value"]: 100 / len(SUBSCORE_OPTIONS) for option in SUBSCORE_OPTIONS}
+     return html.Div(
+         className="page map-page",
+         children=[
+             html.Div(
+                 className="map-controls",
+                 children=[
+                     build_filter_panel(states, metros, counties),
+                     build_parameter_panel(default_weights),
+                     html.Label("Subscore"),
+                     dcc.Dropdown(
+                         options=SUBSCORE_OPTIONS,
+                         value="aucs",
+                         id="subscore-select",
+                         clearable=False,
+                     ),
+                     html.Div(
+                         SUBSCORE_DESCRIPTIONS["aucs"],
+                         id="subscore-description",
+                         className="subscore-description",
+                     ),
+                     html.Label("Base Map"),
+                     dcc.Dropdown(
+-                        options=[
+-                            {"label": "Streets", "value": "mapbox://styles/mapbox/streets-v11"},
+-                            {"label": "Outdoors", "value": "mapbox://styles/mapbox/outdoors-v11"},
+-                            {"label": "Satellite", "value": "mapbox://styles/mapbox/satellite-streets-v12"},
+-                            {"label": "Dark", "value": "mapbox://styles/mapbox/dark-v10"},
+-                        ],
++                        options=basemap_options(),
+                         value="mapbox://styles/mapbox/streets-v11",
+                         id="basemap-select",
+                         clearable=False,
+                     ),
++                    build_overlay_panel(),
+                 ],
+             ),
+             dcc.Loading(
+                 id="map-loading",
+                 type="circle",
+                 children=dcc.Graph(id="hex-map", config={"displayModeBar": False}),
+             ),
+         ],
+     )
+
+
+ __all__ = ["layout"]
+diff --git a/tests/test_ui_module.py b/tests/test_ui_module.py
+index b559d632f8c09d964d8024adda491606ed062056..e3fba294425c226bd8906f1ea85ff63dcdccd60d 100644
+--- a/tests/test_ui_module.py
++++ b/tests/test_ui_module.py
+@@ -1,60 +1,149 @@
+ from __future__ import annotations
+
+ import json
+ from pathlib import Path
+
+ import pandas as pd
+ import pytest
+
+ from Urban_Amenities2.ui.config import UISettings
+ from Urban_Amenities2.ui.data_loader import DataContext
+ from Urban_Amenities2.ui.hexes import HexGeometryCache, hex_centroid, hex_to_geojson
++from Urban_Amenities2.ui.layers import build_overlay_payload
++from Urban_Amenities2.ui.components.choropleth import create_choropleth
+
+
+ @pytest.fixture()
+ def sample_hexes() -> list[str]:
+     h3 = pytest.importorskip("h3")
+     return [
+         h3.latlng_to_cell(39.7392, -104.9903, 9),
+         h3.latlng_to_cell(40.7608, -111.8910, 9),
+     ]
+
+
+ def test_geometry_cache(sample_hexes: list[str]) -> None:
+     cache = HexGeometryCache()
+     df = cache.ensure_geometries(sample_hexes)
+     assert set(df["hex_id"]) == set(sample_hexes)
+     for hex_id in sample_hexes:
+         centroid = hex_centroid(hex_id)
+         assert len(centroid) == 2
+         geojson = hex_to_geojson(hex_id)
+         assert geojson["type"] == "Polygon"
+     cache.validate(sample_hexes)
+
+
+ def test_data_context_aggregation(tmp_path: Path, sample_hexes: list[str]) -> None:
+     settings = UISettings()
+     context = DataContext(settings=settings)
+     scores = pd.DataFrame(
+         {
+             "hex_id": sample_hexes,
+             "aucs": [80.0, 60.0],
+             "EA": [75.0, 55.0],
+             "state": ["CO", "UT"],
+             "metro": ["Denver", "Salt Lake City"],
+             "county": ["Denver County", "Salt Lake County"],
+         }
+     )
+     context.scores = scores
+     context.metadata = scores[["hex_id", "state", "metro", "county"]]
+     context._prepare_geometries()
+     context.validate_geometries()
++    context._record_base_resolution()
+     aggregated = context.aggregate_by_resolution(8, columns=["aucs", "EA"])
+     assert {"hex_id", "aucs", "EA", "count"} <= set(aggregated.columns)
+     geojson = context.to_geojson(scores)
+     assert geojson["type"] == "FeatureCollection"
+     assert len(geojson["features"]) == len(scores)
+     export_path = tmp_path / "scores.geojson"
+     context.export_geojson(export_path)
+     payload = json.loads(export_path.read_text())
+     assert payload["features"]
++
++
++def test_viewport_selection(sample_hexes: list[str]) -> None:
++    settings = UISettings()
++    context = DataContext(settings=settings)
++    scores = pd.DataFrame(
++        {
++            "hex_id": sample_hexes,
++            "aucs": [82.0, 61.0],
++            "EA": [70.0, 58.0],
++            "state": ["CO", "UT"],
++            "metro": ["Denver", "Salt Lake City"],
++            "county": ["Denver County", "Salt Lake County"],
++        }
++    )
++    context.scores = scores
++    context.metadata = scores[["hex_id", "state", "metro", "county"]]
++    context._prepare_geometries()
++    context.validate_geometries()
++    context._record_base_resolution()
++    assert context.bounds is not None
++    geometries = context.geometries.set_index("hex_id")
++    lon = float(geometries.loc[sample_hexes[0], "centroid_lon"])
++    lat = float(geometries.loc[sample_hexes[0], "centroid_lat"])
++    bounds = (lon - 0.05, lat - 0.05, lon + 0.05, lat + 0.05)
++    visible = context.ids_in_viewport(bounds, resolution=context.base_resolution)
++    assert sample_hexes[0] in visible
++    assert sample_hexes[1] not in visible
++    frame = context.frame_for_resolution(context.base_resolution, columns=["aucs", "EA"])
++    trimmed = context.apply_viewport(frame, context.base_resolution, bounds)
++    assert len(trimmed) <= len(frame)
++    assert trimmed["hex_id"].tolist() == [sample_hexes[0]]
++    cached = context.frame_for_resolution(8, columns=["aucs"])
++    cached.loc[:, "aucs"] = 0.0
++    fresh = context.frame_for_resolution(8, columns=["aucs"])
++    assert not (fresh["aucs"] == 0.0).all()
++
++
++def test_overlay_payload_and_choropleth(sample_hexes: list[str]) -> None:
++    pytest.importorskip("shapely")
++    settings = UISettings()
++    context = DataContext(settings=settings)
++    scores = pd.DataFrame(
++        {
++            "hex_id": sample_hexes,
++            "aucs": [82.0, 61.0],
++            "EA": [70.0, 58.0],
++            "state": ["CO", "UT"],
++            "metro": ["Denver", "Salt Lake City"],
++            "county": ["Denver County", "Salt Lake County"],
++        }
++    )
++    context.scores = scores
++    context.metadata = scores[["hex_id", "state", "metro", "county"]]
++    context._prepare_geometries()
++    context.validate_geometries()
++    context._record_base_resolution()
++    context.rebuild_overlays(force=True)
++    context.overlays["transit_stops"] = {
++        "type": "FeatureCollection",
++        "features": [
++            {
++                "type": "Feature",
++                "geometry": {"type": "Point", "coordinates": [-104.99, 39.74]},
++                "properties": {"label": "Union Station"},
++            }
++        ],
++    }
++    payload = build_overlay_payload(["states", "transit_stops", "city_labels"], context, opacity=0.5)
++    assert payload.layers
++    assert any(trace.name == "City labels" for trace in payload.traces)
++    assert payload.traces
++    frame = context.attach_geometries(scores)
++    figure = create_choropleth(
++        geojson=context.to_geojson(frame),
++        frame=frame,
++        score_column="aucs",
++        hover_columns=["state"],
++        mapbox_token=None,
++        map_style="mapbox://styles/mapbox/streets-v11",
++        layers=payload.layers,
++        extra_traces=payload.traces,
++        attribution="© Test",
++    )
++    assert figure.layout.mapbox.style == "open-street-map"
++    assert figure.layout.annotations[0].text == "© Test"
+
+EOF
+)

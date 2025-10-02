@@ -60,6 +60,13 @@ dask[dataframe]>=2023.10
 [all]
 Urban_Amenities2[dev,distributed,docs,orchestration]
 
+[api]
+fastapi>=0.110
+uvicorn[standard]>=0.24
+
+[cache]
+redis>=5.0
+
 [dev]
 pytest>=7.4
 pytest-cov>=4.1
