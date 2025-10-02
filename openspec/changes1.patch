@@ -1,0 +1,1941 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/README.md b/README.md
+index a302f6ed4f99307c838301176512118ae6bcbfbb..be0073b9b391d9b3bb0f94d1d0950c54dd6e3171 100644
+--- a/README.md
++++ b/README.md
+@@ -1,11 +1,30 @@
+-# Urban_Amenities2 (replace via scripts/init.sh)
++# AUCS Core Infrastructure
+
+-Baseline template for Python projects in Cursor on Ubuntu.
++This repository contains the foundational infrastructure for the Aker Urban
++Convenience Score (AUCS) model. It provides:
+
+-## Quick start (per project)
+-1. Run `scripts/init.sh <package_name> [python_version] "Description"`.
+-2. Open folder in Cursor (`cursor .`).
+-3. Ensure interpreter shows `.venv/bin/python`.
+-4. Run target tasks: **pytest**, **lint**, **format**.
++- Typed parameter management with Pydantic models and YAML loaders
++- H3-based spatial utilities for points, lines, and polygons
++- Pandera schemas covering spatial, travel, and scoring datasets
++- Reproducibility tracking via run manifests and data snapshots
++- Structlog-based logging helpers and a Typer CLI for configuration/run tasks
+
+-See `.cursor/rules`, `.vscode/*`, and `environment.yml` for configuration details.
++## Getting Started
++
++1. Install dependencies in your environment (see `pyproject.toml`).
++2. Review the example configuration at `configs/params_default.yml`.
++3. Validate the configuration:
++   ```bash
++   python -m Urban_Amenities2.cli.main config-validate configs/params_default.yml
++   ```
++4. Inspect a location's hexagon:
++   ```bash
++   python -m Urban_Amenities2.cli.main hex-info 39.7392 -104.9903
++   ```
++5. Initialise a run manifest:
++   ```bash
++   python -m Urban_Amenities2.cli.main run-init configs/params_default.yml --git-commit $(git rev-parse HEAD)
++   ```
++
++See `docs/architecture.md` and `docs/configuration.md` for detailed component
++and parameter overviews.
+diff --git a/configs/params_default.yml b/configs/params_default.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..4b463277d8c3d4d775a4ee7eff46e06ceef69f00
+--- /dev/null
++++ b/configs/params_default.yml
+@@ -0,0 +1,128 @@
++grid:
++  hex_size_m: 250
++  isochrone_minutes: [5, 10, 15]
++  search_cap_minutes: 45
++subscores:
++  EA: 20
++  LCA: 15
++  MUHAA: 10
++  JEA: 15
++  MORR: 10
++  CTE: 15
++  SOU: 15
++time_slices:
++  - id: am_peak
++    weight: 0.4
++    VOT_per_hour: 18
++  - id: off_peak
++    weight: 0.6
++    VOT_per_hour: 12
++modes:
++  walk:
++    name: walk
++    theta_iv: -0.1
++    theta_wait: -0.05
++    theta_walk: -0.2
++    transfer_penalty_min: 0
++    half_life_min: 30
++    beta0: 0
++    reliability_buffer: 2
++  transit:
++    name: transit
++    theta_iv: -0.2
++    theta_wait: -0.1
++    theta_walk: -0.15
++    transfer_penalty_min: 5
++    half_life_min: 40
++    beta0: -1
++    reliability_buffer: 4
++nests:
++  - id: sustainable
++    modes: [walk, transit]
++    mu: 0.5
++    eta: 0.7
++logit:
++  mu_top: 1.0
++carry_penalty:
++  category_multipliers:
++    groceries: 1.2
++    pharmacy: 1.1
++  per_mode_extra_minutes:
++    walk: 4
++    transit: 2
++quality:
++  lambda_weights:
++    rating: 0.7
++    freshness: 0.3
++  z_clip_abs: 3
++  opening_hours_bonus_xi: 0.5
++  dedupe_beta_per_km: 0.8
++categories:
++  essentials: [groceries, pharmacy]
++  leisure: [park, cafe]
++  ces_rho: 0.8
++  satiation_mode: anchor
++  satiation_targets:
++    groceries:
++      score: 80
++      value: 5
++    park:
++      score: 60
++      value: 3
++    cafe:
++      score: 50
++      value: 2
++  diversity:
++    essentials:
++      ramp_start: 2
++      ramp_end: 6
++      weight: 0.5
++    leisure:
++      ramp_start: 1
++      ramp_end: 4
++      weight: 0.6
++leisure_cross_category:
++  weights:
++    arts: 0.5
++    recreation: 0.5
++  elasticity_zeta: 0.9
++  novelty:
++    jazz: 1.2
++    climbing: 0.9
++hubs_airports:
++  hub_mass_lambda: 0.4
++  decay: 0.6
++  airport_weights:
++    DEN: 1.0
++jobs_education:
++  university_weight_kappa: 1.5
++  industry_weights:
++    tech: 0.6
++    healthcare: 0.4
++morr:
++  frequent_exposure: 0.7
++  span: 0.5
++  reliability: 0.6
++  redundancy: 0.3
++  micromobility: 0.4
++corridor:
++  max_paths: 3
++  stop_buffer_m: 150
++  detour_cap_min: 8
++  pair_categories: [groceries, transit_hub]
++  walk_decay_alpha: 0.05
++seasonality:
++  comfort_index_default: 0.7
++  weather_adjustments:
++    winter: -0.1
++    summer: 0.05
++normalization:
++  mode: metro
++  metro_percentile: 95
++  standards:
++    - name: denver
++      percentile: 90
++compute:
++  topK_per_category: 5
++  hub_max_minutes: 45
++  preload_hex_neighbors: true
+diff --git a/docs/architecture.md b/docs/architecture.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..7df673714c0b6fae6e0808cad9bf3c19d28ca7d9
+--- /dev/null
++++ b/docs/architecture.md
+@@ -0,0 +1,21 @@
++# AUCS Core Infrastructure Architecture
++
++The AUCS 2.0 core infrastructure layers the foundational services that future
++model components rely on. The package is organised by responsibility:
++
++- `Urban_Amenities2/config/`: typed configuration models powered by Pydantic
++  along with YAML loading helpers and deterministic hashing utilities.
++- `Urban_Amenities2/hex/`: reusable H3 helpers for coordinate conversion,
++  geometry lookup, and spatial aggregation (points, lines, polygons).
++- `Urban_Amenities2/schemas/`: Pandera DataFrame schemas that enforce column
++  presence and value ranges for spatial, travel, and scoring datasets.
++- `Urban_Amenities2/versioning/`: lightweight reproducibility primitives for
++  managing data snapshots and run manifests backed by JSONL storage.
++- `Urban_Amenities2/logging_utils.py`: structlog configuration and timing
++  helpers for consistent structured logging across the pipeline.
++- `Urban_Amenities2/cli/`: Typer-driven CLI that validates configurations,
++  inspects hexagons, and manages run manifests.
++
++Supporting assets include an example parameter configuration under
++`configs/params_default.yml` plus integration tests under `tests/` that cover
++end-to-end parameter loading, schema validation, spatial utilities, and the CLI.
+diff --git a/docs/configuration.md b/docs/configuration.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..229f5b80c2f6f67ae7fef1e156f82b8816f7c910
+--- /dev/null
++++ b/docs/configuration.md
+@@ -0,0 +1,36 @@
++# Parameter Configuration Reference
++
++The AUCS parameter loader expects a YAML document that mirrors the
++`Urban_Amenities2.config.params.AUCSParams` model. Key sections include:
++
++- **grid** – spatial resolution and search limits. `hex_size_m` controls the
++  H3 edge length while `isochrone_minutes` defines travel time rings.
++- **subscores** – weights for the AUCS subscores. They must sum to 100.
++- **time_slices** – time-of-day slices with relative weights and value of time
++  (VOT) figures.
++- **modes / nests / logit** – definitions required for the nested logit model,
++  including per-mode coefficients, decay half-life, and nest membership.
++- **carry_penalty / quality** – parameters for goods carrying penalties and POI
++  quality calculations.
++- **categories / leisure_cross_category** – category groupings, satiation
++  behaviour, and cross-category blending weights. Anchor satiation targets are
++  converted into kappa values automatically.
++- **hubs_airports / jobs_education / morr / corridor / seasonality** –
++  supporting subsystems for accessibility, resilience, and comfort.
++- **normalization / compute** – percentile targets and compute-time behaviour
++  such as caching and top-K selection.
++
++Use `configs/params_default.yml` as a starting point. Validate files via:
++
++```bash
++python -m Urban_Amenities2.cli.main config-validate configs/params_default.yml
++```
++
++Display a formatted summary:
++
++```bash
++python -m Urban_Amenities2.cli.main config-show configs/params_default.yml
++```
++
++The loader computes a deterministic hash for reproducibility; downstream run
++manifests store this alongside data snapshot IDs.
+diff --git a/openspec/changes/add-core-infrastructure/tasks.md b/openspec/changes/add-core-infrastructure/tasks.md
+index 3e0a3d61801477b1dd7e47ce82d5deef50bd535f..c1ad2bc7e695bd97126b94500d210f464e057a79 100644
+--- a/openspec/changes/add-core-infrastructure/tasks.md
++++ b/openspec/changes/add-core-infrastructure/tasks.md
+@@ -1,102 +1,102 @@
+ ## 1. Project Setup & Dependencies
+
+-- [ ] 1.1 Create `pyproject.toml` with core dependencies (h3, pydantic>=2.0, ruamel.yaml, pandera, structlog, typer, numpy, pandas)
+-- [ ] 1.2 Set up `src/Urban_Amenities2/` package structure
+-- [ ] 1.3 Configure pytest, ruff, black in pyproject.toml
+-- [ ] 1.4 Create initial `README.md` with project overview
++- [x] 1.1 Create `pyproject.toml` with core dependencies (h3, pydantic>=2.0, ruamel.yaml, pandera, structlog, typer, numpy, pandas)
++- [x] 1.2 Set up `src/Urban_Amenities2/` package structure
++- [x] 1.3 Configure pytest, ruff, black in pyproject.toml
++- [x] 1.4 Create initial `README.md` with project overview
+
+ ## 2. Parameter Management (Pydantic Models)
+
+-- [ ] 2.1 Create `src/Urban_Amenities2/config/params.py` with models for:
+-  - [ ] 2.1.1 GridConfig (hex_size_m, isochrone_minutes, search_cap_minutes)
+-  - [ ] 2.1.2 SubscoreWeights (EA, LCA, MUHAA, JEA, MORR, CTE, SOU summing to 100)
+-  - [ ] 2.1.3 TimeSliceConfig (id, weight, VOT_per_hour)
+-  - [ ] 2.1.4 ModeConfig (theta_iv, theta_wait, theta_walk, transfer_penalty_min, half_life_min, beta0, reliability_buffer, etc.)
+-  - [ ] 2.1.5 NestConfig (modes list, mu, eta)
+-  - [ ] 2.1.6 LogitConfig (mu_top)
+-  - [ ] 2.1.7 CarryPenaltyConfig (category_multipliers, per_mode_extra_minutes)
+-  - [ ] 2.1.8 QualityConfig (lambda weights, z_clip_abs, opening_hours_bonus_xi, dedupe_beta_per_km)
+-  - [ ] 2.1.9 CategoryConfig (essentials list, leisure list, ces_rho, satiation_kappa, diversity)
+-  - [ ] 2.1.10 LeisureCrossCategoryConfig (weights, elasticity_zeta, novelty)
+-  - [ ] 2.1.11 HubsAirportsConfig (hub_mass_lambda, decay, airport weights)
+-  - [ ] 2.1.12 JobsEducationConfig (university_weight_kappa, industry_weights)
+-  - [ ] 2.1.13 MORRConfig (frequent_exposure, span, reliability, redundancy, micromobility)
+-  - [ ] 2.1.14 CorridorConfig (max_paths, stop_buffer_m, detour_cap_min, pair_categories, walk_decay_alpha)
+-  - [ ] 2.1.15 SeasonalityConfig (comfort defaults)
+-  - [ ] 2.1.16 NormalizationConfig (mode, metro_percentile, standards)
+-  - [ ] 2.1.17 ComputeConfig (topK_per_category, hub_max_minutes, etc.)
+-- [ ] 2.2 Create root `AUCSParams` model composing all sub-configs
+-- [ ] 2.3 Implement YAML loader with validation in `src/Urban_Amenities2/config/loader.py`
+-- [ ] 2.4 Add parameter versioning (hash computation from canonical YAML)
+-- [ ] 2.5 Write tests for parameter loading and validation
++- [x] 2.1 Create `src/Urban_Amenities2/config/params.py` with models for:
++  - [x] 2.1.1 GridConfig (hex_size_m, isochrone_minutes, search_cap_minutes)
++  - [x] 2.1.2 SubscoreWeights (EA, LCA, MUHAA, JEA, MORR, CTE, SOU summing to 100)
++  - [x] 2.1.3 TimeSliceConfig (id, weight, VOT_per_hour)
++  - [x] 2.1.4 ModeConfig (theta_iv, theta_wait, theta_walk, transfer_penalty_min, half_life_min, beta0, reliability_buffer, etc.)
++  - [x] 2.1.5 NestConfig (modes list, mu, eta)
++  - [x] 2.1.6 LogitConfig (mu_top)
++  - [x] 2.1.7 CarryPenaltyConfig (category_multipliers, per_mode_extra_minutes)
++  - [x] 2.1.8 QualityConfig (lambda weights, z_clip_abs, opening_hours_bonus_xi, dedupe_beta_per_km)
++  - [x] 2.1.9 CategoryConfig (essentials list, leisure list, ces_rho, satiation_kappa, diversity)
++  - [x] 2.1.10 LeisureCrossCategoryConfig (weights, elasticity_zeta, novelty)
++  - [x] 2.1.11 HubsAirportsConfig (hub_mass_lambda, decay, airport weights)
++  - [x] 2.1.12 JobsEducationConfig (university_weight_kappa, industry_weights)
++  - [x] 2.1.13 MORRConfig (frequent_exposure, span, reliability, redundancy, micromobility)
++  - [x] 2.1.14 CorridorConfig (max_paths, stop_buffer_m, detour_cap_min, pair_categories, walk_decay_alpha)
++  - [x] 2.1.15 SeasonalityConfig (comfort defaults)
++  - [x] 2.1.16 NormalizationConfig (mode, metro_percentile, standards)
++  - [x] 2.1.17 ComputeConfig (topK_per_category, hub_max_minutes, etc.)
++- [x] 2.2 Create root `AUCSParams` model composing all sub-configs
++- [x] 2.3 Implement YAML loader with validation in `src/Urban_Amenities2/config/loader.py`
++- [x] 2.4 Add parameter versioning (hash computation from canonical YAML)
++- [x] 2.5 Write tests for parameter loading and validation
+
+ ## 3. H3 Spatial Grid Operations
+
+-- [ ] 3.1 Create `src/Urban_Amenities2/hex/core.py` with:
+-  - [ ] 3.1.1 Function to convert lat/lon to H3 cell at resolution 9
+-  - [ ] 3.1.2 Function to get hex centroid
+-  - [ ] 3.1.3 Function to get hex boundary polygon
+-  - [ ] 3.1.4 Function to compute hex-to-hex distance
+-  - [ ] 3.1.5 Function to get k-ring neighbors
+-- [ ] 3.2 Create `src/Urban_Amenities2/hex/aggregation.py` with:
+-  - [ ] 3.2.1 Spatial join: points to hexes
+-  - [ ] 3.2.2 Spatial join: lines to hexes (for segments)
+-  - [ ] 3.2.3 Spatial join: polygons to hexes (area-weighted)
+-  - [ ] 3.2.4 Hex-level aggregation utilities
+-- [ ] 3.3 Add performance optimizations (vectorized operations, caching)
+-- [ ] 3.4 Write comprehensive tests for H3 operations
++- [x] 3.1 Create `src/Urban_Amenities2/hex/core.py` with:
++  - [x] 3.1.1 Function to convert lat/lon to H3 cell at resolution 9
++  - [x] 3.1.2 Function to get hex centroid
++  - [x] 3.1.3 Function to get hex boundary polygon
++  - [x] 3.1.4 Function to compute hex-to-hex distance
++  - [x] 3.1.5 Function to get k-ring neighbors
++- [x] 3.2 Create `src/Urban_Amenities2/hex/aggregation.py` with:
++  - [x] 3.2.1 Spatial join: points to hexes
++  - [x] 3.2.2 Spatial join: lines to hexes (for segments)
++  - [x] 3.2.3 Spatial join: polygons to hexes (area-weighted)
++  - [x] 3.2.4 Hex-level aggregation utilities
++- [x] 3.3 Add performance optimizations (vectorized operations, caching)
++- [x] 3.4 Write comprehensive tests for H3 operations
+
+ ## 4. Data Schemas & Validation
+
+-- [ ] 4.1 Create `src/Urban_Amenities2/schemas/spatial.py` with Pandera schemas for:
+-  - [ ] 4.1.1 HexIndex (hex_id, centroid_lat, centroid_lon, geometry)
+-  - [ ] 4.1.2 POI (poi_id, hex_id, aucstype, name, brand, lat, lon, quality_attrs)
+-  - [ ] 4.1.3 NetworkSegment (segment_id, hex_id, geometry, mode_flags, speed)
+-- [ ] 4.2 Create `src/Urban_Amenities2/schemas/travel.py` with schemas for:
+-  - [ ] 4.2.1 TravelTimeSkim (origin_hex, dest_hex, mode, period, duration_min, distance_m, ok)
+-  - [ ] 4.2.2 TransitItinerary (origin_hex, dest_hex, period, walk_time, transit_time, wait_time, transfers, fare_usd)
+-- [ ] 4.3 Create `src/Urban_Amenities2/schemas/scores.py` with schemas for:
+-  - [ ] 4.3.1 CategoryScore (hex_id, category, raw_score, normalized_score)
+-  - [ ] 4.3.2 Subscore (hex_id, subscore_name, value, contributors)
+-  - [ ] 4.3.3 FinalScore (hex_id, aucs, subscores_dict, metadata)
+-- [ ] 4.4 Add validation decorators for all data pipeline steps
+-- [ ] 4.5 Write tests for schema validation
++- [x] 4.1 Create `src/Urban_Amenities2/schemas/spatial.py` with Pandera schemas for:
++  - [x] 4.1.1 HexIndex (hex_id, centroid_lat, centroid_lon, geometry)
++  - [x] 4.1.2 POI (poi_id, hex_id, aucstype, name, brand, lat, lon, quality_attrs)
++  - [x] 4.1.3 NetworkSegment (segment_id, hex_id, geometry, mode_flags, speed)
++- [x] 4.2 Create `src/Urban_Amenities2/schemas/travel.py` with schemas for:
++  - [x] 4.2.1 TravelTimeSkim (origin_hex, dest_hex, mode, period, duration_min, distance_m, ok)
++  - [x] 4.2.2 TransitItinerary (origin_hex, dest_hex, period, walk_time, transit_time, wait_time, transfers, fare_usd)
++- [x] 4.3 Create `src/Urban_Amenities2/schemas/scores.py` with schemas for:
++  - [x] 4.3.1 CategoryScore (hex_id, category, raw_score, normalized_score)
++  - [x] 4.3.2 Subscore (hex_id, subscore_name, value, contributors)
++  - [x] 4.3.3 FinalScore (hex_id, aucs, subscores_dict, metadata)
++- [x] 4.4 Add validation decorators for all data pipeline steps
++- [x] 4.5 Write tests for schema validation
+
+ ## 5. Versioning & Reproducibility
+
+-- [ ] 5.1 Create `src/Urban_Amenities2/versioning/manifest.py` with:
+-  - [ ] 5.1.1 RunManifest model (run_id, timestamp, param_hash, data_snapshot_ids, git_commit)
+-  - [ ] 5.1.2 Function to create run manifest
+-  - [ ] 5.1.3 Function to serialize/deserialize manifests
+-- [ ] 5.2 Create `src/Urban_Amenities2/versioning/data_snapshot.py` with:
+-  - [ ] 5.2.1 DataSnapshot model (source_name, version, download_date, file_hash)
+-  - [ ] 5.2.2 Snapshot registration utilities
+-- [ ] 5.3 Implement run tracking storage (local JSONL or SQLite)
+-- [ ] 5.4 Add CLI commands for run management (`aucs run list`, `aucs run show`)
+-- [ ] 5.5 Write tests for versioning system
++- [x] 5.1 Create `src/Urban_Amenities2/versioning/manifest.py` with:
++  - [x] 5.1.1 RunManifest model (run_id, timestamp, param_hash, data_snapshot_ids, git_commit)
++  - [x] 5.1.2 Function to create run manifest
++  - [x] 5.1.3 Function to serialize/deserialize manifests
++- [x] 5.2 Create `src/Urban_Amenities2/versioning/data_snapshot.py` with:
++  - [x] 5.2.1 DataSnapshot model (source_name, version, download_date, file_hash)
++  - [x] 5.2.2 Snapshot registration utilities
++- [x] 5.3 Implement run tracking storage (local JSONL or SQLite)
++- [x] 5.4 Add CLI commands for run management (`aucs run list`, `aucs run show`)
++- [x] 5.5 Write tests for versioning system
+
+ ## 6. Logging & Error Handling
+
+-- [ ] 6.1 Configure structlog with JSON formatter for production
+-- [ ] 6.2 Create custom logger with context (run_id, stage, hex_id)
+-- [ ] 6.3 Define standard log levels and messages
+-- [ ] 6.4 Add performance logging utilities (timing decorators)
+-- [ ] 6.5 Create error classification system (data errors, computation errors, validation errors)
++- [x] 6.1 Configure structlog with JSON formatter for production
++- [x] 6.2 Create custom logger with context (run_id, stage, hex_id)
++- [x] 6.3 Define standard log levels and messages
++- [x] 6.4 Add performance logging utilities (timing decorators)
++- [x] 6.5 Create error classification system (data errors, computation errors, validation errors)
+
+ ## 7. CLI Foundation
+
+-- [ ] 7.1 Create `src/Urban_Amenities2/cli/main.py` with Typer app
+-- [ ] 7.2 Add `aucs config validate <yaml>` command
+-- [ ] 7.3 Add `aucs config show` command to display loaded params
+-- [ ] 7.4 Add `aucs hex info <lat> <lon>` command for spatial debugging
+-- [ ] 7.5 Add `aucs run init` command to start new scoring run
+-- [ ] 7.6 Write tests for CLI commands
++- [x] 7.1 Create `src/Urban_Amenities2/cli/main.py` with Typer app
++- [x] 7.2 Add `aucs config validate <yaml>` command
++- [x] 7.3 Add `aucs config show` command to display loaded params
++- [x] 7.4 Add `aucs hex info <lat> <lon>` command for spatial debugging
++- [x] 7.5 Add `aucs run init` command to start new scoring run
++- [x] 7.6 Write tests for CLI commands
+
+ ## 8. Integration & Documentation
+
+-- [ ] 8.1 Write `docs/architecture.md` explaining core systems
+-- [ ] 8.2 Write `docs/configuration.md` documenting all parameters
+-- [ ] 8.3 Create example parameter YAML in `configs/params_default.yml`
+-- [ ] 8.4 Add docstrings to all public functions
+-- [ ] 8.5 Create integration tests for the full parameter→schema pipeline
+-- [ ] 8.6 Update main README with setup instructions
++- [x] 8.1 Write `docs/architecture.md` explaining core systems
++- [x] 8.2 Write `docs/configuration.md` documenting all parameters
++- [x] 8.3 Create example parameter YAML in `configs/params_default.yml`
++- [x] 8.4 Add docstrings to all public functions
++- [x] 8.5 Create integration tests for the full parameter→schema pipeline
++- [x] 8.6 Update main README with setup instructions
+diff --git a/pyproject.toml b/pyproject.toml
+index b79ae95c533f2acf4d3361d6cfbca64cca3f5daa..23165aab9c4afaf5586aa1c9d104edfd412249b2 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -62,31 +62,37 @@ dependencies = [
+   "joblib",
+   "pytest",
+   "hypothesis",
+   "mkdocs-material",
+   "tqdm",
+   "rich",
+
+   # Visualization
+   "matplotlib",
+   "altair",
+   "folium",
+   "pydeck",
+   "contextily",
+
+   # Parallel / scaling options
+   "dask[dataframe]",
+   "ray",
+ ]
+
+ [tool.black]
+ line-length = 100
+
+ [tool.ruff]
+ line-length = 100
+ target-version = "py312"
++
++[tool.ruff.lint]
+ extend-select = ["I"]
+
++[tool.pytest.ini_options]
++addopts = "-q"
++testpaths = ["tests"]
++
+ [tool.mypy]
+ python_version = "3.12"
+ strict = true
+
+diff --git a/src/Urban_Amenities2/__init__.py b/src/Urban_Amenities2/__init__.py
+index a116ed9161cc1f563232ffc4e596adf4821438e8..b025ea23ec3bfe75071a8a56793aa7b790b7c14e 100644
+--- a/src/Urban_Amenities2/__init__.py
++++ b/src/Urban_Amenities2/__init__.py
+@@ -1,2 +1,15 @@
+-def ping() -> str:
+-    return "pong"
++"""Urban Amenities core infrastructure package."""
++from __future__ import annotations
++
++from .config.loader import compute_param_hash, load_and_document, load_params
++from .config.params import AUCSParams
++from .logging_utils import configure_logging, get_logger
++
++__all__ = [
++    "AUCSParams",
++    "compute_param_hash",
++    "configure_logging",
++    "get_logger",
++    "load_and_document",
++    "load_params",
++]
+diff --git a/src/Urban_Amenities2/cli/__init__.py b/src/Urban_Amenities2/cli/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/src/Urban_Amenities2/cli/main.py b/src/Urban_Amenities2/cli/main.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1a773989c5f3162d63828608ba6dae583ccf93b4
+--- /dev/null
++++ b/src/Urban_Amenities2/cli/main.py
+@@ -0,0 +1,100 @@
++"""Typer based command line interface for AUCS core infrastructure."""
++from __future__ import annotations
++
++from pathlib import Path
++from typing import Optional
++
++import typer
++
++from ..config.loader import ParameterLoadError, load_and_document, load_params
++from ..hex.core import hex_neighbors, latlon_to_hex
++from ..logging_utils import configure_logging, get_logger
++from ..versioning.manifest import create_run_manifest, get_manifest, list_manifests
++
++app = typer.Typer(help="AUCS core infrastructure utilities")
++configure_logging()
++logger = get_logger("aucs.cli")
++
++RUN_STORAGE = Path("runs/manifests.jsonl")
++
++config_app = typer.Typer(help="Configuration utilities")
++hex_app = typer.Typer(help="Hexagon helpers")
++run_app = typer.Typer(help="Run manifest management")
++
++
++@config_app.command("validate")
++def config_validate(path: Path) -> None:
++    """Validate a parameter configuration file."""
++
++    try:
++        load_params(path)
++        typer.echo(f"Configuration {path} is valid")
++    except ParameterLoadError as exc:
++        logger.error("config_validate_failed", path=str(path), error=str(exc))
++        raise typer.Exit(code=1) from exc
++
++
++@config_app.command("show")
++def config_show(path: Path) -> None:
++    """Display parameter configuration in a human readable form."""
++
++    try:
++        summary = load_and_document(path)
++    except ParameterLoadError as exc:
++        logger.error("config_show_failed", path=str(path), error=str(exc))
++        raise typer.Exit(code=1) from exc
++    typer.echo(summary)
++
++
++@hex_app.command("info")
++def hex_info(lat: float, lon: float, k: int = typer.Option(1, help="Neighbourhood size")) -> None:
++    """Display information about the hexagon covering the provided coordinates."""
++
++    hex_id = latlon_to_hex(lat, lon)
++    neighbours = list(hex_neighbors(hex_id, k))
++    typer.echo(f"hex: {hex_id}")
++    typer.echo("neighbors:")
++    for neighbor in neighbours:
++        typer.echo(f"  - {neighbor}")
++
++
++@run_app.command("init")
++def run_init(params: Path, git_commit: Optional[str] = typer.Option(None)) -> None:
++    """Initialise a new scoring run manifest."""
++
++    try:
++        _, param_hash = load_params(params)
++    except ParameterLoadError as exc:
++        logger.error("run_init_failed", path=str(params), error=str(exc))
++        raise typer.Exit(code=1) from exc
++
++    manifest = create_run_manifest(param_hash, data_snapshot_ids=[], git_commit=git_commit, storage=RUN_STORAGE)
++    typer.echo(f"Created run {manifest.run_id} with hash {manifest.param_hash}")
++
++
++@run_app.command("show")
++def run_show(run_id: str) -> None:
++    manifest = get_manifest(run_id, RUN_STORAGE)
++    if not manifest:
++        typer.echo(f"Run {run_id} not found")
++        raise typer.Exit(code=1)
++    typer.echo(manifest.to_json())
++
++
++@run_app.command("list")
++def run_list() -> None:
++    manifests = list_manifests(RUN_STORAGE)
++    if not manifests:
++        typer.echo("No runs recorded")
++        return
++    for manifest in manifests:
++        typer.echo(manifest.to_json())
++
++
++app.add_typer(config_app, name="config")
++app.add_typer(hex_app, name="hex")
++app.add_typer(run_app, name="run")
++
++
++if __name__ == "__main__":
++    app()
+diff --git a/src/Urban_Amenities2/config/__init__.py b/src/Urban_Amenities2/config/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/src/Urban_Amenities2/config/loader.py b/src/Urban_Amenities2/config/loader.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1c7b97a69b31617d2aa95d3942e11b3a0bf5c5ae
+--- /dev/null
++++ b/src/Urban_Amenities2/config/loader.py
+@@ -0,0 +1,97 @@
++"""Utilities for loading AUCS parameter configuration from YAML."""
++from __future__ import annotations
++
++import hashlib
++import json
++from pathlib import Path
++from typing import Any, Tuple
++
++from pydantic import ValidationError
++from ruamel.yaml import YAML
++
++from ..errors import ConfigurationError
++from .params import AUCSParams
++
++_yaml = YAML(typ="safe")
++_yaml.default_flow_style = False
++
++
++class ParameterLoadError(ConfigurationError):
++    """Raised when configuration files cannot be parsed or validated."""
++
++def _normalise(obj: Any) -> Any:
++    """Convert nested Pydantic/complex objects to plain python for hashing."""
++
++    if isinstance(obj, AUCSParams):
++        return _normalise(json.loads(obj.model_dump_json()))
++    if isinstance(obj, dict):
++        return {key: _normalise(value) for key, value in sorted(obj.items())}
++    if isinstance(obj, list):
++        return [_normalise(value) for value in obj]
++    return obj
++
++
++def compute_param_hash(params: AUCSParams | dict[str, Any]) -> str:
++    """Return a deterministic SHA256 hash for the given configuration."""
++
++    normalized = _normalise(params)
++    payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
++    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
++
++
++def load_params(path: str | Path) -> Tuple[AUCSParams, str]:
++    """Load a YAML configuration file and return the parsed params and hash."""
++
++    path = Path(path)
++    if not path.exists():
++        raise ParameterLoadError(f"Parameter file {path} does not exist")
++
++    try:
++        data = _yaml.load(path.read_text())
++    except Exception as exc:  # pragma: no cover - ruamel provides rich errors
++        raise ParameterLoadError(f"Failed to parse YAML: {exc}") from exc
++
++    if not isinstance(data, dict):
++        raise ParameterLoadError("Parameter file must define a mapping at the top level")
++
++    try:
++        params = AUCSParams.model_validate(data)
++    except ValidationError as exc:
++        raise ParameterLoadError(str(exc)) from exc
++
++    return params, compute_param_hash(params)
++
++
++def load_and_document(path: str | Path) -> str:
++    """Return a human readable summary of the configuration."""
++
++    params, param_hash = load_params(path)
++    lines = ["AUCS Parameters", f"hash: {param_hash}"]
++    lines.append("")
++
++    lines.append("Subscore Weights:")
++    for name, value in params.subscores.model_dump().items():
++        lines.append(f"  - {name}: {value}")
++
++    lines.append("")
++    lines.append("Modes:")
++    for mode_name, mode in params.modes.items():
++        lines.append(
++            f"  - {mode_name}: theta_iv={mode.theta_iv}, theta_wait={mode.theta_wait}, alpha={mode.decay_alpha:.4f}"
++        )
++
++    lines.append("")
++    lines.append("Time slices:")
++    for slice_cfg in params.time_slices:
++        lines.append(
++            f"  - {slice_cfg.id}: weight={slice_cfg.weight}, VOT={slice_cfg.vot_per_hour}"
++        )
++
++    derived_satiation = params.derived_satiation()
++    if derived_satiation:
++        lines.append("")
++        lines.append("Derived satiation kappas:")
++        for category, value in derived_satiation.items():
++            lines.append(f"  - {category}: {value:.4f}")
++
++    return "\n".join(lines)
+diff --git a/src/Urban_Amenities2/config/params.py b/src/Urban_Amenities2/config/params.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..94d121af4b43ca7cf6ea0bb1bc491ca4eacefce3
+--- /dev/null
++++ b/src/Urban_Amenities2/config/params.py
+@@ -0,0 +1,267 @@
++"""Pydantic models describing AUCS 2.0 configuration."""
++from __future__ import annotations
++
++from functools import cached_property
++from typing import Dict, Iterable, List, Literal, Optional
++
++from pydantic import BaseModel, Field, model_validator
++
++
++class _BaseConfig(BaseModel):
++    """Base model that forbids unknown fields and allows reassignment validation."""
++
++    model_config = {
++        "extra": "forbid",
++        "validate_assignment": True,
++    }
++
++
++class GridConfig(_BaseConfig):
++    """Configuration for the spatial grid resolution and search limits."""
++
++    hex_size_m: float = Field(..., gt=0, description="Approximate edge length of the grid in metres")
++    isochrone_minutes: List[int] = Field(..., min_length=1, description="Minute values for isochrone rings")
++    search_cap_minutes: int = Field(..., gt=0, description="Maximum travel minutes to consider during searches")
++
++    @model_validator(mode="after")
++    def _validate_isochrones(self) -> GridConfig:
++        if sorted(self.isochrone_minutes) != self.isochrone_minutes:
++            msg = "isochrone_minutes must be sorted ascending"
++            raise ValueError(msg)
++        return self
++
++
++class SubscoreWeights(_BaseConfig):
++    """Weights for each subscore. They must sum to 100."""
++
++    EA: float
++    LCA: float
++    MUHAA: float
++    JEA: float
++    MORR: float
++    CTE: float
++    SOU: float
++
++    @model_validator(mode="after")
++    def _check_total(cls, values: SubscoreWeights) -> SubscoreWeights:
++        total = sum(
++            getattr(values, field)
++            for field in ("EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU")
++        )
++        if round(total, 2) != 100.0:
++            msg = f"Subscore weights must total 100, received {total:.2f}"
++            raise ValueError(msg)
++        return values
++
++
++class TimeSliceConfig(_BaseConfig):
++    """Configuration for a time-of-day slice used in model computation."""
++
++    id: str
++    weight: float = Field(..., gt=0)
++    vot_per_hour: float = Field(..., gt=0, alias="VOT_per_hour")
++
++
++class ModeConfig(_BaseConfig):
++    """Parameters controlling a transport mode in the nested logit."""
++
++    name: str
++    theta_iv: float
++    theta_wait: float
++    theta_walk: float
++    transfer_penalty_min: float = Field(..., ge=0)
++    half_life_min: float = Field(..., gt=0)
++    beta0: float
++    reliability_buffer: float = Field(0.0, ge=0)
++    max_access_distance_m: Optional[float] = Field(None, gt=0)
++    enabled: bool = True
++
++    @cached_property
++    def decay_alpha(self) -> float:
++        """Continuous-time decay coefficient derived from the half-life."""
++
++        from math import log
++
++        return log(2.0) / self.half_life_min
++
++
++class NestConfig(_BaseConfig):
++    """Grouping of modes for the nested logit."""
++
++    id: str
++    modes: List[str] = Field(..., min_length=1)
++    mu: float = Field(..., gt=0)
++    eta: float = Field(..., gt=0)
++
++
++class LogitConfig(_BaseConfig):
++    """Configuration for the top-level logit."""
++
++    mu_top: float = Field(..., gt=0)
++
++
++class CarryPenaltyConfig(_BaseConfig):
++    """Penalties applied when users have to carry goods."""
++
++    category_multipliers: Dict[str, float]
++    per_mode_extra_minutes: Dict[str, float]
++
++
++class QualityConfig(_BaseConfig):
++    """Quality scoring parameters."""
++
++    lambda_weights: Dict[str, float]
++    z_clip_abs: float = Field(..., ge=0)
++    opening_hours_bonus_xi: float = Field(..., ge=0)
++    dedupe_beta_per_km: float = Field(..., ge=0)
++
++
++class CategoryDiversityConfig(_BaseConfig):
++    """Diversity configuration for leisure and essentials."""
++
++    ramp_start: float = Field(..., ge=0)
++    ramp_end: float = Field(..., ge=0)
++    weight: float = Field(..., ge=0)
++
++
++class CategoryConfig(_BaseConfig):
++    """Category level configuration."""
++
++    essentials: List[str]
++    leisure: List[str]
++    ces_rho: float
++    satiation_mode: Literal["none", "anchor", "direct"] = "none"
++    satiation_kappa: Dict[str, float] | float | None = None
++    satiation_targets: Optional[Dict[str, Dict[str, float]]] = None
++    diversity: Dict[str, CategoryDiversityConfig] = Field(default_factory=dict)
++
++    def derived_satiation(self) -> Dict[str, float]:
++        """Compute satiation kappa per category based on the selected mode."""
++
++        from math import log
++
++        if self.satiation_mode == "direct":
++            if isinstance(self.satiation_kappa, dict):
++                return self.satiation_kappa
++            if isinstance(self.satiation_kappa, (int, float)):
++                return {name: float(self.satiation_kappa) for name in self.essentials + self.leisure}
++            msg = "Direct satiation requires satiation_kappa values"
++            raise ValueError(msg)
++        if self.satiation_mode == "anchor":
++            if not self.satiation_targets:
++                msg = "Anchor satiation requires satiation_targets"
++                raise ValueError(msg)
++            output: Dict[str, float] = {}
++            for category, target in self.satiation_targets.items():
++                score = target.get("score")
++                value = target.get("value")
++                if score is None or value is None:
++                    msg = f"Missing score/value for satiation target {category}"
++                    raise ValueError(msg)
++                output[category] = -log(1 - score / 100.0) / value
++            return output
++        return {}
++
++
++class LeisureCrossCategoryConfig(_BaseConfig):
++    weights: Dict[str, float]
++    elasticity_zeta: float
++    novelty: Dict[str, float] = Field(default_factory=dict)
++
++
++class HubsAirportsConfig(_BaseConfig):
++    hub_mass_lambda: float
++    decay: float
++    airport_weights: Dict[str, float]
++
++
++class JobsEducationConfig(_BaseConfig):
++    university_weight_kappa: float
++    industry_weights: Dict[str, float]
++
++
++class MORRConfig(_BaseConfig):
++    frequent_exposure: float
++    span: float
++    reliability: float
++    redundancy: float
++    micromobility: float
++
++
++class CorridorConfig(_BaseConfig):
++    max_paths: int = Field(..., gt=0)
++    stop_buffer_m: float = Field(..., ge=0)
++    detour_cap_min: float = Field(..., ge=0)
++    pair_categories: List[str] = Field(default_factory=list)
++    walk_decay_alpha: float = Field(..., ge=0)
++
++
++class SeasonalityConfig(_BaseConfig):
++    comfort_index_default: float
++    weather_adjustments: Dict[str, float] = Field(default_factory=dict)
++
++
++class NormalizationStandard(_BaseConfig):
++    name: str
++    percentile: float
++
++
++class NormalizationConfig(_BaseConfig):
++    mode: Literal["metro", "global"] = "metro"
++    metro_percentile: float = Field(95.0, ge=0, le=100)
++    standards: List[NormalizationStandard] = Field(default_factory=list)
++
++
++class ComputeConfig(_BaseConfig):
++    topK_per_category: int = Field(..., gt=0)
++    hub_max_minutes: int = Field(..., gt=0)
++    preload_hex_neighbors: bool = True
++    cache_dir: Optional[str] = None
++
++
++class AUCSParams(_BaseConfig):
++    """Root configuration object containing all parameters."""
++
++    grid: GridConfig
++    subscores: SubscoreWeights
++    time_slices: List[TimeSliceConfig]
++    modes: Dict[str, ModeConfig]
++    nests: List[NestConfig]
++    logit: LogitConfig
++    carry_penalty: CarryPenaltyConfig
++    quality: QualityConfig
++    categories: CategoryConfig
++    leisure_cross_category: LeisureCrossCategoryConfig
++    hubs_airports: HubsAirportsConfig
++    jobs_education: JobsEducationConfig
++    morr: MORRConfig
++    corridor: CorridorConfig
++    seasonality: SeasonalityConfig
++    normalization: NormalizationConfig
++    compute: ComputeConfig
++
++    @model_validator(mode="after")
++    def _validate_relationships(self) -> AUCSParams:
++        defined_modes = set(self.modes.keys())
++        for nest in self.nests:
++            missing = set(nest.modes) - defined_modes
++            if missing:
++                msg = f"Nest {nest.id} references undefined modes: {sorted(missing)}"
++                raise ValueError(msg)
++        return self
++
++    def derived_mode_alphas(self) -> Dict[str, float]:
++        """Return the decay coefficient per mode."""
++
++        return {mode_name: mode.decay_alpha for mode_name, mode in self.modes.items()}
++
++    def derived_satiation(self) -> Dict[str, float]:
++        """Expose derived satiation kappas from the category configuration."""
++
++        return self.categories.derived_satiation()
++
++    def iter_time_slice_ids(self) -> Iterable[str]:
++        """Yield all configured time slice identifiers."""
++
++        for time_slice in self.time_slices:
++            yield time_slice.id
+diff --git a/src/Urban_Amenities2/errors.py b/src/Urban_Amenities2/errors.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d931b9e1ba9ef65d7748c5f1ec1f9467ddac427b
+--- /dev/null
++++ b/src/Urban_Amenities2/errors.py
+@@ -0,0 +1,40 @@
++"""Error classification helpers for AUCS pipelines."""
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum
++from typing import Any
++
++
++class ErrorCategory(str, Enum):
++    DATA = "data"
++    CONFIG = "config"
++    COMPUTATION = "computation"
++
++
++@dataclass(slots=True)
++class ClassifiedError(Exception):
++    category: ErrorCategory
++    message: str
++    context: dict[str, Any] | None = None
++
++    def __str__(self) -> str:  # pragma: no cover - trivial
++        base = f"[{self.category.value}] {self.message}"
++        if self.context:
++            return f"{base} | context={self.context}"
++        return base
++
++
++class DataQualityError(ClassifiedError):
++    def __init__(self, message: str, **context: Any) -> None:
++        super().__init__(ErrorCategory.DATA, message, context or None)
++
++
++class ConfigurationError(ClassifiedError):
++    def __init__(self, message: str, **context: Any) -> None:
++        super().__init__(ErrorCategory.CONFIG, message, context or None)
++
++
++class ComputationError(ClassifiedError):
++    def __init__(self, message: str, **context: Any) -> None:
++        super().__init__(ErrorCategory.COMPUTATION, message, context or None)
+diff --git a/src/Urban_Amenities2/hex/__init__.py b/src/Urban_Amenities2/hex/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/src/Urban_Amenities2/hex/aggregation.py b/src/Urban_Amenities2/hex/aggregation.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..34c3b1202e9031d1d9316fdeebd7128ea6be1ba9
+--- /dev/null
++++ b/src/Urban_Amenities2/hex/aggregation.py
+@@ -0,0 +1,98 @@
++"""Spatial aggregation helpers built on top of H3."""
++from __future__ import annotations
++
++from typing import Iterable
++
++import numpy as np
++import pandas as pd
++from shapely.geometry import LineString, Polygon
++
++from .core import RESOLUTION, hex_boundary, hex_neighbors, latlon_to_hex
++
++
++def points_to_hex(
++    frame: pd.DataFrame,
++    lat_column: str = "lat",
++    lon_column: str = "lon",
++    hex_column: str = "hex_id",
++    resolution: int = RESOLUTION,
++) -> pd.DataFrame:
++    """Assign a hex_id to each point feature using vectorised operations."""
++
++    lats = frame[lat_column].to_numpy(dtype=float)
++    lons = frame[lon_column].to_numpy(dtype=float)
++    vectorised = np.vectorize(lambda lat, lon: latlon_to_hex(lat, lon, resolution))
++    hexes = vectorised(lats, lons)
++    frame = frame.copy()
++    frame[hex_column] = hexes
++    return frame
++
++
++def lines_to_hex(
++    frame: pd.DataFrame,
++    geometry_column: str = "geometry",
++    hex_column: str = "hex_id",
++    resolution: int = RESOLUTION,
++) -> pd.DataFrame:
++    """Assign line features to hexagons using midpoint sampling."""
++
++    def _line_to_hex(line: LineString) -> str:
++        if not isinstance(line, LineString):
++            raise TypeError("Line geometry must be a shapely LineString")
++        midpoint = line.interpolate(0.5, normalized=True)
++        return latlon_to_hex(midpoint.y, midpoint.x, resolution)
++
++    frame = frame.copy()
++    frame[hex_column] = frame[geometry_column].map(_line_to_hex)
++    return frame
++
++
++def polygons_to_hex(
++    frame: pd.DataFrame,
++    geometry_column: str = "geometry",
++    hex_column: str = "hex_id",
++    value_column: str = "value",
++    resolution: int = RESOLUTION,
++) -> pd.DataFrame:
++    """Explode polygons into hexagons with area weighted values."""
++
++    records: list[dict[str, object]] = []
++    for _, row in frame.iterrows():
++        polygon = row[geometry_column]
++        if not isinstance(polygon, Polygon):
++            raise TypeError("Polygon geometry must be a shapely Polygon")
++        total_area = polygon.area
++        if total_area <= 0:
++            continue
++        centroid = polygon.centroid
++        queue = {latlon_to_hex(float(centroid.y), float(centroid.x), resolution)}
++        visited: set[str] = set()
++        while queue:
++            hex_id = queue.pop()
++            if hex_id in visited:
++                continue
++            visited.add(hex_id)
++            boundary_polygon = Polygon([(lon, lat) for lat, lon in hex_boundary(hex_id)])
++            intersection = boundary_polygon.intersection(polygon)
++            if intersection.is_empty:
++                continue
++            weight = intersection.area / total_area
++            record = row.to_dict()
++            record[hex_column] = hex_id
++            record[value_column] = float(row[value_column]) * weight
++            records.append(record)
++            for neighbor in hex_neighbors(hex_id, 1):
++                queue.add(neighbor)
++    return pd.DataFrame.from_records(records)
++
++
++def aggregate_by_hex(
++    frame: pd.DataFrame,
++    group_columns: Iterable[str],
++    value_column: str,
++    agg: str = "sum",
++) -> pd.DataFrame:
++    """Aggregate values by hex and optional additional columns."""
++
++    grouped = frame.groupby(list(group_columns))[value_column].agg(agg)
++    return grouped.reset_index()
+diff --git a/src/Urban_Amenities2/hex/core.py b/src/Urban_Amenities2/hex/core.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e0f2992b17301815747da20a4777c9b3674b1028
+--- /dev/null
++++ b/src/Urban_Amenities2/hex/core.py
+@@ -0,0 +1,47 @@
++"""Core utilities for working with H3 hexagons."""
++from __future__ import annotations
++
++from functools import lru_cache
++from typing import Iterable, List, Tuple
++
++import h3
++
++RESOLUTION = 9
++
++
++def latlon_to_hex(lat: float, lon: float, resolution: int = RESOLUTION) -> str:
++    """Convert latitude/longitude to an H3 cell identifier."""
++
++    return h3.latlng_to_cell(lat, lon, resolution)
++
++
++@lru_cache(maxsize=65536)
++def hex_centroid(hex_id: str) -> Tuple[float, float]:
++    """Return the centroid latitude/longitude for a given cell."""
++
++    lat, lon = h3.cell_to_latlng(hex_id)
++    return float(lat), float(lon)
++
++
++@lru_cache(maxsize=65536)
++def hex_boundary(hex_id: str) -> List[Tuple[float, float]]:
++    """Return the ordered boundary coordinates for a hexagon."""
++
++    boundary = h3.cell_to_boundary(hex_id)
++    return [(float(lat), float(lon)) for lat, lon in boundary]
++
++
++def hex_distance_m(hex_a: str, hex_b: str) -> float:
++    """Compute the great-circle distance between two hexagon centroids in metres."""
++
++    lat_a, lon_a = hex_centroid(hex_a)
++    lat_b, lon_b = hex_centroid(hex_b)
++    return float(h3.great_circle_distance((lat_a, lon_a), (lat_b, lon_b), unit="m"))
++
++
++def hex_neighbors(hex_id: str, k: int = 1) -> Iterable[str]:
++    """Yield the k-ring neighbours for a hex cell."""
++
++    for neighbor in h3.grid_disk(hex_id, k):
++        if neighbor != hex_id:
++            yield neighbor
+diff --git a/src/Urban_Amenities2/logging_utils.py b/src/Urban_Amenities2/logging_utils.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c8d717082029b8eb42db9480987aced3a03be688
+--- /dev/null
++++ b/src/Urban_Amenities2/logging_utils.py
+@@ -0,0 +1,55 @@
++"""Structlog configuration helpers."""
++from __future__ import annotations
++
++import logging
++import time
++from contextlib import contextmanager
++from typing import Any, Callable, Iterator
++
++import structlog
++from structlog.typing import FilteringBoundLogger
++
++
++def configure_logging(level: str = "INFO") -> None:
++    structlog.configure(
++        processors=[
++            structlog.processors.TimeStamper(fmt="iso"),
++            structlog.processors.add_log_level,
++            structlog.processors.StackInfoRenderer(),
++            structlog.processors.format_exc_info,
++            structlog.processors.JSONRenderer(),
++        ],
++        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, level.upper(), logging.INFO)),
++        cache_logger_on_first_use=True,
++    )
++
++
++def get_logger(name: str = "aucs") -> FilteringBoundLogger:
++    return structlog.get_logger(name)
++
++
++def bind_context(logger: FilteringBoundLogger, **context: Any) -> FilteringBoundLogger:
++    return logger.bind(**context)
++
++
++@contextmanager
++def log_duration(logger: FilteringBoundLogger, event: str, **context: Any) -> Iterator[None]:
++    start = time.perf_counter()
++    yield
++    duration = time.perf_counter() - start
++    logger.info(event, duration_seconds=duration, **context)
++
++
++def timing_decorator(logger: FilteringBoundLogger, event: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
++    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
++        def wrapper(*args: Any, **kwargs: Any) -> Any:
++            start = time.perf_counter()
++            try:
++                return func(*args, **kwargs)
++            finally:
++                duration = time.perf_counter() - start
++                logger.info(event, duration_seconds=duration)
++
++        return wrapper
++
++    return decorator
+diff --git a/src/Urban_Amenities2/schemas/__init__.py b/src/Urban_Amenities2/schemas/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/src/Urban_Amenities2/schemas/scores.py b/src/Urban_Amenities2/schemas/scores.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..17f8efdfa9b9281f4dc0e1c9b3ddcddcff324041
+--- /dev/null
++++ b/src/Urban_Amenities2/schemas/scores.py
+@@ -0,0 +1,40 @@
++"""Pandera schemas describing AUCS scoring outputs."""
++from __future__ import annotations
++
++import pandera as pa
++from pandera import Check, Column, DataFrameSchema
++
++CategoryScoreSchema = DataFrameSchema(
++    {
++        "hex_id": Column(pa.String),
++        "category": Column(pa.String),
++        "raw_score": Column(pa.Float),
++        "normalized_score": Column(pa.Float, Check.in_range(0, 100)),
++    },
++    coerce=True,
++    strict=True,
++)
++
++
++SubscoreSchema = DataFrameSchema(
++    {
++        "hex_id": Column(pa.String),
++        "subscore_name": Column(pa.String),
++        "value": Column(pa.Float),
++        "contributors": Column(pa.Object),
++    },
++    coerce=True,
++    strict=True,
++)
++
++
++FinalScoreSchema = DataFrameSchema(
++    {
++        "hex_id": Column(pa.String),
++        "aucs": Column(pa.Float, Check.in_range(0, 100)),
++        "subscores_dict": Column(pa.Object),
++        "metadata": Column(pa.Object),
++    },
++    coerce=True,
++    strict=True,
++)
+diff --git a/src/Urban_Amenities2/schemas/spatial.py b/src/Urban_Amenities2/schemas/spatial.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..cefdae5f78f2a717f5fa3dbdaae6bf27acc868f6
+--- /dev/null
++++ b/src/Urban_Amenities2/schemas/spatial.py
+@@ -0,0 +1,45 @@
++"""Pandera schemas for spatial datasets."""
++from __future__ import annotations
++
++import pandera as pa
++from pandera import Check, Column, DataFrameSchema
++
++HexIndexSchema = DataFrameSchema(
++    {
++        "hex_id": Column(pa.String, nullable=False),
++        "centroid_lat": Column(pa.Float, Check.in_range(-90, 90)),
++        "centroid_lon": Column(pa.Float, Check.in_range(-180, 180)),
++        "geometry": Column(pa.Object, nullable=False),
++    },
++    coerce=True,
++    strict=True,
++)
++
++
++POISchema = DataFrameSchema(
++    {
++        "poi_id": Column(pa.String),
++        "hex_id": Column(pa.String),
++        "aucstype": Column(pa.String),
++        "name": Column(pa.String, nullable=True),
++        "brand": Column(pa.String, nullable=True),
++        "lat": Column(pa.Float, Check.in_range(-90, 90)),
++        "lon": Column(pa.Float, Check.in_range(-180, 180)),
++        "quality_attrs": Column(pa.Object, nullable=True),
++    },
++    coerce=True,
++    strict=True,
++)
++
++
++NetworkSegmentSchema = DataFrameSchema(
++    {
++        "segment_id": Column(pa.String),
++        "hex_id": Column(pa.String),
++        "geometry": Column(pa.Object),
++        "mode_flags": Column(pa.Object),
++        "speed": Column(pa.Float, Check.gt(0)),
++    },
++    coerce=True,
++    strict=True,
++)
+diff --git a/src/Urban_Amenities2/schemas/travel.py b/src/Urban_Amenities2/schemas/travel.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..27f67f72bdb55ae6e9a2fb62dee87563df567c02
+--- /dev/null
++++ b/src/Urban_Amenities2/schemas/travel.py
+@@ -0,0 +1,35 @@
++"""Pandera schemas for travel time and itinerary datasets."""
++from __future__ import annotations
++
++import pandera as pa
++from pandera import Check, Column, DataFrameSchema
++
++TravelTimeSkimSchema = DataFrameSchema(
++    {
++        "origin_hex": Column(pa.String),
++        "dest_hex": Column(pa.String),
++        "mode": Column(pa.String),
++        "period": Column(pa.String),
++        "duration_min": Column(pa.Float, Check.ge(0)),
++        "distance_m": Column(pa.Float, Check.ge(0)),
++        "ok": Column(pa.Bool),
++    },
++    coerce=True,
++    strict=True,
++)
++
++
++TransitItinerarySchema = DataFrameSchema(
++    {
++        "origin_hex": Column(pa.String),
++        "dest_hex": Column(pa.String),
++        "period": Column(pa.String),
++        "walk_time": Column(pa.Float, Check.ge(0)),
++        "transit_time": Column(pa.Float, Check.ge(0)),
++        "wait_time": Column(pa.Float, Check.ge(0)),
++        "transfers": Column(pa.Int, Check.ge(0)),
++        "fare_usd": Column(pa.Float, Check.ge(0)),
++    },
++    coerce=True,
++    strict=True,
++)
+diff --git a/src/Urban_Amenities2/schemas/utils.py b/src/Urban_Amenities2/schemas/utils.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..18d491ec3c1d6cf5a75ae28d1c6a91a2089ecb10
+--- /dev/null
++++ b/src/Urban_Amenities2/schemas/utils.py
+@@ -0,0 +1,26 @@
++"""Utility decorators for schema validation in pipelines."""
++from __future__ import annotations
++
++from functools import wraps
++from typing import Callable, TypeVar
++
++import pandera as pa
++
++T = TypeVar("T")
++
++
++def validate_with_schema(schema: pa.DataFrameSchema) -> Callable[[Callable[..., T]], Callable[..., T]]:
++    """Decorator that validates the first pandas DataFrame argument against a schema."""
++
++    def decorator(func: Callable[..., T]) -> Callable[..., T]:
++        @wraps(func)
++        def wrapper(*args, **kwargs):
++            if not args:
++                raise ValueError("validate_with_schema expects the DataFrame as the first argument")
++            schema.validate(args[0])
++            result = func(*args, **kwargs)
++            return result
++
++        return wrapper
++
++    return decorator
+diff --git a/src/Urban_Amenities2/versioning/__init__.py b/src/Urban_Amenities2/versioning/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/src/Urban_Amenities2/versioning/data_snapshot.py b/src/Urban_Amenities2/versioning/data_snapshot.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..763c0b146e306956fde1bb0509ad5db9f627588a
+--- /dev/null
++++ b/src/Urban_Amenities2/versioning/data_snapshot.py
+@@ -0,0 +1,45 @@
++"""Data snapshot tracking utilities."""
++from __future__ import annotations
++
++import json
++from dataclasses import asdict, dataclass
++from datetime import datetime
++from pathlib import Path
++from typing import List
++
++
++@dataclass(slots=True)
++class DataSnapshot:
++    source_name: str
++    version: str
++    download_date: datetime
++    file_hash: str
++
++    def to_json(self) -> str:
++        payload = asdict(self)
++        payload["download_date"] = self.download_date.isoformat()
++        return json.dumps(payload, sort_keys=True)
++
++    @staticmethod
++    def from_json(payload: str) -> "DataSnapshot":
++        data = json.loads(payload)
++        data["download_date"] = datetime.fromisoformat(data["download_date"])
++        return DataSnapshot(**data)
++
++
++def register_snapshot(snapshot: DataSnapshot, storage: Path) -> None:
++    storage.parent.mkdir(parents=True, exist_ok=True)
++    with storage.open("a", encoding="utf-8") as fp:
++        fp.write(snapshot.to_json() + "\n")
++
++
++def list_snapshots(storage: Path) -> List[DataSnapshot]:
++    if not storage.exists():
++        return []
++    snapshots: List[DataSnapshot] = []
++    for line in storage.read_text().splitlines():
++        line = line.strip()
++        if not line:
++            continue
++        snapshots.append(DataSnapshot.from_json(line))
++    return snapshots
+diff --git a/src/Urban_Amenities2/versioning/manifest.py b/src/Urban_Amenities2/versioning/manifest.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..061bb0c612c96b63194691984edf3900125c80a3
+--- /dev/null
++++ b/src/Urban_Amenities2/versioning/manifest.py
+@@ -0,0 +1,71 @@
++"""Run manifest generation and storage."""
++from __future__ import annotations
++
++import json
++import uuid
++from dataclasses import asdict, dataclass
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Iterable, List, Optional
++
++
++@dataclass(slots=True)
++class RunManifest:
++    run_id: str
++    timestamp: datetime
++    param_hash: str
++    data_snapshot_ids: List[str]
++    git_commit: Optional[str]
++
++    def to_json(self) -> str:
++        payload = asdict(self)
++        payload["timestamp"] = self.timestamp.isoformat()
++        return json.dumps(payload, sort_keys=True)
++
++    @staticmethod
++    def from_json(payload: str) -> "RunManifest":
++        data = json.loads(payload)
++        data["timestamp"] = datetime.fromisoformat(data["timestamp"])
++        return RunManifest(**data)
++
++
++def create_run_manifest(
++    param_hash: str,
++    data_snapshot_ids: Iterable[str],
++    git_commit: Optional[str],
++    storage: Path,
++) -> RunManifest:
++    run = RunManifest(
++        run_id=str(uuid.uuid4()),
++        timestamp=datetime.now(timezone.utc),
++        param_hash=param_hash,
++        data_snapshot_ids=list(data_snapshot_ids),
++        git_commit=git_commit,
++    )
++    append_manifest(run, storage)
++    return run
++
++
++def append_manifest(manifest: RunManifest, storage: Path) -> None:
++    storage.parent.mkdir(parents=True, exist_ok=True)
++    with storage.open("a", encoding="utf-8") as fp:
++        fp.write(manifest.to_json() + "\n")
++
++
++def list_manifests(storage: Path) -> List[RunManifest]:
++    if not storage.exists():
++        return []
++    manifests: List[RunManifest] = []
++    for line in storage.read_text().splitlines():
++        line = line.strip()
++        if not line:
++            continue
++        manifests.append(RunManifest.from_json(line))
++    return manifests
++
++
++def get_manifest(run_id: str, storage: Path) -> Optional[RunManifest]:
++    for manifest in list_manifests(storage):
++        if manifest.run_id == run_id:
++            return manifest
++    return None
+diff --git a/tests/conftest.py b/tests/conftest.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fdcbc1fe0b0e07f1d53ead7d660533468e2548e0
+--- /dev/null
++++ b/tests/conftest.py
+@@ -0,0 +1,9 @@
++from __future__ import annotations
++
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++SRC = ROOT / "src"
++if str(SRC) not in sys.path:
++    sys.path.insert(0, str(SRC))
+diff --git a/tests/test_basic.py b/tests/test_basic.py
+index 492dc426443fff4c2a4ea37706ed7c193606ece1..fb3df379405bd58e323100a60fb5055c80a143a4 100644
+--- a/tests/test_basic.py
++++ b/tests/test_basic.py
+@@ -1,4 +1,9 @@
+-from Urban_Amenities2 import ping
++from __future__ import annotations
+
+-def test_ping():
+-    assert ping() == "pong"
++from Urban_Amenities2 import load_params
++
++
++def test_package_exposes_loader() -> None:
++    params, param_hash = load_params("configs/params_default.yml")
++    assert params.grid.hex_size_m == 250
++    assert len(param_hash) == 64
+diff --git a/tests/test_hex.py b/tests/test_hex.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..80abf20d48c42a84cf718b05a9c9754aa1bc0de1
+--- /dev/null
++++ b/tests/test_hex.py
+@@ -0,0 +1,57 @@
++from __future__ import annotations
++
++import pandas as pd
++from shapely.geometry import LineString, Polygon
++
++from Urban_Amenities2.hex.aggregation import (
++    aggregate_by_hex,
++    lines_to_hex,
++    points_to_hex,
++    polygons_to_hex,
++)
++from Urban_Amenities2.hex.core import hex_centroid, hex_distance_m, hex_neighbors, latlon_to_hex
++
++
++def test_latlon_roundtrip() -> None:
++    lat, lon = 39.7392, -104.9903
++    hex_id = latlon_to_hex(lat, lon)
++    centroid_lat, centroid_lon = hex_centroid(hex_id)
++    assert abs(centroid_lat - lat) < 0.1
++    assert abs(centroid_lon - lon) < 0.1
++
++
++def test_hex_distance() -> None:
++    lat, lon = 39.7392, -104.9903
++    hex_a = latlon_to_hex(lat, lon)
++    hex_b = next(iter(hex_neighbors(hex_a, 1)))
++    distance = hex_distance_m(hex_a, hex_b)
++    assert distance > 0
++
++
++def test_points_to_hex() -> None:
++    frame = pd.DataFrame({"lat": [39.7392, 39.74], "lon": [-104.99, -104.98]})
++    result = points_to_hex(frame)
++    assert "hex_id" in result
++    assert len(result["hex_id"].unique()) <= len(result)
++
++
++def test_lines_to_hex() -> None:
++    line = LineString([(-105.0, 39.73), (-104.98, 39.74)])
++    frame = pd.DataFrame({"geometry": [line]})
++    result = lines_to_hex(frame)
++    assert "hex_id" in result
++
++
++def test_aggregate_by_hex() -> None:
++    hex_id = latlon_to_hex(39.7392, -104.9903)
++    frame = pd.DataFrame({"hex_id": [hex_id, hex_id], "value": [1, 2]})
++    aggregated = aggregate_by_hex(frame, group_columns=["hex_id"], value_column="value")
++    assert aggregated.loc[0, "value"] == 3
++
++
++def test_polygons_to_hex() -> None:
++    polygon = Polygon([(-105.0, 39.73), (-105.0, 39.74), (-104.99, 39.74), (-104.99, 39.73)])
++    frame = pd.DataFrame({"geometry": [polygon], "value": [100]})
++    result = polygons_to_hex(frame)
++    assert not result.empty
++    assert abs(result["value"].sum() - 100) < 1e-6
+diff --git a/tests/test_integration_pipeline.py b/tests/test_integration_pipeline.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5f550e310dbf46f4d3b1aeea3434f39ff05162af
+--- /dev/null
++++ b/tests/test_integration_pipeline.py
+@@ -0,0 +1,24 @@
++from __future__ import annotations
++
++import pandas as pd
++
++from Urban_Amenities2.config.loader import load_params
++from Urban_Amenities2.schemas.spatial import POISchema
++
++
++def test_parameter_to_schema_pipeline() -> None:
++    params, _ = load_params("configs/params_default.yml")
++    poi_frame = pd.DataFrame(
++        {
++            "poi_id": ["1"],
++            "hex_id": ["8928308281bffff"],
++            "aucstype": [params.categories.essentials[0]],
++            "name": ["Fresh Mart"],
++            "brand": [None],
++            "lat": [39.7392],
++            "lon": [-104.9903],
++            "quality_attrs": [{}],
++        }
++    )
++    validated = POISchema.validate(poi_frame)
++    assert validated["aucstype"].iloc[0] == params.categories.essentials[0]
+diff --git a/tests/test_params.py b/tests/test_params.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4331a363cd81fde13c4037bba735a1a938c23ede
+--- /dev/null
++++ b/tests/test_params.py
+@@ -0,0 +1,109 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import pytest
++
++from Urban_Amenities2.config.loader import ParameterLoadError, compute_param_hash, load_params
++from Urban_Amenities2.config.params import AUCSParams
++
++
++def test_load_default_params(tmp_path: Path) -> None:
++    params_path = Path("configs/params_default.yml")
++    params, param_hash = load_params(params_path)
++    assert isinstance(params, AUCSParams)
++    assert len(list(params.iter_time_slice_ids())) == 2
++    derived = params.derived_satiation()
++    assert "groceries" in derived
++    assert param_hash == compute_param_hash(params)
++
++
++def test_subscore_validation(tmp_path: Path, tmp_path_factory: pytest.TempPathFactory) -> None:
++    invalid = tmp_path / "invalid.yml"
++    invalid.write_text(
++        """
++        grid:
++          hex_size_m: 250
++          isochrone_minutes: [5]
++          search_cap_minutes: 10
++        subscores:
++          EA: 10
++          LCA: 10
++          MUHAA: 10
++          JEA: 10
++          MORR: 10
++          CTE: 10
++          SOU: 10
++        time_slices:
++          - id: one
++            weight: 1
++            VOT_per_hour: 10
++        modes:
++          walk:
++            name: walk
++            theta_iv: -0.1
++            theta_wait: -0.1
++            theta_walk: -0.1
++            transfer_penalty_min: 0
++            half_life_min: 10
++            beta0: 0
++        nests:
++          - id: base
++            modes: [walk]
++            mu: 1
++            eta: 1
++        logit:
++          mu_top: 1
++        carry_penalty:
++          category_multipliers: {a: 1}
++          per_mode_extra_minutes: {walk: 1}
++        quality:
++          lambda_weights: {rating: 1}
++          z_clip_abs: 1
++          opening_hours_bonus_xi: 1
++          dedupe_beta_per_km: 1
++        categories:
++          essentials: [a]
++          leisure: []
++          ces_rho: 1
++        leisure_cross_category:
++          weights: {arts: 1}
++          elasticity_zeta: 1
++        hubs_airports:
++          hub_mass_lambda: 1
++          decay: 1
++          airport_weights: {DEN: 1}
++        jobs_education:
++          university_weight_kappa: 1
++          industry_weights: {tech: 1}
++        morr:
++          frequent_exposure: 1
++          span: 1
++          reliability: 1
++          redundancy: 1
++          micromobility: 1
++        corridor:
++          max_paths: 1
++          stop_buffer_m: 1
++          detour_cap_min: 1
++          pair_categories: []
++          walk_decay_alpha: 1
++        seasonality:
++          comfort_index_default: 1
++        normalization:
++          mode: metro
++        compute:
++          topK_per_category: 1
++          hub_max_minutes: 1
++        """
++    )
++    with pytest.raises(ParameterLoadError):
++        load_params(invalid)
++
++
++def test_param_hash_changes(tmp_path: Path) -> None:
++    params_path = Path("configs/params_default.yml")
++    params, param_hash = load_params(params_path)
++    modified = params.model_copy()
++    modified.compute.topK_per_category = params.compute.topK_per_category + 1
++    assert compute_param_hash(modified) != param_hash
+diff --git a/tests/test_schemas.py b/tests/test_schemas.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..37bb397379a251ec124d86a8ae841c82bdd133d7
+--- /dev/null
++++ b/tests/test_schemas.py
+@@ -0,0 +1,76 @@
++from __future__ import annotations
++
++import pandas as pd
++import pandera.errors
++import pytest
++
++from Urban_Amenities2.schemas.scores import CategoryScoreSchema
++from Urban_Amenities2.schemas.spatial import POISchema
++from Urban_Amenities2.schemas.travel import TravelTimeSkimSchema
++from Urban_Amenities2.schemas.utils import validate_with_schema
++
++
++def test_poi_schema_valid() -> None:
++    frame = pd.DataFrame(
++        {
++            "poi_id": ["1"],
++            "hex_id": ["8928308281bffff"],
++            "aucstype": ["groceries"],
++            "name": ["Fresh Mart"],
++            "brand": [None],
++            "lat": [39.7392],
++            "lon": [-104.9903],
++            "quality_attrs": [{}],
++        }
++    )
++    POISchema.validate(frame)
++
++
++def test_travel_time_validation_error() -> None:
++    frame = pd.DataFrame(
++        {
++            "origin_hex": ["a"],
++            "dest_hex": ["b"],
++            "mode": ["walk"],
++            "period": ["am"],
++            "duration_min": [-1],
++            "distance_m": [100],
++            "ok": [True],
++        }
++    )
++    with pytest.raises(pandera.errors.SchemaError):
++        TravelTimeSkimSchema.validate(frame)
++
++
++def test_category_score_schema() -> None:
++    frame = pd.DataFrame(
++        {
++            "hex_id": ["a"],
++            "category": ["groceries"],
++            "raw_score": [12.5],
++            "normalized_score": [90.0],
++        }
++    )
++    CategoryScoreSchema.validate(frame)
++
++
++def test_validation_decorator() -> None:
++    frame = pd.DataFrame(
++        {
++            "poi_id": ["1"],
++            "hex_id": ["8928308281bffff"],
++            "aucstype": ["groceries"],
++            "name": ["Fresh Mart"],
++            "brand": [None],
++            "lat": [39.7392],
++            "lon": [-104.9903],
++            "quality_attrs": [{}],
++        }
++    )
++
++    @validate_with_schema(POISchema)
++    def passthrough(df: pd.DataFrame) -> pd.DataFrame:
++        return df
++
++    result = passthrough(frame)
++    assert result.equals(frame)
+diff --git a/tests/test_versioning_cli.py b/tests/test_versioning_cli.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..61daac4eb34b8854b083e2ccbb5b3632c5c51a87
+--- /dev/null
++++ b/tests/test_versioning_cli.py
+@@ -0,0 +1,54 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import pandas as pd
++import pytest
++from typer.testing import CliRunner
++
++from Urban_Amenities2.cli.main import app
++from Urban_Amenities2.config.loader import load_params
++from Urban_Amenities2.versioning.data_snapshot import (
++    DataSnapshot,
++    list_snapshots,
++    register_snapshot,
++)
++from Urban_Amenities2.versioning.manifest import create_run_manifest, list_manifests
++
++
++def test_create_run_manifest(tmp_path: Path) -> None:
++    params_path = Path("configs/params_default.yml")
++    _, param_hash = load_params(params_path)
++    storage = tmp_path / "runs.jsonl"
++    manifest = create_run_manifest(param_hash, [], git_commit="abc123", storage=storage)
++    assert manifest.param_hash == param_hash
++    stored = list_manifests(storage)
++    assert stored[0].run_id == manifest.run_id
++
++
++def test_cli_config_validate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    runner = CliRunner()
++    result = runner.invoke(app, ["config", "validate", "configs/params_default.yml"])
++    assert result.exit_code == 0
++
++
++def test_cli_run_init(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    runner = CliRunner()
++    monkeypatch.setattr("Urban_Amenities2.cli.main.RUN_STORAGE", tmp_path / "runs.jsonl")
++    result = runner.invoke(app, ["run", "init", "configs/params_default.yml", "--git-commit", "abc"])
++    assert result.exit_code == 0
++    list_result = runner.invoke(app, ["run", "list"])
++    assert "hash" in list_result.stdout or "run" in list_result.stdout
++
++
++def test_snapshot_registration(tmp_path: Path) -> None:
++    storage = tmp_path / "snapshots.jsonl"
++    snapshot = DataSnapshot(
++        source_name="Overture",
++        version="2024-02-01",
++        download_date=pd.Timestamp("2024-02-15"),
++        file_hash="abc123",
++    )
++    register_snapshot(snapshot, storage)
++    snapshots = list_snapshots(storage)
++    assert snapshots[0].source_name == "Overture"
+
+EOF
+)

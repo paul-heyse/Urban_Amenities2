@@ -4,6 +4,79 @@ version = "0.1.0"
 description = "Urban_Amenities2"
 readme = "README.md"
 requires-python = ">=3.12"
+dependencies = [
+  # Core data / performance
+  "numpy",
+  "pandas",
+  "pyarrow",
+  "duckdb",
+  "polars",
+  "numba",
+
+  # Geospatial & hex
+  "geopandas",
+  "shapely",
+  "pyproj",
+  "rtree",
+  "h3",
+  "h3ronpy",
+  "rasterio",
+  "xarray",
+  "rioxarray",
+  "pyogrio",
+
+  # Routing & mobility
+  "requests",
+  "httpx",
+  "gql[requests]",
+  "partridge",
+  "gtfs-kit",
+  "gtfs-realtime-bindings",
+
+  # APIs & enrichment
+  "SPARQLWrapper",
+  "qwikidata",
+  "pydantic",
+  "pydantic-settings",
+  "ruamel.yaml",
+  "pandas-gbq",
+  "google-cloud-bigquery",
+  "fsspec",
+  "s3fs",
+  "adlfs",
+  "gcsfs",
+  "tenacity",
+  "backoff",
+  "rapidfuzz",
+  "unidecode",
+
+  # Quality, orchestration & ops
+  "pandera",
+  "typer",
+  "structlog",
+  "loguru",
+  "prefect",
+  "apache-airflow",  # note: ensure your Airflow version supports Python 3.12
+  "diskcache",
+  "cachetools",
+  "joblib",
+  "pytest",
+  "hypothesis",
+  "mkdocs-material",
+  "tqdm",
+  "rich",
+
+  # Visualization
+  "matplotlib",
+  "altair",
+  "folium",
+  "pydeck",
+  "contextily",
+
+  # Parallel / scaling options
+  "dask[dataframe]",
+  "ray",
+]
 
 [tool.black]
 line-length = 100
@@ -16,3 +89,4 @@ extend-select = ["I"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
