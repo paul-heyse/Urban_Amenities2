@@ -4,7 +4,6 @@ import math
 from dataclasses import dataclass
 from typing import Dict, Iterable, Sequence
 
-import math
 import numpy as np
 import pandas as pd
 
@@ -13,14 +12,22 @@ import pandas as pd
 class DiversityConfig:
     """Configuration for within-category diversity bonuses."""
 
-    weight: float = 1.0
-    cap: float = 5.0
+    weight: float = 0.2
+    min_multiplier: float = 1.0
+    max_multiplier: float = 1.2
+    cap: float | None = None
 
     def __post_init__(self) -> None:
         if self.weight < 0:
             raise ValueError("diversity weight must be non-negative")
-        if self.cap < 0:
-            raise ValueError("diversity cap must be non-negative")
+        if self.min_multiplier <= 0:
+            raise ValueError("min_multiplier must be positive")
+        if self.max_multiplier < self.min_multiplier:
+            raise ValueError("max_multiplier must be >= min_multiplier")
+        if self.cap is not None:
+            if self.cap < 0:
+                raise ValueError("cap must be non-negative")
+            self.max_multiplier = min(self.max_multiplier, self.min_multiplier + self.cap)
 
 
 def shannon_entropy(values: Sequence[float]) -> float:
@@ -36,10 +43,24 @@ def shannon_entropy(values: Sequence[float]) -> float:
     return max(entropy, 0.0)
 
 
-def diversity_bonus(values: Sequence[float], weight: float = 1.0, cap: float = 5.0) -> float:
-    entropy = shannon_entropy(values)
-    bonus = weight * (math.exp(entropy) - 1.0)
-    return float(min(max(bonus, 0.0), cap))
+def _normalised_entropy(values: Sequence[float]) -> float:
+    array = np.asarray(values, dtype=float)
+    positive = array[array > 0]
+    if positive.size <= 1:
+        return 0.0
+    entropy = shannon_entropy(positive)
+    max_entropy = math.log(positive.size)
+    if max_entropy <= 0:
+        return 0.0
+    return float(min(entropy / max_entropy, 1.0))
+
+
+def diversity_multiplier(values: Sequence[float], config: DiversityConfig | None = None) -> float:
+    cfg = config or DiversityConfig()
+    norm_entropy = _normalised_entropy(values)
+    bonus = cfg.weight * norm_entropy
+    multiplier = cfg.min_multiplier + bonus
+    return float(min(max(multiplier, cfg.min_multiplier), cfg.max_multiplier))
 
 
 def compute_diversity(
@@ -61,9 +82,19 @@ def compute_diversity(
         cfg = config.get(category, DiversityConfig())
         values = group.groupby(subtype_column)[value_column].sum()
         entropy = shannon_entropy(values.values)
-        bonus = diversity_bonus(values.values, weight=cfg.weight, cap=cfg.cap)
-        records.append({**key_dict, "diversity_bonus": bonus, "entropy": entropy})
+        multiplier = diversity_multiplier(values.values, cfg)
+        records.append({**key_dict, "diversity_multiplier": multiplier, "entropy": entropy})
     return pd.DataFrame.from_records(records)
 
 
-__all__ = ["shannon_entropy", "diversity_bonus", "compute_diversity", "DiversityConfig"]
+# Backwards compatibility alias
+diversity_bonus = diversity_multiplier
+
+
+__all__ = [
+    "DiversityConfig",
+    "compute_diversity",
+    "diversity_bonus",
+    "diversity_multiplier",
+    "shannon_entropy",
+]

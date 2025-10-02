@@ -14,9 +14,14 @@ The AUCS parameter loader expects a YAML document that mirrors the
   quality calculations.
 - **categories / leisure_cross_category** – category groupings, satiation
   behaviour, and cross-category blending weights. Anchor satiation targets are
-  converted into kappa values automatically.
+  converted into kappa values automatically. `ces_rho` may be provided as a
+  per-category mapping and diversity settings expose `weight`,
+  `min_multiplier`, and `max_multiplier` for the Shannon-based bonus.
 - **hubs_airports / jobs_education / morr / corridor / seasonality** –
   supporting subsystems for accessibility, resilience, and comfort.
+- **corridor** – trip-chaining settings including `major_hubs` per metro,
+  allowed `pair_categories`, decay parameters, and cache sizing for OTP path
+  lookups. Chain likelihoods can be tuned via `chain_weights`.
 - **normalization / compute** – percentile targets and compute-time behaviour
   such as caching and top-K selection.
 

@@ -15,6 +15,8 @@ def test_load_default_params(tmp_path: Path) -> None:
     assert len(list(params.iter_time_slice_ids())) == 2
     derived = params.derived_satiation()
     assert "groceries" in derived
+    rho_map = params.derived_ces_rho()
+    assert rho_map["groceries"] == pytest.approx(0.5)
     assert param_hash == compute_param_hash(params)
 
 
@@ -65,7 +67,9 @@ def test_subscore_validation(tmp_path: Path, tmp_path_factory: pytest.TempPathFa
         categories:
           essentials: [a]
           leisure: []
-          ces_rho: 1
+          ces_rho: {a: 0.8}
+          satiation_mode: direct
+          satiation_kappa: {a: 0.2}
         leisure_cross_category:
           weights: {arts: 1}
           elasticity_zeta: 1
@@ -86,8 +90,10 @@ def test_subscore_validation(tmp_path: Path, tmp_path_factory: pytest.TempPathFa
           max_paths: 1
           stop_buffer_m: 1
           detour_cap_min: 1
-          pair_categories: []
+          pair_categories: [[a, b]]
           walk_decay_alpha: 1
+          major_hubs: {}
+          chain_weights: {}
         seasonality:
           comfort_index_default: 1
         normalization:

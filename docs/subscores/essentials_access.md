@@ -63,4 +63,19 @@ aucs calibrate ea pois.parquet accessibility.parquet --parameter rho:groceries -
 * `export.reports.build_report` can incorporate EA as part of the broader AUCS QA
   report.
 
+### Parameter mapping
+
+`EssentialsAccessConfig.from_params(params)` builds the full configuration from
+an `AUCSParams` instance. The helper pulls:
+
+* `params.categories.ces_rho` – either a scalar or per-category map that sets
+  the CES elasticity for each category.
+* `params.derived_satiation()` – kappa values computed from anchors or direct
+  inputs.
+* `params.categories.diversity` – per-category Shannon bonus settings,
+  normalised to a multiplier in the `[min_multiplier, max_multiplier]` range.
+
+Tuning therefore happens entirely in YAML. Update the `categories` block and
+re-run `load_params` to propagate changes into the EA pipeline.
+
 See `tests/test_scores.py` and `tests/test_cli.py` for executable examples.
