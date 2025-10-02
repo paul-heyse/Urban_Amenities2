@@ -1,0 +1,2 @@
+[console_scripts]
+aucs = Urban_Amenities2.cli:main

@@ -1,98 +1,188 @@
 [project]
 name = "Urban_Amenities2"
 version = "0.1.0"
-description = "Urban_Amenities2"
+description = "AUCS 2.0 - Aker Urban Convenience Score: Multi-modal accessibility scoring for CO/UT/ID"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+  {name = "Paul Aker"}
+]
+keywords = ["accessibility", "urban-planning", "transportation", "GIS", "multi-modal"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
 dependencies = [
   # Core data / performance
-  "numpy",
-  "pandas",
-  "pyarrow",
-  "duckdb",
-  "polars",
-  "numba",
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "pyarrow>=14.0",
+  "duckdb>=0.9",
+  "polars>=0.19",
+  "numba>=0.58",
+  "scipy>=1.11",
 
   # Geospatial & hex
-  "geopandas",
-  "shapely",
-  "pyproj",
-  "rtree",
-  "h3",
-  "h3ronpy",
-  "rasterio",
-  "xarray",
-  "rioxarray",
-  "pyogrio",
+  "geopandas>=0.14",
+  "shapely>=2.0",
+  "pyproj>=3.6",
+  "rtree>=1.0",
+  "h3>=4.0",
+  "h3ronpy>=0.17",
+  "rasterio>=1.3",
+  "xarray>=2023.8",
+  "rioxarray>=0.15",
+  "pyogrio>=0.7",
 
   # Routing & mobility
-  "requests",
-  "httpx",
-  "gql[requests]",
-  "partridge",
-  "gtfs-kit",
-  "gtfs-realtime-bindings",
+  "requests>=2.31",
+  "httpx>=0.25",
+  "gql[requests]>=3.4",
+  "partridge>=1.1",
+  "gtfs-kit>=5.2",
+  "gtfs-realtime-bindings>=1.0",
 
   # APIs & enrichment
-  "SPARQLWrapper",
-  "qwikidata",
-  "pydantic",
-  "pydantic-settings",
-  "ruamel.yaml",
-  "pandas-gbq",
-  "google-cloud-bigquery",
-  "fsspec",
-  "s3fs",
-  "adlfs",
-  "gcsfs",
-  "tenacity",
-  "backoff",
-  "rapidfuzz",
-  "unidecode",
+  "SPARQLWrapper>=2.0",
+  "qwikidata>=0.4",
+  "pydantic>=2.0",
+  "pydantic-settings>=2.0",
+  "ruamel.yaml>=0.18",
+  "pandas-gbq>=0.19",
+  "google-cloud-bigquery>=3.11",
+  "fsspec>=2023.9",
+  "s3fs>=2023.9",
+  "adlfs>=2023.8",
+  "gcsfs>=2023.9",
+  "tenacity>=8.2",
+  "backoff>=2.2",
+  "rapidfuzz>=3.0",
+  "unidecode>=1.3",
 
   # Quality, orchestration & ops
-  "pandera",
-  "typer",
-  "structlog",
-  "loguru",
-  "prefect",
-  "apache-airflow",  # note: ensure your Airflow version supports Python 3.12
-  "diskcache",
-  "cachetools",
-  "joblib",
-  "pytest",
-  "hypothesis",
-  "mkdocs-material",
-  "tqdm",
-  "rich",
+  "pandera>=0.17",
+  "typer>=0.9",
+  "structlog>=23.2",
+  "loguru>=0.7",
+  "diskcache>=5.6",
+  "cachetools>=5.3",
+  "joblib>=1.3",
+  "tqdm>=4.66",
+  "rich>=13.5",
 
-  # Visualization
-  "matplotlib",
-  "altair",
-  "folium",
-  "pydeck",
-  "contextily",
+  # Interactive UI (NEW)
+  "dash>=2.14",
+  "dash-bootstrap-components>=1.5",
+  "plotly>=5.17",
+  "gunicorn>=21.2",
+
+  # Visualization (static/batch)
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+  "altair>=5.1",
+  "folium>=0.15",
+  "pydeck>=0.8",
+  "contextily>=1.4",
 
   # Parallel / scaling options
-  "dask[dataframe]",
-  "ray",
+  "dask[dataframe]>=2023.10",
 ]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+  "pytest-cov>=4.1",
+  "hypothesis>=6.88",
+  "black>=23.10",
+  "ruff>=0.1",
+  "mypy>=1.6",
+  "ipython>=8.16",
+  "ipykernel>=6.25",
+  "jupyter>=1.0",
+]
+
+orchestration = [
+  "prefect>=2.13",
+  "apache-airflow>=2.7",  # note: verify Airflow supports your Python version
+]
+
+distributed = [
+  "ray[data]>=2.7",
+]
+
+docs = [
+  "mkdocs-material>=9.4",
+  "mkdocstrings[python]>=0.23",
+]
+
+all = [
+  "Urban_Amenities2[dev,orchestration,distributed,docs]",
+]
+
+[project.scripts]
+aucs = "Urban_Amenities2.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/paulaker/Urban_Amenities2"
+Documentation = "https://github.com/paulaker/Urban_Amenities2/docs"
+Repository = "https://github.com/paulaker/Urban_Amenities2"
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["Urban_Amenities2*"]
 
 [tool.black]
 line-length = 100
+target-version = ["py311", "py312"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
+src = ["src", "tests"]
 
 [tool.ruff.lint]
-extend-select = ["I"]
+extend-select = ["I", "E", "W", "F", "B", "SIM", "UP"]
+ignore = ["E501"]  # line length handled by black
 
 [tool.pytest.ini_options]
-addopts = "-q"
+minversion = "7.0"
+addopts = "-q --strict-markers --strict-config --cov=Urban_Amenities2 --cov-report=term-missing"
 testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/test_*.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Allow gradual typing
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 

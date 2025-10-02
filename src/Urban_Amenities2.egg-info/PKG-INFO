@@ -1,0 +1,183 @@
+Metadata-Version: 2.4
+Name: Urban_Amenities2
+Version: 0.1.0
+Summary: AUCS 2.0 - Aker Urban Convenience Score: Multi-modal accessibility scoring for CO/UT/ID
+Author: Paul Aker
+License: MIT
+Project-URL: Homepage, https://github.com/paulaker/Urban_Amenities2
+Project-URL: Documentation, https://github.com/paulaker/Urban_Amenities2/docs
+Project-URL: Repository, https://github.com/paulaker/Urban_Amenities2
+Keywords: accessibility,urban-planning,transportation,GIS,multi-modal
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: GIS
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.24
+Requires-Dist: pandas>=2.0
+Requires-Dist: pyarrow>=14.0
+Requires-Dist: duckdb>=0.9
+Requires-Dist: polars>=0.19
+Requires-Dist: numba>=0.58
+Requires-Dist: scipy>=1.11
+Requires-Dist: geopandas>=0.14
+Requires-Dist: shapely>=2.0
+Requires-Dist: pyproj>=3.6
+Requires-Dist: rtree>=1.0
+Requires-Dist: h3>=4.0
+Requires-Dist: h3ronpy>=0.17
+Requires-Dist: rasterio>=1.3
+Requires-Dist: xarray>=2023.8
+Requires-Dist: rioxarray>=0.15
+Requires-Dist: pyogrio>=0.7
+Requires-Dist: requests>=2.31
+Requires-Dist: httpx>=0.25
+Requires-Dist: gql[requests]>=3.4
+Requires-Dist: partridge>=1.1
+Requires-Dist: gtfs-kit>=5.2
+Requires-Dist: gtfs-realtime-bindings>=1.0
+Requires-Dist: SPARQLWrapper>=2.0
+Requires-Dist: qwikidata>=0.4
+Requires-Dist: pydantic>=2.0
+Requires-Dist: pydantic-settings>=2.0
+Requires-Dist: ruamel.yaml>=0.18
+Requires-Dist: pandas-gbq>=0.19
+Requires-Dist: google-cloud-bigquery>=3.11
+Requires-Dist: fsspec>=2023.9
+Requires-Dist: s3fs>=2023.9
+Requires-Dist: adlfs>=2023.8
+Requires-Dist: gcsfs>=2023.9
+Requires-Dist: tenacity>=8.2
+Requires-Dist: backoff>=2.2
+Requires-Dist: rapidfuzz>=3.0
+Requires-Dist: unidecode>=1.3
+Requires-Dist: pandera>=0.17
+Requires-Dist: typer>=0.9
+Requires-Dist: structlog>=23.2
+Requires-Dist: loguru>=0.7
+Requires-Dist: diskcache>=5.6
+Requires-Dist: cachetools>=5.3
+Requires-Dist: joblib>=1.3
+Requires-Dist: tqdm>=4.66
+Requires-Dist: rich>=13.5
+Requires-Dist: dash>=2.14
+Requires-Dist: dash-bootstrap-components>=1.5
+Requires-Dist: plotly>=5.17
+Requires-Dist: gunicorn>=21.2
+Requires-Dist: matplotlib>=3.8
+Requires-Dist: seaborn>=0.13
+Requires-Dist: altair>=5.1
+Requires-Dist: folium>=0.15
+Requires-Dist: pydeck>=0.8
+Requires-Dist: contextily>=1.4
+Requires-Dist: dask[dataframe]>=2023.10
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4; extra == "dev"
+Requires-Dist: pytest-cov>=4.1; extra == "dev"
+Requires-Dist: hypothesis>=6.88; extra == "dev"
+Requires-Dist: black>=23.10; extra == "dev"
+Requires-Dist: ruff>=0.1; extra == "dev"
+Requires-Dist: mypy>=1.6; extra == "dev"
+Requires-Dist: ipython>=8.16; extra == "dev"
+Requires-Dist: ipykernel>=6.25; extra == "dev"
+Requires-Dist: jupyter>=1.0; extra == "dev"
+Provides-Extra: orchestration
+Requires-Dist: prefect>=2.13; extra == "orchestration"
+Requires-Dist: apache-airflow>=2.7; extra == "orchestration"
+Provides-Extra: distributed
+Requires-Dist: ray[data]>=2.7; extra == "distributed"
+Provides-Extra: docs
+Requires-Dist: mkdocs-material>=9.4; extra == "docs"
+Requires-Dist: mkdocstrings[python]>=0.23; extra == "docs"
+Provides-Extra: all
+Requires-Dist: Urban_Amenities2[dev,distributed,docs,orchestration]; extra == "all"
+
+# AUCS Core Infrastructure
+
+This repository contains the foundational infrastructure for the Aker Urban
+Convenience Score (AUCS) model. It now bundles data ingestion, routing,
+accessibility, scoring, aggregation, and export tooling.
+
+## Capabilities
+
+- Typed parameter management with Pydantic models and YAML loaders
+- H3-based spatial utilities for points, lines, and polygons
+- Routing integrations for OSRM (auto/bike/foot) and OTP2 (transit)
+- Travel-time matrices and accessibility builders feeding Essentials Access
+- Pandera schemas for spatial, travel, and scoring datasets
+- Reproducibility tracking via run manifests and data snapshots
+- Structlog-based logging helpers and a Typer CLI for configuration, ingestion,
+  routing, scoring, and export tasks
+
+## Getting Started
+
+1. Install dependencies in your environment (see `pyproject.toml`).
+2. Review the example configuration at `configs/params_default.yml`.
+3. Validate the configuration:
+   ```bash
+   python -m Urban_Amenities2.cli.main config validate configs/params_default.yml
+   ```
+4. Inspect a location's hexagon:
+   ```bash
+   python -m Urban_Amenities2.cli.main hex info 39.7392 -104.9903
+   ```
+5. Initialise a run manifest:
+   ```bash
+   python -m Urban_Amenities2.cli.main run init configs/params_default.yml --git-commit $(git rev-parse HEAD)
+   ```
+
+### Data Ingestion
+
+Use the CLI to ingest Overture, GTFS, and supporting datasets once raw files are
+available locally or via cloud storage:
+
+```bash
+python -m Urban_Amenities2.cli.main ingest overture-places data/raw/overture_places_co.parquet
+python -m Urban_Amenities2.cli.main ingest gtfs "Regional Transportation District"
+python -m Urban_Amenities2.cli.main data quality-report --pois-path data/processed/pois.parquet
+```
+
+See `docs/data_sources.md`, `docs/data_pipeline.md`, and the example script in
+`examples/ingest_co_data.py` for end-to-end orchestration guidance.
+
+### Routing and Accessibility
+
+Prepare OSRM/OTP assets and compute skims:
+
+```bash
+python -m Urban_Amenities2.cli.main routing build-osrm data/processed/transport_segments.parquet
+python -m Urban_Amenities2.cli.main routing compute-skims origins.csv destinations.csv --mode car --period AM
+```
+
+Refer to `docs/routing.md` for deployment details.
+
+### Essentials Access Scoring
+
+Generate Essentials Access scores once POIs and accessibility matrices are
+ready:
+
+```bash
+python -m Urban_Amenities2.cli.main score ea data/processed/pois.parquet data/processed/accessibility.parquet
+python -m Urban_Amenities2.cli.main calibrate ea data/processed/pois.parquet data/processed/accessibility.parquet --parameter rho:groceries --values 0.4,0.6,0.8
+```
+
+Documentation lives in `docs/subscores/essentials_access.md` and the quickstart
+notebook `examples/compute_ea.ipynb`.
+
+### Aggregation and Export
+
+The CLI exposes aggregation and export helpers (see `python -m
+Urban_Amenities2.cli.main --help`). `export/parquet.py` and `export/reports.py`
+provide programmatic access to score files, explainability tables, and QA
+reports.
+
+## Further Reading
+
+- `docs/architecture.md` – high-level system overview
+- `docs/configuration.md` – parameter catalogue and schema docs
+- `docs/categories.md` – AUCS category crosswalk guidance
+- `docs/data_sources.md` / `docs/data_pipeline.md` – ingestion specifics
+- `docs/routing.md` – routing engine setup
+- `docs/subscores/essentials_access.md` – Essentials Access methodology
