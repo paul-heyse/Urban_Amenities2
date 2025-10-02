@@ -38,8 +38,10 @@ class EssentialsAccessCalculator:
         self.config = config
 
     def _prepare(self, pois: pd.DataFrame, accessibility: pd.DataFrame) -> pd.DataFrame:
+        base_columns = ["poi_id", "aucstype", "quality", "brand", "name"]
+        optional_columns = [col for col in ("quality_components", "brand_penalty", "brand_weight") if col in pois.columns]
         frame = accessibility.merge(
-            pois[["poi_id", "aucstype", "quality", "brand", "name"]],
+            pois[base_columns + optional_columns],
             on="poi_id",
             how="left",
         )
@@ -47,6 +49,9 @@ class EssentialsAccessCalculator:
             frame = frame.rename(columns={"origin_hex": "hex_id"})
         frame["category"] = frame["aucstype"]
         frame["subtype"] = frame["brand"].fillna(frame["category"])
+        frame["quality_original"] = frame["quality"]
+        if "brand_penalty" in frame.columns:
+            frame["quality"] = frame["quality"] * frame["brand_penalty"].fillna(1.0)
         frame["qw"] = frame["quality"] * frame["weight"]
         return frame
 
@@ -120,15 +125,31 @@ class EssentialsAccessCalculator:
         if subset.empty:
             return []
         ranked = subset.sort_values("z", ascending=False).head(self.config.top_k)
+        columns = [
+            column
+            for column in [
+                "poi_id",
+                "name",
+                "brand",
+                "z",
+                "quality",
+                "quality_components",
+                "brand_penalty",
+            ]
+            if column in ranked.columns
+        ]
         return [
             {
-                "poi_id": record["poi_id"],
+                "poi_id": record.get("poi_id"),
                 "name": record.get("name"),
                 "aucstype": category,
                 "brand": record.get("brand"),
-                "contribution": record["z"],
+                "contribution": record.get("z"),
+                "quality": record.get("quality"),
+                "quality_components": record.get("quality_components"),
+                "brand_penalty": record.get("brand_penalty"),
             }
-            for record in ranked[["poi_id", "name", "brand", "z"]].to_dict("records")
+            for record in ranked[columns].to_dict("records")
         ]
 
 

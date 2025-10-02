@@ -18,6 +18,17 @@ def test_parameter_to_schema_pipeline() -> None:
             "lat": [39.7392],
             "lon": [-104.9903],
             "quality_attrs": [{}],
+            "quality": [75.0],
+            "quality_base": [70.0],
+            "quality_size": [65.0],
+            "quality_popularity": [80.0],
+            "quality_brand": [50.0],
+            "quality_heritage": [60.0],
+            "quality_hours_category": ["standard"],
+            "quality_hours_bonus": [0.0],
+            "quality_components": [[{"size": 65.0, "popularity": 80.0, "brand": 50.0, "heritage": 60.0}]],
+            "brand_penalty": [1.0],
+            "brand_weight": [1.0],
         }
     )
     validated = POISchema.validate(poi_frame)

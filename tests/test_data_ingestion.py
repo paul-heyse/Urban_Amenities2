@@ -6,6 +6,7 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import LineString, Polygon
 
+from Urban_Amenities2.config.loader import load_params
 from Urban_Amenities2.dedupe.pois import DedupeConfig, deduplicate_pois
 from Urban_Amenities2.io.airports.faa import compute_weights, index_airports
 from Urban_Amenities2.io.climate.noaa import NOAAConfig, NoaaNormalsIngestor
@@ -25,6 +26,12 @@ from Urban_Amenities2.io.parks.ridb import RIDBIngestor
 from Urban_Amenities2.io.parks.trails import index_trails
 from Urban_Amenities2.io.quality.checks import coverage_check
 from Urban_Amenities2.io.versioning.snapshots import SnapshotRegistry
+from Urban_Amenities2.quality import (
+    BrandDedupeConfig,
+    QualityScorer,
+    build_scoring_config,
+    summarize_quality,
+)
 from Urban_Amenities2.xwalk.overture_aucs import load_crosswalk
 
 
@@ -198,14 +205,41 @@ def test_enrichment_and_quality(tmp_path: Path) -> None:
         def query(self, query: str) -> dict:
             return {"results": {"bindings": [{"item": {"value": "http://www.wikidata.org/entity/Q1"}, "capacity": {"value": "500"}}]}}
 
-    pois = pd.DataFrame({"poi_id": ["A"], "name": ["Museum"], "lat": [39.0], "lon": [-104.0]})
+    pois = pd.DataFrame(
+        {
+            "poi_id": ["A", "B"],
+            "name": ["Museum", "Museum Annex"],
+            "lat": [39.0, 39.002],
+            "lon": [-104.0, -104.002],
+            "aucstype": ["museum", "museum"],
+            "brand": ["National Museum", "National Museum"],
+            "hours_per_day": [10, 24],
+        }
+    )
     wikidata = WikidataEnricher(StubClient()).enrich(pois)
     wiki_stats = compute_statistics({"A": pd.DataFrame({"pageviews": [10, 20, 30]})})
     wiki_stats = wiki_stats.assign(poi_id=wiki_stats["title"]).drop(columns=["title"])
-    enriched = merge_enrichment(pois, wikidata, wiki_stats)
+    params, _ = load_params("configs/params_default.yml")
+    scorer = QualityScorer(build_scoring_config(params.quality))
+    dedupe_config = BrandDedupeConfig(beta_per_km=params.quality.dedupe_beta_per_km)
+    enriched = merge_enrichment(
+        pois,
+        wikidata,
+        wiki_stats,
+        quality_scorer=scorer,
+        brand_dedupe_config=dedupe_config,
+    )
     assert "quality_attrs" in enriched.columns
+    assert "quality" in enriched.columns
+    assert enriched["quality"].between(0, 100).all()
+    assert "brand_penalty" in enriched.columns
+    assert enriched.loc[enriched["poi_id"] == "B", "brand_penalty"].iloc[0] < 1.0
 
     quality = coverage_check(enriched.assign(hex_id="abc"))
     assert quality["hex_count"] == 1
+
+    summary = summarize_quality(enriched, category_col="aucstype")
+    assert not summary.empty
+    assert summary.loc[0, "mean_quality"] >= 0
 
 

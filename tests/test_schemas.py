@@ -21,6 +21,17 @@ def test_poi_schema_valid() -> None:
             "lat": [39.7392],
             "lon": [-104.9903],
             "quality_attrs": [{}],
+            "quality": [80.0],
+            "quality_base": [78.0],
+            "quality_size": [70.0],
+            "quality_popularity": [85.0],
+            "quality_brand": [60.0],
+            "quality_heritage": [65.0],
+            "quality_hours_category": ["standard"],
+            "quality_hours_bonus": [0.0],
+            "quality_components": [[{"size": 70.0, "popularity": 85.0, "brand": 60.0, "heritage": 65.0}]],
+            "brand_penalty": [1.0],
+            "brand_weight": [80.0],
         }
     )
     POISchema.validate(frame)
@@ -65,6 +76,17 @@ def test_validation_decorator() -> None:
             "lat": [39.7392],
             "lon": [-104.9903],
             "quality_attrs": [{}],
+            "quality": [80.0],
+            "quality_base": [78.0],
+            "quality_size": [70.0],
+            "quality_popularity": [85.0],
+            "quality_brand": [60.0],
+            "quality_heritage": [65.0],
+            "quality_hours_category": ["standard"],
+            "quality_hours_bonus": [0.0],
+            "quality_components": [[{"size": 70.0, "popularity": 85.0, "brand": 60.0, "heritage": 65.0}]],
+            "brand_penalty": [1.0],
+            "brand_weight": [80.0],
         }
     )
 

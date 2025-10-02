@@ -58,7 +58,7 @@ def test_subscore_validation(tmp_path: Path, tmp_path_factory: pytest.TempPathFa
           category_multipliers: {a: 1}
           per_mode_extra_minutes: {walk: 1}
         quality:
-          lambda_weights: {rating: 1}
+          component_weights: {size: 1, popularity: 0, brand: 0, heritage: 0}
           z_clip_abs: 1
           opening_hours_bonus_xi: 1
           dedupe_beta_per_km: 1

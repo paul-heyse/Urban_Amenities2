@@ -16,9 +16,14 @@ def test_essentials_access_calculation() -> None:
         {
             "poi_id": ["p1", "p2"],
             "aucstype": ["grocery", "grocery"],
-            "quality": [0.9, 0.8],
+            "quality": [90.0, 80.0],
             "brand": ["BrandA", "BrandB"],
             "name": ["A", "B"],
+            "quality_components": [
+                {"size": 85.0, "popularity": 90.0, "brand": 80.0, "heritage": 70.0},
+                {"size": 70.0, "popularity": 60.0, "brand": 75.0, "heritage": 65.0},
+            ],
+            "brand_penalty": [1.0, 0.8],
         }
     )
     accessibility = pd.DataFrame(
@@ -51,6 +56,9 @@ def test_essentials_access_calculation() -> None:
     assert {"hex_id", "EA", "penalty", "category_scores", "contributors"} <= set(scores.columns)
     assert not category_scores.empty
     assert scores.loc[0, "EA"] >= 0
+    top = scores.loc[0, "contributors"]["grocery"][0]
+    assert top["quality"] == pytest.approx(90.0)
+    assert top["quality_components"]["popularity"] == pytest.approx(90.0)
 
 
 def test_normalization_and_aggregation() -> None:
