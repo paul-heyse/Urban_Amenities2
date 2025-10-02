@@ -38,3 +38,16 @@ FinalScoreSchema = DataFrameSchema(
     coerce=True,
     strict=True,
 )
+
+
+EAOutputSchema = DataFrameSchema(
+    {
+        "hex_id": Column(pa.String),
+        "EA": Column(pa.Float, Check.in_range(0, 100)),
+        "penalty": Column(pa.Float, Check.ge(0)),
+        "category_scores": Column(pa.Object),
+        "contributors": Column(pa.Object),
+    },
+    coerce=True,
+    strict=True,
+)
