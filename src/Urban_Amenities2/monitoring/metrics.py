@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from threading import Lock
 from typing import Dict, Mapping, MutableMapping, Optional
@@ -11,6 +12,8 @@ import numpy as np
 from structlog.typing import FilteringBoundLogger
 
 from ..logging_utils import get_logger
+
+import time
 
 LOGGER = get_logger("aucs.metrics")
 

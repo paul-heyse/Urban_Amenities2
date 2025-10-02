@@ -1,37 +1,135 @@
+"""Wikipedia pageviews enrichment with caching and resiliency."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Dict
 
 import pandas as pd
 import requests
+from diskcache import Cache
 
-API_URL = "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{project}/all-access/all-agents/{title}/daily/{start}/{end}"
+from ...logging_utils import get_logger
+from ...utils.resilience import CircuitBreaker, CircuitBreakerOpenError, RateLimiter, retry_with_backoff
+
+LOGGER = get_logger("aucs.enrichment.wikipedia")
+
+API_URL = (
+    "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{project}/all-access/"
+    "all-agents/{title}/daily/{start}/{end}"
+)
 
 
-@dataclass
 class WikipediaClient:
-    project: str = "en.wikipedia.org"
+    """Client with rate limiting, caching, and graceful fallbacks."""
 
-    def fetch(self, title: str, months: int = 12, session: Optional[requests.Session] = None) -> pd.DataFrame:
-        session = session or requests.Session()
-        end = datetime.utcnow().date().replace(day=1) - timedelta(days=1)
-        start = end - timedelta(days=30 * months)
-        url = API_URL.format(
-            project=self.project,
-            title=title.replace(" ", "_"),
-            start=start.strftime("%Y%m%d"),
-            end=end.strftime("%Y%m%d"),
+    def __init__(
+        self,
+        project: str = "en.wikipedia.org",
+        *,
+        cache_dir: str | Path = Path("cache/api/wikipedia"),
+        cache_ttl_seconds: int = 60 * 60 * 24,
+        max_requests_per_sec: int = 100,
+        session: requests.Session | None = None,
+        rate_limiter: RateLimiter | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
+    ) -> None:
+        self.project = project
+        self.session = session or requests.Session()
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache = Cache(directory=str(self.cache_dir), size_limit=10 * 1024**3)
+        self.cache_ttl_seconds = cache_ttl_seconds
+        self.rate_limiter = rate_limiter or RateLimiter(max_requests_per_sec, per=1.0)
+        self.circuit_breaker = circuit_breaker or CircuitBreaker(
+            failure_threshold=5,
+            recovery_timeout=60.0,
+            expected_exceptions=(requests.RequestException,),
         )
-        response = session.get(url, timeout=30)
-        response.raise_for_status()
-        data = response.json().get("items", [])
-        frame = pd.DataFrame(data)
-        if frame.empty:
-            return pd.DataFrame(columns=["timestamp", "views"])
+
+    def fetch(
+        self,
+        title: str,
+        *,
+        months: int = 12,
+    ) -> pd.DataFrame:
+        """Fetch pageview history for a title, falling back to cached data."""
+
+        key = self._cache_key(title, months)
+        cached = self.cache.get(key)
+        try:
+            data = self._fetch_remote(title, months)
+        except CircuitBreakerOpenError:
+            LOGGER.error("wikipedia_circuit_open", title=self._safe_title(title))
+            if cached is not None:
+                return self._to_frame(cached)
+            raise
+        except requests.RequestException as exc:
+            LOGGER.warning(
+                "wikipedia_fetch_failed", title=self._safe_title(title), error=str(exc)
+            )
+            if cached is not None:
+                return self._to_frame(cached)
+            raise
+        if data is None:
+            return pd.DataFrame(columns=["timestamp", "pageviews"])
+        frame = self._normalise_records(data)
+        self.cache.set(key, frame.to_dict("records"), expire=self.cache_ttl_seconds)
+        return frame
+
+    # Internal helpers -------------------------------------------------
+    def _fetch_remote(self, title: str, months: int) -> list[dict] | None:
+        def _execute() -> list[dict] | None:
+            self.rate_limiter.acquire()
+            end = datetime.utcnow().date().replace(day=1) - timedelta(days=1)
+            start = end - timedelta(days=30 * months)
+            url = API_URL.format(
+                project=self.project,
+                title=title.replace(" ", "_"),
+                start=start.strftime("%Y%m%d"),
+                end=end.strftime("%Y%m%d"),
+            )
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            payload = response.json()
+            return payload.get("items", [])
+
+        def _wrapped() -> list[dict] | None:
+            return retry_with_backoff(
+                _execute,
+                attempts=3,
+                base_delay=1.0,
+                max_delay=4.0,
+                jitter=0.25,
+                exceptions=(requests.RequestException,),
+            )
+
+        return self.circuit_breaker.call(_wrapped)
+
+    def _normalise_records(self, records: list[dict]) -> pd.DataFrame:
+        if not records:
+            return pd.DataFrame(columns=["timestamp", "pageviews"])
+        frame = pd.DataFrame.from_records(records)
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], format="%Y%m%d00")
         frame = frame.rename(columns={"views": "pageviews"})
+        return frame[["timestamp", "pageviews"]]
+
+    def _cache_key(self, title: str, months: int) -> str:
+        digest = hashlib.sha1(title.encode("utf-8")).hexdigest()
+        return f"{self.project}:{months}:{digest}"
+
+    @staticmethod
+    def _safe_title(title: str) -> str:
+        return title[:100]
+
+    @staticmethod
+    def _to_frame(records: list[dict]) -> pd.DataFrame:
+        if not records:
+            return pd.DataFrame(columns=["timestamp", "pageviews"])
+        frame = pd.DataFrame.from_records(records)
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"])
         return frame[["timestamp", "pageviews"]]
 
 
@@ -42,9 +140,9 @@ def compute_statistics(pageviews: Dict[str, pd.DataFrame]) -> pd.DataFrame:
             records.append({"title": title, "median_views": 0.0, "iqr": 0.0})
             continue
         median = float(frame["pageviews"].median())
-        q1 = frame["pageviews"].quantile(0.25)
-        q3 = frame["pageviews"].quantile(0.75)
-        records.append({"title": title, "median_views": median, "iqr": float(q3 - q1)})
+        q1 = float(frame["pageviews"].quantile(0.25))
+        q3 = float(frame["pageviews"].quantile(0.75))
+        records.append({"title": title, "median_views": median, "iqr": q3 - q1})
     summary = pd.DataFrame.from_records(records)
     if summary.empty:
         return summary
@@ -54,7 +152,11 @@ def compute_statistics(pageviews: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     return summary
 
 
-def enrich_with_pageviews(titles: Dict[str, str], client: WikipediaClient | None = None) -> pd.DataFrame:
+def enrich_with_pageviews(
+    titles: Dict[str, str],
+    *,
+    client: WikipediaClient | None = None,
+) -> pd.DataFrame:
     client = client or WikipediaClient()
     pageview_data: Dict[str, pd.DataFrame] = {}
     for poi_id, title in titles.items():

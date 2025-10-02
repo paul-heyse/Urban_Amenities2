@@ -1,0 +1,1323 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/src/Urban_Amenities2/io/enrichment/wikidata.py b/src/Urban_Amenities2/io/enrichment/wikidata.py
+index 6e637698cbd161de4e6c7ff3e3d68ec36779f0e5..4f8bb4f494457f012e7426ea8c2e22edd831ebcb 100644
+--- a/src/Urban_Amenities2/io/enrichment/wikidata.py
++++ b/src/Urban_Amenities2/io/enrichment/wikidata.py
+@@ -1,67 +1,128 @@
++"""Wikidata enrichment utilities with resiliency safeguards."""
++
+ from __future__ import annotations
+
++import hashlib
+ from dataclasses import dataclass
++from pathlib import Path
+ from typing import Dict, Optional
+
+ import pandas as pd
+ from SPARQLWrapper import JSON, SPARQLWrapper
++from diskcache import Cache
++
++from ...logging_utils import get_logger
++from ...utils.resilience import CircuitBreaker, CircuitBreakerOpenError, RateLimiter, retry_with_backoff
++
++LOGGER = get_logger("aucs.enrichment.wikidata")
+
+
+ @dataclass
+ class WikidataClient:
+     endpoint: str = "https://query.wikidata.org/sparql"
+     user_agent: str = "UrbanAmenitiesBot/0.1"
++    cache_dir: str | Path = Path("cache/api/wikidata")
++    cache_ttl_seconds: int = 60 * 60 * 24 * 7
++    rate_limit_per_sec: int = 10
+
+     def __post_init__(self) -> None:
+         self._client = SPARQLWrapper(self.endpoint, agent=self.user_agent)
+         self._client.setReturnFormat(JSON)
++        cache_dir = Path(self.cache_dir)
++        cache_dir.mkdir(parents=True, exist_ok=True)
++        self._cache = Cache(directory=str(cache_dir), size_limit=10 * 1024**3)
++        self._rate_limiter = RateLimiter(self.rate_limit_per_sec, per=1.0)
++        self._breaker = CircuitBreaker(
++            failure_threshold=5,
++            recovery_timeout=60.0,
++            expected_exceptions=(Exception,),
++        )
+
+     def query(self, query: str) -> Dict:
+-        self._client.setQuery(query)
+-        return self._client.query().convert()
++        key = self._cache_key(query)
++        cached = self._cache.get(key)
++        try:
++            result = self._execute(query)
++        except CircuitBreakerOpenError:
++            LOGGER.error("wikidata_circuit_open")
++            if cached is not None:
++                return cached
++            raise
++        except Exception as exc:  # pragma: no cover - tested via fallback
++            LOGGER.warning("wikidata_query_failed", error=str(exc))
++            if cached is not None:
++                return cached
++            raise
++        self._cache.set(key, result, expire=self.cache_ttl_seconds)
++        return result
++
++    def _execute(self, query: str) -> Dict:
++        def _call() -> Dict:
++            self._rate_limiter.acquire()
++            self._client.setQuery(query)
++            response = self._client.query()
++            return response.convert()
++
++        return self._breaker.call(
++            lambda: retry_with_backoff(
++                _call,
++                attempts=3,
++                base_delay=1.0,
++                max_delay=4.0,
++                jitter=0.25,
++                exceptions=(Exception,),
++            )
++        )
++
++    @staticmethod
++    def _cache_key(query: str) -> str:
++        return hashlib.sha1(query.encode("utf-8")).hexdigest()
+
+
+ def build_query(name: str, lat: float, lon: float, radius_km: float = 0.5) -> str:
+     return f"""
+     SELECT ?item ?itemLabel ?capacity ?heritage WHERE {{
+       ?item rdfs:label "{name}"@en.
+       SERVICE wikibase:around {{
+         ?item wdt:P625 ?location .
+         bd:serviceParam wikibase:center "Point({lon} {lat})"^^geo:wktLiteral .
+         bd:serviceParam wikibase:radius "{radius_km}" .
+       }}
+       OPTIONAL {{ ?item wdt:P1083 ?capacity. }}
+       OPTIONAL {{ ?item wdt:P1435 ?heritage. }}
+       SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+     }}
+     LIMIT 1
+     """
+
+
+ class WikidataEnricher:
+-    def __init__(self, client: WikidataClient | None = None):
++    def __init__(self, client: WikidataClient | None = None) -> None:
+         self.client = client or WikidataClient()
+
+     def match(self, name: str, lat: float, lon: float) -> Dict[str, Optional[str]]:
+         query = build_query(name, lat, lon)
+-        results = self.client.query(query)
+-        bindings = results.get("results", {}).get("bindings", [])
++        response = self.client.query(query)
++        bindings = response.get("results", {}).get("bindings", [])
+         if not bindings:
+             return {"wikidata_qid": None, "capacity": None, "heritage_status": None}
+         binding = bindings[0]
+         qid = binding.get("item", {}).get("value", "")
+         qid_short = qid.split("/")[-1] if qid else None
+         capacity = binding.get("capacity", {}).get("value")
+         heritage = binding.get("heritage", {}).get("value")
+         return {"wikidata_qid": qid_short, "capacity": capacity, "heritage_status": heritage}
+
+     def enrich(self, pois: pd.DataFrame) -> pd.DataFrame:
+         records = []
+         for _, row in pois.iterrows():
+-            result = self.match(row.get("name", ""), float(row.get("lat", 0.0)), float(row.get("lon", 0.0)))
+-            record = {"poi_id": row.get("poi_id"), **result}
+-            records.append(record)
++            result = self.match(
++                row.get("name", ""),
++                float(row.get("lat", 0.0)),
++                float(row.get("lon", 0.0)),
++            )
++            records.append({"poi_id": row.get("poi_id"), **result})
+         return pd.DataFrame.from_records(records)
+
+
+ __all__ = ["WikidataClient", "WikidataEnricher", "build_query"]
+diff --git a/src/Urban_Amenities2/io/enrichment/wikipedia.py b/src/Urban_Amenities2/io/enrichment/wikipedia.py
+index 6d38b54aee0e93f4f5a4d755ea2154b23df52849..e666bce2ba4f93f2327184d02d9f520bb96afee7 100644
+--- a/src/Urban_Amenities2/io/enrichment/wikipedia.py
++++ b/src/Urban_Amenities2/io/enrichment/wikipedia.py
+@@ -1,70 +1,172 @@
++"""Wikipedia pageviews enrichment with caching and resiliency."""
++
+ from __future__ import annotations
+
+-from dataclasses import dataclass
++import hashlib
+ from datetime import datetime, timedelta
+-from typing import Dict, Optional
++from pathlib import Path
++from typing import Dict
+
+ import pandas as pd
+ import requests
++from diskcache import Cache
++
++from ...logging_utils import get_logger
++from ...utils.resilience import CircuitBreaker, CircuitBreakerOpenError, RateLimiter, retry_with_backoff
+
+-API_URL = "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{project}/all-access/all-agents/{title}/daily/{start}/{end}"
++LOGGER = get_logger("aucs.enrichment.wikipedia")
++
++API_URL = (
++    "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{project}/all-access/"
++    "all-agents/{title}/daily/{start}/{end}"
++)
+
+
+-@dataclass
+ class WikipediaClient:
+-    project: str = "en.wikipedia.org"
+-
+-    def fetch(self, title: str, months: int = 12, session: Optional[requests.Session] = None) -> pd.DataFrame:
+-        session = session or requests.Session()
+-        end = datetime.utcnow().date().replace(day=1) - timedelta(days=1)
+-        start = end - timedelta(days=30 * months)
+-        url = API_URL.format(
+-            project=self.project,
+-            title=title.replace(" ", "_"),
+-            start=start.strftime("%Y%m%d"),
+-            end=end.strftime("%Y%m%d"),
++    """Client with rate limiting, caching, and graceful fallbacks."""
++
++    def __init__(
++        self,
++        project: str = "en.wikipedia.org",
++        *,
++        cache_dir: str | Path = Path("cache/api/wikipedia"),
++        cache_ttl_seconds: int = 60 * 60 * 24,
++        max_requests_per_sec: int = 100,
++        session: requests.Session | None = None,
++        rate_limiter: RateLimiter | None = None,
++        circuit_breaker: CircuitBreaker | None = None,
++    ) -> None:
++        self.project = project
++        self.session = session or requests.Session()
++        self.cache_dir = Path(cache_dir)
++        self.cache_dir.mkdir(parents=True, exist_ok=True)
++        self.cache = Cache(directory=str(self.cache_dir), size_limit=10 * 1024**3)
++        self.cache_ttl_seconds = cache_ttl_seconds
++        self.rate_limiter = rate_limiter or RateLimiter(max_requests_per_sec, per=1.0)
++        self.circuit_breaker = circuit_breaker or CircuitBreaker(
++            failure_threshold=5,
++            recovery_timeout=60.0,
++            expected_exceptions=(requests.RequestException,),
+         )
+-        response = session.get(url, timeout=30)
+-        response.raise_for_status()
+-        data = response.json().get("items", [])
+-        frame = pd.DataFrame(data)
+-        if frame.empty:
+-            return pd.DataFrame(columns=["timestamp", "views"])
++
++    def fetch(
++        self,
++        title: str,
++        *,
++        months: int = 12,
++    ) -> pd.DataFrame:
++        """Fetch pageview history for a title, falling back to cached data."""
++
++        key = self._cache_key(title, months)
++        cached = self.cache.get(key)
++        try:
++            data = self._fetch_remote(title, months)
++        except CircuitBreakerOpenError:
++            LOGGER.error("wikipedia_circuit_open", title=self._safe_title(title))
++            if cached is not None:
++                return self._to_frame(cached)
++            raise
++        except requests.RequestException as exc:
++            LOGGER.warning(
++                "wikipedia_fetch_failed", title=self._safe_title(title), error=str(exc)
++            )
++            if cached is not None:
++                return self._to_frame(cached)
++            raise
++        if data is None:
++            return pd.DataFrame(columns=["timestamp", "pageviews"])
++        frame = self._normalise_records(data)
++        self.cache.set(key, frame.to_dict("records"), expire=self.cache_ttl_seconds)
++        return frame
++
++    # Internal helpers -------------------------------------------------
++    def _fetch_remote(self, title: str, months: int) -> list[dict] | None:
++        def _execute() -> list[dict] | None:
++            self.rate_limiter.acquire()
++            end = datetime.utcnow().date().replace(day=1) - timedelta(days=1)
++            start = end - timedelta(days=30 * months)
++            url = API_URL.format(
++                project=self.project,
++                title=title.replace(" ", "_"),
++                start=start.strftime("%Y%m%d"),
++                end=end.strftime("%Y%m%d"),
++            )
++            response = self.session.get(url, timeout=30)
++            response.raise_for_status()
++            payload = response.json()
++            return payload.get("items", [])
++
++        def _wrapped() -> list[dict] | None:
++            return retry_with_backoff(
++                _execute,
++                attempts=3,
++                base_delay=1.0,
++                max_delay=4.0,
++                jitter=0.25,
++                exceptions=(requests.RequestException,),
++            )
++
++        return self.circuit_breaker.call(_wrapped)
++
++    def _normalise_records(self, records: list[dict]) -> pd.DataFrame:
++        if not records:
++            return pd.DataFrame(columns=["timestamp", "pageviews"])
++        frame = pd.DataFrame.from_records(records)
+         frame["timestamp"] = pd.to_datetime(frame["timestamp"], format="%Y%m%d00")
+         frame = frame.rename(columns={"views": "pageviews"})
+         return frame[["timestamp", "pageviews"]]
+
++    def _cache_key(self, title: str, months: int) -> str:
++        digest = hashlib.sha1(title.encode("utf-8")).hexdigest()
++        return f"{self.project}:{months}:{digest}"
++
++    @staticmethod
++    def _safe_title(title: str) -> str:
++        return title[:100]
++
++    @staticmethod
++    def _to_frame(records: list[dict]) -> pd.DataFrame:
++        if not records:
++            return pd.DataFrame(columns=["timestamp", "pageviews"])
++        frame = pd.DataFrame.from_records(records)
++        frame["timestamp"] = pd.to_datetime(frame["timestamp"])
++        return frame[["timestamp", "pageviews"]]
++
+
+ def compute_statistics(pageviews: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+     records = []
+     for title, frame in pageviews.items():
+         if frame.empty:
+             records.append({"title": title, "median_views": 0.0, "iqr": 0.0})
+             continue
+         median = float(frame["pageviews"].median())
+-        q1 = frame["pageviews"].quantile(0.25)
+-        q3 = frame["pageviews"].quantile(0.75)
+-        records.append({"title": title, "median_views": median, "iqr": float(q3 - q1)})
++        q1 = float(frame["pageviews"].quantile(0.25))
++        q3 = float(frame["pageviews"].quantile(0.75))
++        records.append({"title": title, "median_views": median, "iqr": q3 - q1})
+     summary = pd.DataFrame.from_records(records)
+     if summary.empty:
+         return summary
+     mean = summary["median_views"].mean()
+     std = summary["median_views"].std(ddof=0) or 1.0
+     summary["popularity_z"] = (summary["median_views"] - mean) / std
+     return summary
+
+
+-def enrich_with_pageviews(titles: Dict[str, str], client: WikipediaClient | None = None) -> pd.DataFrame:
++def enrich_with_pageviews(
++    titles: Dict[str, str],
++    *,
++    client: WikipediaClient | None = None,
++) -> pd.DataFrame:
+     client = client or WikipediaClient()
+     pageview_data: Dict[str, pd.DataFrame] = {}
+     for poi_id, title in titles.items():
+         frame = client.fetch(title)
+         pageview_data[poi_id] = frame
+     stats = compute_statistics({poi_id: frame for poi_id, frame in pageview_data.items()})
+     stats = stats.rename(columns={"title": "poi_id"})
+     stats["poi_id"] = stats["poi_id"].astype(str)
+     stats["title"] = [titles.get(poi_id, "") for poi_id in stats["poi_id"]]
+     return stats
+
+
+ __all__ = ["WikipediaClient", "enrich_with_pageviews", "compute_statistics"]
+diff --git a/src/Urban_Amenities2/logging_utils.py b/src/Urban_Amenities2/logging_utils.py
+index c8d717082029b8eb42db9480987aced3a03be688..26d95b8449146edf9e94bfbe4f27aeb30267fd52 100644
+--- a/src/Urban_Amenities2/logging_utils.py
++++ b/src/Urban_Amenities2/logging_utils.py
+@@ -1,55 +1,160 @@
+-"""Structlog configuration helpers."""
++"""Structured logging utilities with sanitisation and context management."""
++
+ from __future__ import annotations
+
++import hashlib
+ import logging
+-import time
++import logging.handlers
+ from contextlib import contextmanager
+-from typing import Any, Callable, Iterator
++import contextvars
++from pathlib import Path
++from typing import Any, Iterable, Mapping
+
+ import structlog
+ from structlog.typing import FilteringBoundLogger
+
++__all__ = [
++    "bind_context",
++    "configure_logging",
++    "get_logger",
++    "log_duration",
++    "request_context",
++    "timing_decorator",
++]
++
++
++_REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
++    "request_id", default=None
++)
++
++
++def configure_logging(level: str = "INFO", *, log_file: str | Path | None = None) -> None:
++    """Configure structlog with JSON output and optional file logging."""
++
++    numeric_level = getattr(logging, level.upper(), logging.INFO)
++    handlers: list[logging.Handler] = []
++
++    stream_handler = logging.StreamHandler()
++    stream_handler.setFormatter(logging.Formatter("%(message)s"))
++    handlers.append(stream_handler)
++
++    if log_file:
++        path = Path(log_file)
++        path.parent.mkdir(parents=True, exist_ok=True)
++        file_handler = logging.handlers.RotatingFileHandler(
++            path, maxBytes=100 * 1024 * 1024, backupCount=10
++        )
++        file_handler.setFormatter(logging.Formatter("%(message)s"))
++        handlers.append(file_handler)
++
++    logging.basicConfig(level=numeric_level, handlers=handlers, force=True)
+
+-def configure_logging(level: str = "INFO") -> None:
+     structlog.configure(
+         processors=[
++            structlog.contextvars.merge_contextvars,
++            _sanitise_event,
+             structlog.processors.TimeStamper(fmt="iso"),
+             structlog.processors.add_log_level,
+             structlog.processors.StackInfoRenderer(),
+             structlog.processors.format_exc_info,
+             structlog.processors.JSONRenderer(),
+         ],
+-        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, level.upper(), logging.INFO)),
++        context_class=dict,
++        logger_factory=structlog.stdlib.LoggerFactory(),
+         cache_logger_on_first_use=True,
+     )
+
+
+ def get_logger(name: str = "aucs") -> FilteringBoundLogger:
+     return structlog.get_logger(name)
+
+
+ def bind_context(logger: FilteringBoundLogger, **context: Any) -> FilteringBoundLogger:
+     return logger.bind(**context)
+
+
+ @contextmanager
+-def log_duration(logger: FilteringBoundLogger, event: str, **context: Any) -> Iterator[None]:
++def request_context(request_id: str) -> Iterable[None]:
++    token = _REQUEST_ID.set(request_id)
++    try:
++        yield
++    finally:
++        _REQUEST_ID.reset(token)
++
++
++@contextmanager
++def log_duration(logger: FilteringBoundLogger, event: str, **context: Any) -> Iterable[None]:
++    import time
++
+     start = time.perf_counter()
+-    yield
+-    duration = time.perf_counter() - start
+-    logger.info(event, duration_seconds=duration, **context)
++    try:
++        yield
++    finally:
++        duration = time.perf_counter() - start
++        logger.info(event, duration_seconds=duration, **context)
++
+
++def timing_decorator(logger: FilteringBoundLogger, event: str):
++    def decorator(func):
++        def wrapper(*args, **kwargs):
++            import time
+
+-def timing_decorator(logger: FilteringBoundLogger, event: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+-        def wrapper(*args: Any, **kwargs: Any) -> Any:
+             start = time.perf_counter()
+             try:
+                 return func(*args, **kwargs)
+             finally:
+                 duration = time.perf_counter() - start
+                 logger.info(event, duration_seconds=duration)
+
+         return wrapper
+
+     return decorator
++
++
++def _sanitise_event(
++    _: FilteringBoundLogger,
++    __: str,
++    event_dict: Mapping[str, Any],
++) -> Mapping[str, Any]:
++    mutable = dict(event_dict)
++    request_id = _REQUEST_ID.get()
++    if request_id and "request_id" not in mutable:
++        mutable["request_id"] = request_id
++    for key, value in list(mutable.items()):
++        if _is_secret_key(key):
++            mutable[key] = "***"
++        elif _is_coordinate_field(key):
++            mutable[key] = _round_value(value)
++        elif key == "coords":
++            mutable[key] = _round_coords(value)
++        elif key in {"user_id", "user"} and isinstance(value, str):
++            mutable[key] = hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
++    return mutable
++
++
++def _is_secret_key(key: str) -> bool:
++    lowered = key.lower()
++    return "api_key" in lowered or lowered.endswith("_token")
++
++
++def _is_coordinate_field(key: str) -> bool:
++    lowered = key.lower()
++    return lowered in {"lat", "latitude", "lon", "longitude"}
++
++
++def _round_value(value: Any) -> Any:
++    if isinstance(value, (int, float)):
++        return round(float(value), 3)
++    return value
++
++
++def _round_coords(value: Any) -> Any:
++    if isinstance(value, (list, tuple)):
++        rounded = []
++        for item in value:
++            if isinstance(item, (list, tuple)) and len(item) == 2:
++                rounded.append((_round_value(item[0]), _round_value(item[1])))
++            else:
++                rounded.append(_round_value(item))
++        return rounded
++    return value
+diff --git a/src/Urban_Amenities2/monitoring/health.py b/src/Urban_Amenities2/monitoring/health.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..2308f9227f0a00e1676f9e7f0163e59b6efc80de
+--- /dev/null
++++ b/src/Urban_Amenities2/monitoring/health.py
+@@ -0,0 +1,288 @@
++"""Health check utilities for routing services and data readiness."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from datetime import datetime, timedelta
++from enum import Enum
++from pathlib import Path
++from typing import Iterable, Mapping, Sequence
++
++import requests
++import shutil
++
++try:  # pragma: no cover - optional dependency fallback
++    import psutil  # type: ignore
++except ModuleNotFoundError:  # pragma: no cover - fallback path
++    psutil = None  # type: ignore
++
++from ..config.loader import ParameterLoadError, load_params
++
++__all__ = [
++    "HealthCheckResult",
++    "HealthStatus",
++    "format_report",
++    "overall_status",
++    "run_health_checks",
++]
++
++
++class HealthStatus(str, Enum):
++    OK = "ok"
++    WARNING = "warning"
++    CRITICAL = "critical"
++
++
++@dataclass(slots=True)
++class HealthCheckResult:
++    name: str
++    status: HealthStatus
++    message: str
++    details: dict[str, object] | None = None
++
++
++_STATUS_ICON = {
++    HealthStatus.OK: "✅",
++    HealthStatus.WARNING: "⚠️",
++    HealthStatus.CRITICAL: "❌",
++}
++
++
++def run_health_checks(
++    *,
++    osrm_urls: Mapping[str, str | None],
++    otp_url: str | None,
++    params_path: Path,
++    data_paths: Sequence[tuple[Path, int | None]] = (),
++    min_disk_gb: float = 100.0,
++    min_memory_gb: float = 8.0,
++    timeout_seconds: int = 5,
++) -> list[HealthCheckResult]:
++    """Run configured health checks and return their results."""
++
++    results: list[HealthCheckResult] = []
++    results.extend(_check_osrm(osrm_urls, timeout_seconds))
++    results.append(_check_otp(otp_url, timeout_seconds))
++    results.append(_check_params(params_path))
++    results.extend(_check_data_paths(data_paths))
++    results.append(_check_disk_space(min_disk_gb))
++    results.append(_check_memory(min_memory_gb))
++    return results
++
++
++def _check_osrm(
++    osrm_urls: Mapping[str, str | None],
++    timeout_seconds: int,
++) -> Iterable[HealthCheckResult]:
++    results: list[HealthCheckResult] = []
++    for mode, url in osrm_urls.items():
++        name = f"osrm:{mode}"
++        if not url:
++            results.append(
++                HealthCheckResult(
++                    name=name,
++                    status=HealthStatus.CRITICAL,
++                    message="OSRM URL not configured",
++                )
++            )
++            continue
++        try:
++            response = requests.get(
++                f"{url.rstrip('/')}/health",
++                timeout=timeout_seconds,
++            )
++        except requests.RequestException as exc:
++            results.append(
++                HealthCheckResult(
++                    name=name,
++                    status=HealthStatus.CRITICAL,
++                    message="OSRM health check failed",
++                    details={"error": str(exc)},
++                )
++            )
++            continue
++        if response.status_code >= 500:
++            results.append(
++                HealthCheckResult(
++                    name=name,
++                    status=HealthStatus.CRITICAL,
++                    message=f"OSRM unhealthy ({response.status_code})",
++                )
++            )
++        elif response.status_code >= 400:
++            results.append(
++                HealthCheckResult(
++                    name=name,
++                    status=HealthStatus.WARNING,
++                    message=f"OSRM health endpoint returned {response.status_code}",
++                )
++            )
++        else:
++            results.append(
++                HealthCheckResult(
++                    name=name,
++                    status=HealthStatus.OK,
++                    message="OSRM reachable",
++                )
++            )
++    return results
++
++
++def _check_otp(otp_url: str | None, timeout_seconds: int) -> HealthCheckResult:
++    if not otp_url:
++        return HealthCheckResult(
++            name="otp", status=HealthStatus.CRITICAL, message="OTP URL not configured"
++        )
++    payload = {"query": "{__typename}"}
++    try:
++        response = requests.post(otp_url, json=payload, timeout=timeout_seconds)
++        response.raise_for_status()
++        data = response.json()
++    except requests.RequestException as exc:
++        return HealthCheckResult(
++            name="otp",
++            status=HealthStatus.CRITICAL,
++            message="OTP health check failed",
++            details={"error": str(exc)},
++        )
++    except ValueError as exc:
++        return HealthCheckResult(
++            name="otp",
++            status=HealthStatus.WARNING,
++            message="OTP health response not JSON",
++            details={"error": str(exc)},
++        )
++    if "errors" in data:
++        return HealthCheckResult(
++            name="otp",
++            status=HealthStatus.WARNING,
++            message="OTP returned GraphQL errors",
++            details={"errors": data.get("errors")},
++        )
++    return HealthCheckResult(name="otp", status=HealthStatus.OK, message="OTP reachable")
++
++
++def _check_params(path: Path) -> HealthCheckResult:
++    try:
++        params, param_hash = load_params(path)
++    except ParameterLoadError as exc:
++        return HealthCheckResult(
++            name="params",
++            status=HealthStatus.CRITICAL,
++            message="Parameter validation failed",
++            details={"error": str(exc)},
++        )
++    return HealthCheckResult(
++        name="params",
++        status=HealthStatus.OK,
++        message="Parameters validated",
++        details={"hash": param_hash, "time_slices": list(params.iter_time_slice_ids())},
++    )
++
++
++def _check_data_paths(
++    data_paths: Sequence[tuple[Path, int | None]]
++) -> Iterable[HealthCheckResult]:
++    results: list[HealthCheckResult] = []
++    for path, max_age in data_paths:
++        name = f"data:{path.name}"
++        if not path.exists():
++            results.append(
++                HealthCheckResult(
++                    name=name,
++                    status=HealthStatus.CRITICAL,
++                    message="Required data file missing",
++                )
++            )
++            continue
++        if max_age is None:
++            results.append(
++                HealthCheckResult(name=name, status=HealthStatus.OK, message="File present")
++            )
++            continue
++        modified = datetime.fromtimestamp(path.stat().st_mtime)
++        age_days = (datetime.utcnow() - modified).days
++        if age_days > max_age:
++            results.append(
++                HealthCheckResult(
++                    name=name,
++                    status=HealthStatus.WARNING,
++                    message="Data is stale",
++                    details={"age_days": age_days, "max_age_days": max_age},
++                )
++            )
++        else:
++            results.append(
++                HealthCheckResult(
++                    name=name,
++                    status=HealthStatus.OK,
++                    message="Data fresh",
++                    details={"age_days": age_days},
++                )
++            )
++    return results
++
++
++def _check_disk_space(min_gb: float) -> HealthCheckResult:
++    if psutil is not None:
++        usage_free = psutil.disk_usage(Path.cwd().anchor).free
++    else:  # pragma: no cover - fallback path
++        usage_free = shutil.disk_usage(Path.cwd().anchor).free
++    free_gb = usage_free / 1024**3
++    if free_gb < min_gb:
++        return HealthCheckResult(
++            name="disk",
++            status=HealthStatus.CRITICAL,
++            message="Insufficient disk space",
++            details={"free_gb": round(free_gb, 2), "required_gb": min_gb},
++        )
++    return HealthCheckResult(
++        name="disk",
++        status=HealthStatus.OK,
++        message="Disk space sufficient",
++        details={"free_gb": round(free_gb, 2)},
++    )
++
++
++def _check_memory(min_gb: float) -> HealthCheckResult:
++    if psutil is None:  # pragma: no cover - fallback path
++        return HealthCheckResult(
++            name="memory",
++            status=HealthStatus.WARNING,
++            message="psutil not installed; memory availability unknown",
++        )
++    virtual = psutil.virtual_memory()
++    available_gb = virtual.available / 1024**3
++    if available_gb < min_gb:
++        return HealthCheckResult(
++            name="memory",
++            status=HealthStatus.CRITICAL,
++            message="Insufficient memory available",
++            details={"available_gb": round(available_gb, 2), "required_gb": min_gb},
++        )
++    return HealthCheckResult(
++        name="memory",
++        status=HealthStatus.OK,
++        message="Memory available",
++        details={"available_gb": round(available_gb, 2)},
++    )
++
++
++def format_report(results: Sequence[HealthCheckResult]) -> str:
++    lines = []
++    for result in results:
++        icon = _STATUS_ICON.get(result.status, "-")
++        line = f"{icon} {result.name}: {result.message}"
++        lines.append(line)
++        if result.details:
++            for key, value in result.details.items():
++                lines.append(f"    • {key}: {value}")
++    return "\n".join(lines)
++
++
++def overall_status(results: Sequence[HealthCheckResult]) -> HealthStatus:
++    if any(result.status == HealthStatus.CRITICAL for result in results):
++        return HealthStatus.CRITICAL
++    if any(result.status == HealthStatus.WARNING for result in results):
++        return HealthStatus.WARNING
++    return HealthStatus.OK
+diff --git a/src/Urban_Amenities2/monitoring/metrics.py b/src/Urban_Amenities2/monitoring/metrics.py
+index 5d2eb421577aaf540bc72f27e685d3aaab4536bf..62f50f88d7d74b1b908f603c0f7a2d0065016da4 100644
+--- a/src/Urban_Amenities2/monitoring/metrics.py
++++ b/src/Urban_Amenities2/monitoring/metrics.py
+@@ -1,39 +1,42 @@
+ from __future__ import annotations
+
+ import time
+ from collections import defaultdict
++from collections import defaultdict
+ from dataclasses import dataclass
+ from threading import Lock
+ from typing import Dict, Mapping, MutableMapping, Optional
+
+ import numpy as np
+
+ from structlog.typing import FilteringBoundLogger
+
+ from ..logging_utils import get_logger
+
++import time
++
+ LOGGER = get_logger("aucs.metrics")
+
+
+ @dataclass(slots=True)
+ class MetricSummary:
+     """Aggregate statistics for a metric bucket."""
+
+     count: int
+     total_duration: float
+     p50: float
+     p95: float
+     p99: float
+     throughput: float | None = None
+
+     def as_dict(self) -> dict[str, float]:
+         data = {
+             "count": float(self.count),
+             "total_duration": self.total_duration,
+             "p50": self.p50,
+             "p95": self.p95,
+             "p99": self.p99,
+         }
+         if self.throughput is not None:
+             data["throughput_per_second"] = self.throughput
+         return data
+diff --git a/src/Urban_Amenities2/router/api.py b/src/Urban_Amenities2/router/api.py
+index ea5b3817fb9bb3e0d00ca6dc3d85b4e8726e070f..10198a852d40af1e9e0eeafcf781edaef14057cc 100644
+--- a/src/Urban_Amenities2/router/api.py
++++ b/src/Urban_Amenities2/router/api.py
+@@ -1,27 +1,28 @@
+ from __future__ import annotations
+
++from dataclasses import dataclass
+ from dataclasses import dataclass
+ from typing import Dict, List, Optional, Sequence, Tuple
+
+ import pandas as pd
+
+ from .osrm import OSRMClient
+ from .otp import OTPClient
+
+
+ @dataclass
+ class RouteResult:
+     origin: Tuple[float, float]
+     destination: Tuple[float, float]
+     mode: str
+     period: Optional[str]
+     duration_min: float
+     distance_m: Optional[float]
+     metadata: dict
+
+
+ class RoutingAPI:
+     def __init__(
+         self,
+         osrm_clients: Dict[str, OSRMClient],
+         otp_client: Optional[OTPClient] = None,
+diff --git a/src/Urban_Amenities2/utils/resilience.py b/src/Urban_Amenities2/utils/resilience.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4d0e3bd2e053a1e8ab54b1ff6537314c3f4b6c8b
+--- /dev/null
++++ b/src/Urban_Amenities2/utils/resilience.py
+@@ -0,0 +1,156 @@
++"""Utility helpers for rate limiting and resilient API access."""
++
++from __future__ import annotations
++
++import random
++import time
++from dataclasses import dataclass, field
++from threading import Lock
++from typing import Callable, Iterable, Tuple, Type, TypeVar
++
++
++__all__ = [
++    "CircuitBreaker",
++    "CircuitBreakerOpenError",
++    "RateLimiter",
++    "retry_with_backoff",
++]
++
++
++T = TypeVar("T")
++
++
++class RateLimiter:
++    """Simple token bucket rate limiter.
++
++    The limiter blocks the caller when the configured rate would be exceeded.
++    A custom ``sleep_func`` can be supplied to ease testing.
++    """
++
++    def __init__(
++        self,
++        rate: float,
++        per: float = 1.0,
++        *,
++        sleep_func: Callable[[float], None] = time.sleep,
++    ) -> None:
++        if rate <= 0 or per <= 0:
++            msg = "rate and period must be positive"
++            raise ValueError(msg)
++        self.rate = float(rate)
++        self.per = float(per)
++        self.capacity = self.rate * self.per
++        self._tokens = self.capacity
++        self._timestamp = time.monotonic()
++        self._sleep = sleep_func
++        self._lock = Lock()
++
++    def acquire(self) -> float:
++        """Block until a token is available and return the wait time."""
++
++        waited = 0.0
++        while True:
++            with self._lock:
++                now = time.monotonic()
++                elapsed = now - self._timestamp
++                if elapsed > 0:
++                    self._tokens = min(
++                        self.capacity, self._tokens + elapsed * self.rate
++                    )
++                self._timestamp = now
++                if self._tokens >= 1.0:
++                    self._tokens -= 1.0
++                    return waited
++                missing = 1.0 - self._tokens
++                wait_for = missing / self.rate
++            self._sleep(wait_for)
++            waited += wait_for
++
++
++class CircuitBreakerOpenError(RuntimeError):
++    """Raised when the circuit breaker is open and calls are blocked."""
++
++
++@dataclass(slots=True)
++class CircuitBreaker:
++    """Lightweight circuit breaker with half-open recovery state."""
++
++    failure_threshold: int = 5
++    recovery_timeout: float = 60.0
++    expected_exceptions: Tuple[Type[BaseException], ...] = (Exception,)
++    clock: Callable[[], float] = time.monotonic
++    _state: str = "closed"
++    _failures: int = 0
++    _opened_at: float = 0.0
++    _lock: Lock = field(init=False, repr=False)
++
++    def __post_init__(self) -> None:
++        if self.failure_threshold <= 0:
++            msg = "failure_threshold must be positive"
++            raise ValueError(msg)
++        if self.recovery_timeout <= 0:
++            msg = "recovery_timeout must be positive"
++            raise ValueError(msg)
++        object.__setattr__(self, "_lock", Lock())
++
++    # Public API ---------------------------------------------------------
++    def call(self, func: Callable[[], T]) -> T:
++        """Execute ``func`` respecting the breaker state."""
++
++        self.before_call()
++        try:
++            result = func()
++        except self.expected_exceptions as exc:  # pragma: no cover - exercised via tests
++            self.record_failure()
++            raise
++        else:
++            self.record_success()
++            return result
++
++    def before_call(self) -> None:
++        with self._lock:
++            if self._state == "open":
++                if self.clock() - self._opened_at >= self.recovery_timeout:
++                    self._state = "half-open"
++                else:
++                    raise CircuitBreakerOpenError("circuit breaker is open")
++
++    def record_success(self) -> None:
++        with self._lock:
++            self._state = "closed"
++            self._failures = 0
++
++    def record_failure(self) -> None:
++        with self._lock:
++            self._failures += 1
++            if self._failures >= self.failure_threshold:
++                self._state = "open"
++                self._opened_at = self.clock()
++
++
++def retry_with_backoff(
++    func: Callable[[], T],
++    *,
++    attempts: int = 3,
++    base_delay: float = 1.0,
++    max_delay: float = 4.0,
++    jitter: float = 0.1,
++    sleep_func: Callable[[float], None] = time.sleep,
++    exceptions: Tuple[Type[BaseException], ...] = (Exception,),
++) -> T:
++    """Execute ``func`` with exponential backoff and jitter."""
++
++    last_error: BaseException | None = None
++    for attempt in range(1, attempts + 1):
++        try:
++            return func()
++        except exceptions as exc:  # pragma: no cover - behaviour verified in tests
++            last_error = exc
++            if attempt == attempts:
++                raise
++            delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
++            jitter_amount = delay * jitter
++            delay += random.uniform(0, jitter_amount)
++            sleep_func(delay)
++    assert last_error is not None  # pragma: no cover - defensive
++    raise last_error
+diff --git a/tests/test_monitoring_health.py b/tests/test_monitoring_health.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..af31f06a4ab98e19e6a13b8bb4c36ea206359321
+--- /dev/null
++++ b/tests/test_monitoring_health.py
+@@ -0,0 +1,102 @@
++from __future__ import annotations
++
++import os
++from pathlib import Path
++import types
++from typing import Any
++
++import requests
++
++from Urban_Amenities2.monitoring.health import (
++    HealthStatus,
++    format_report,
++    overall_status,
++    run_health_checks,
++)
++
++
++class DummyResponse:
++    def __init__(self, status_code: int, payload: dict[str, Any] | None = None) -> None:
++        self.status_code = status_code
++        self._payload = payload or {}
++
++    def json(self) -> dict[str, Any]:
++        return self._payload
++
++    def raise_for_status(self) -> None:
++        if self.status_code >= 400:
++            raise requests.HTTPError(f"status {self.status_code}")
++
++
++def test_run_health_checks_success(monkeypatch, tmp_path):
++    params_path = Path("configs/params_default.yml")
++    data_path = tmp_path / "sample.parquet"
++    data_path.write_text("dummy")
++
++    psutil_stub = types.SimpleNamespace(
++        disk_usage=lambda _: types.SimpleNamespace(free=200 * 1024**3),
++        virtual_memory=lambda: types.SimpleNamespace(available=64 * 1024**3),
++    )
++    monkeypatch.setattr("Urban_Amenities2.monitoring.health.psutil", psutil_stub, raising=False)
++
++    def fake_get(url: str, timeout: int) -> DummyResponse:  # pragma: no cover - patched
++        return DummyResponse(200, {"status": "ok"})
++
++    def fake_post(url: str, json: dict[str, Any], timeout: int) -> DummyResponse:
++        return DummyResponse(200, {"data": {"__typename": "Query"}})
++
++    monkeypatch.setattr("requests.get", fake_get)
++    monkeypatch.setattr("requests.post", fake_post)
++
++    results = run_health_checks(
++        osrm_urls={"car": "http://osrm.car", "bike": "http://osrm.bike", "foot": "http://osrm.foot"},
++        otp_url="http://otp/graphql",
++        params_path=params_path,
++        data_paths=[(data_path, 7)],
++        min_disk_gb=10,
++        min_memory_gb=4,
++    )
++
++    status_map = {result.name: result.status for result in results}
++    assert status_map["osrm:car"] == HealthStatus.OK
++    assert status_map["otp"] == HealthStatus.OK
++    assert status_map["params"] == HealthStatus.OK
++    assert status_map["data:sample.parquet"] == HealthStatus.OK
++    assert status_map["disk"] == HealthStatus.OK
++    assert status_map["memory"] == HealthStatus.OK
++
++    assert overall_status(results) == HealthStatus.OK
++    report = format_report(results)
++    assert "✅ osrm:car" in report
++
++
++def test_run_health_checks_warn_on_stale_data(monkeypatch, tmp_path):
++    params_path = Path("configs/params_default.yml")
++    stale_path = tmp_path / "stale.parquet"
++    stale_path.write_text("old")
++    ninety_one_days = 91 * 24 * 3600
++    os.utime(stale_path, (stale_path.stat().st_atime - ninety_one_days, stale_path.stat().st_mtime - ninety_one_days))
++
++    psutil_stub = types.SimpleNamespace(
++        disk_usage=lambda _: types.SimpleNamespace(free=200 * 1024**3),
++        virtual_memory=lambda: types.SimpleNamespace(available=64 * 1024**3),
++    )
++    monkeypatch.setattr("Urban_Amenities2.monitoring.health.psutil", psutil_stub, raising=False)
++
++    monkeypatch.setattr("requests.get", lambda url, timeout: DummyResponse(200))
++    monkeypatch.setattr(
++        "requests.post",
++        lambda url, json, timeout: DummyResponse(200, {"data": {"__typename": "Query"}}),
++    )
++
++    results = run_health_checks(
++        osrm_urls={"car": "http://osrm"},
++        otp_url="http://otp/graphql",
++        params_path=params_path,
++        data_paths=[(stale_path, 7)],
++        min_disk_gb=10,
++        min_memory_gb=4,
++    )
++
++    status_map = {result.name: result.status for result in results}
++    assert status_map["data:stale.parquet"] == HealthStatus.WARNING
+diff --git a/tests/test_resilience.py b/tests/test_resilience.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..615fff008882d2c971de9c549998fd4fe7fc0b36
+--- /dev/null
++++ b/tests/test_resilience.py
+@@ -0,0 +1,78 @@
++from __future__ import annotations
++
++import types
++
++import pytest
++
++from Urban_Amenities2.utils.resilience import (
++    CircuitBreaker,
++    CircuitBreakerOpenError,
++    RateLimiter,
++    retry_with_backoff,
++)
++
++
++def test_rate_limiter_waits_when_exhausted(monkeypatch):
++    waits: list[float] = []
++    limiter = RateLimiter(rate=2, per=1.0, sleep_func=waits.append)
++    assert limiter.acquire() == 0
++    assert limiter.acquire() == 0
++    waited = limiter.acquire()
++    assert pytest.approx(waited) == pytest.approx(sum(waits))
++    assert waits and waits[0] > 0
++
++
++def test_circuit_breaker_transitions():
++    clock_state = types.SimpleNamespace(value=0.0)
++
++    def fake_clock() -> float:
++        return clock_state.value
++
++    breaker = CircuitBreaker(failure_threshold=2, recovery_timeout=5.0, clock=fake_clock)
++    breaker.before_call()
++    breaker.record_failure()
++    breaker.record_failure()
++    with pytest.raises(CircuitBreakerOpenError):
++        breaker.before_call()
++    clock_state.value = 10.0
++    breaker.before_call()  # transitions to half-open
++    breaker.record_success()
++    breaker.before_call()  # closed again
++
++
++def test_retry_with_backoff_retries_and_succeeds():
++    attempts: list[int] = []
++
++    def flaky() -> str:
++        attempts.append(len(attempts))
++        if len(attempts) < 3:
++            raise ValueError("boom")
++        return "ok"
++
++    waits: list[float] = []
++    result = retry_with_backoff(
++        flaky,
++        attempts=3,
++        base_delay=1.0,
++        max_delay=5.0,
++        jitter=0.0,
++        sleep_func=waits.append,
++        exceptions=(ValueError,),
++    )
++    assert result == "ok"
++    assert waits == [1.0, 2.0]
++
++
++def test_retry_with_backoff_raises_after_exhaustion():
++    def always_fail() -> str:
++        raise RuntimeError("nope")
++
++    with pytest.raises(RuntimeError):
++        retry_with_backoff(
++            always_fail,
++            attempts=2,
++            base_delay=0.1,
++            jitter=0.0,
++            sleep_func=lambda _: None,
++            exceptions=(RuntimeError,),
++        )
+diff --git a/tests/test_wikipedia_client.py b/tests/test_wikipedia_client.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d082383e8fc800f77105639082fef40f15345c66
+--- /dev/null
++++ b/tests/test_wikipedia_client.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import pandas as pd
++import requests
++
++from Urban_Amenities2.io.enrichment.wikipedia import WikipediaClient
++from Urban_Amenities2.utils.resilience import CircuitBreaker, RateLimiter
++
++
++class DummyResponse:
++    def __init__(self, payload: dict) -> None:
++        self._payload = payload
++        self.status_code = 200
++
++    def json(self) -> dict:
++        return self._payload
++
++    def raise_for_status(self) -> None:  # pragma: no cover - always OK
++        return None
++
++
++class DummySession:
++    def __init__(self, responses: list[object]) -> None:
++        self.responses = responses
++        self.calls = 0
++
++    def get(self, url: str, timeout: int) -> DummyResponse:
++        index = min(self.calls, len(self.responses) - 1)
++        response = self.responses[index]
++        self.calls += 1
++        if isinstance(response, Exception):
++            raise response
++        return response  # type: ignore[return-value]
++
++
++def _rate_limiter() -> RateLimiter:
++    return RateLimiter(rate=100, per=1.0, sleep_func=lambda _: None)
++
++
++def _circuit_breaker() -> CircuitBreaker:
++    return CircuitBreaker(
++        failure_threshold=2,
++        recovery_timeout=1.0,
++        expected_exceptions=(requests.RequestException,),
++    )
++
++
++def test_wikipedia_client_caches_and_falls_back(tmp_path):
++    records = [{"timestamp": "2024010100", "views": 10}]
++    session = DummySession([DummyResponse({"items": records}), requests.HTTPError("boom")])
++    client = WikipediaClient(
++        session=session,
++        cache_dir=tmp_path / "wiki",
++        rate_limiter=_rate_limiter(),
++        circuit_breaker=_circuit_breaker(),
++    )
++
++    frame = client.fetch("Denver")
++    assert isinstance(frame, pd.DataFrame)
++    assert not frame.empty
++    assert session.calls == 1
++
++    frame_cached = client.fetch("Denver")
++    assert session.calls > 1
++    pd.testing.assert_frame_equal(frame, frame_cached)
+
+EOF
+)
