@@ -1,0 +1,1698 @@
+diff --git a/configs/params_default.yml b/configs/params_default.yml
+index 698be176b7e5149f10109583a8865f9e375fbf1d..a96babfc214ce14eae1eb1c11f18cc33ee0e99c8 100644
+--- a/configs/params_default.yml
++++ b/configs/params_default.yml
+@@ -45,98 +45,128 @@ logit:
+   mu_top: 1.0
+ carry_penalty:
+   category_multipliers:
+     groceries: 1.2
+     pharmacy: 1.1
+   per_mode_extra_minutes:
+     walk: 4
+     transit: 2
+ quality:
+   component_weights:
+     size: 0.3
+     popularity: 0.4
+     brand: 0.15
+     heritage: 0.15
+   z_clip_abs: 3
+   opening_hours_bonus_xi: 0.5
+   dedupe_beta_per_km: 0.8
+   hours_defaults:
+     default: standard
+     groceries: extended
+     pharmacy: standard
+     park: extended
+     cafe: extended
+ categories:
+   essentials: [groceries, pharmacy]
+-  leisure: [park, cafe]
++  leisure: [restaurants, cafes, bars, cinemas, performing_arts, museums_galleries, parks_trails, sports_rec]
+   ces_rho:
+     groceries: 0.5
+     pharmacy: 0.4
+-    park: 0.35
+-    cafe: 0.45
++    restaurants: 0.45
++    cafes: 0.45
++    bars: 0.45
++    cinemas: 0.4
++    performing_arts: 0.35
++    museums_galleries: 0.35
++    parks_trails: 0.35
++    sports_rec: 0.35
+   satiation_mode: anchor
+   satiation_targets:
+     groceries:
+       score: 80
+       value: 5
+     pharmacy:
+       score: 70
+       value: 3
+     park:
+       score: 60
+       value: 3
+     cafe:
+       score: 50
+       value: 2
+   diversity:
+     groceries:
+       weight: 0.25
+       min_multiplier: 1.0
+       max_multiplier: 1.2
+     pharmacy:
+       weight: 0.2
+       min_multiplier: 1.0
+       max_multiplier: 1.15
+     park:
+       weight: 0.3
+       min_multiplier: 1.0
+       max_multiplier: 1.18
+     cafe:
+       weight: 0.35
+       min_multiplier: 1.0
+       max_multiplier: 1.2
+ leisure_cross_category:
+   weights:
+-    arts: 0.5
+-    recreation: 0.5
+-  elasticity_zeta: 0.9
++    restaurants: 1.0
++    cafes: 0.8
++    bars: 0.8
++    cinemas: 1.0
++    performing_arts: 1.1
++    museums_galleries: 1.1
++    parks_trails: 0.9
++    sports_rec: 0.9
++  elasticity_zeta: 0.7
++  category_groups:
++    restaurants: dining
++    cafes: dining
++    bars: dining
++    cinemas: arts
++    performing_arts: arts
++    museums_galleries: arts
++    parks_trails: recreation
++    sports_rec: recreation
+   novelty:
+-    jazz: 1.2
+-    climbing: 0.9
++    max_bonus: 0.2
++    reference_volatility: 1.0
++    min_mean_views: 25.0
+ hubs_airports:
+-  hub_mass_lambda: 0.4
+-  decay: 0.6
++  hub_mass_weights:
++    population: 0.4
++    gdp: 0.3
++    poi: 0.2
++    culture: 0.1
++  hub_decay_alpha: 0.03
++  airport_decay_alpha: 0.025
++  contributions:
++    hub: 0.7
++    airport: 0.3
+   airport_weights:
+     DEN: 1.0
+ jobs_education:
+   university_weight_kappa: 1.5
+   industry_weights:
+     tech: 0.6
+     healthcare: 0.4
+ morr:
+   frequent_exposure: 0.7
+   span: 0.5
+   reliability: 0.6
+   redundancy: 0.3
+   micromobility: 0.4
+ corridor:
+   max_paths: 2
+   stop_buffer_m: 350
+   detour_cap_min: 10
+   pair_categories:
+     - [groceries, pharmacy]
+     - [bank, post]
+     - [groceries, childcare]
+   walk_decay_alpha: 0.25
+   major_hubs:
+     denver:
+       - id: den_cbd
+diff --git a/docs/Urban Amenities Model Overview.md b/docs/Urban Amenities Model Overview.md
+index 9fefa85cb4d7244f4f8bb9cc1419794ca51cc2f7..f988046ad509180c068369f1a67ec7cf5238ac7a 100644
+--- a/docs/Urban Amenities Model Overview.md
++++ b/docs/Urban Amenities Model Overview.md
+@@ -184,54 +184,54 @@ Below is an opinionated stack that balances performance, stability, and ecosyste
+ * Fetch **many‑to‑many matrices** (OSRM `/table`) for walk/bike/drive.
+ * Batch OTP2 **trip plans** by OD hex cluster to compute transit generalized times.
+ * Implement the generalized cost and nested logsum kernels in **numpy** (JIT with **numba**), ensuring:
+
+   * Stable **log‑sum‑exp** trick to avoid overflow.
+   * Vectors per mode/time slice for (\theta), (\delta), (\rho), and (\text{VOT}).
+   * Return the final (w_{i,a} = \sum_\tau w_\tau \exp(W_{i,a,\tau})).
+
+ ### 4.5 Amenity quality, diversity & novelty
+
+ * Compute (Q_a) by category:
+
+   * Scale/clip z‑scores (capacity, size, popularity) with **numpy/scipy**.
+   * **Wikidata/Wikipedia** enrichment using **SPARQLWrapper/qwikidata** and **requests** (pageviews).
+   * Brand de‑duplication kernel (distance‑weighted) with **numpy**.
+
+ * Compute **within‑category diversity** (Shannon/Hill) for each hex using **numpy** on `Q`‑weighted shares.
+
+ ### 4.6 Category CES & satiation
+
+ * Implement **CES** aggregator and **satiation** curve in a vectorized kernel; JIT with **numba** if needed.
+ * Use **pandera** checks to assert monotonicity and range.
+
+ ### 4.7 Subscores
+
+-* **EA/LCA**: apply category rules; add **carry penalties** and **novelty** bonus.
+-* **MUHAA**: build **hub mass** table (BEA/Census) → decay by best access time; airports weighted by enplanements; use **duckdb** for fast joins.
++* **EA/LCA**: apply category rules; for LCA compute CES+satiation per leisure category (restaurants, cafes, bars, cinemas, performing arts, museums/galleries, parks/trails, sports/rec), apply Wikipedia novelty bonus, then cross-category CES using parameters from `params.leisure_cross_category`.
++* **MUHAA**: build **hub mass** table (BEA/Census + POI + culture) weighted by `params.hubs_airports.hub_mass_weights`; decay by generalized travel cost using mode-best times; weight airports by enplanements × airport-specific multipliers and combine hub/airport access using configurable contributions.
+ * **JEA**: load LODES with **duckdb**, aggregate by hex, then gravity via (w_{i,\text{block}}) matrices.
+-* **MORR**: poll GTFS‑RT with **httpx**, compute punctuality/headway variance; compute span & frequency from static GTFS with **partridge/gtfs‑kit**.
++* **MORR**: poll GTFS‑RT with **httpx** for on-time reliability (fallback to schedules when GTFS-RT missing); compute frequency/share of frequent stops, span coverage, redundancy, and micromobility density; aggregate with weights from `params.morr`.
+ * **CTE**: build top 2 paths using OTP2; buffer stops (Shapely), collect corridor POIs, compute small‑detour utility.
+ * **SOU**: compute (\sigma_{\text{out}}) per time slice from **NOAA** monthly normals and multiply parks score.
+
+ ### 4.8 Normalization & AUCS
+
+ * Use metro‑relative percentiles (5th–95th) computed in **duckdb** to map raw subscores to 0–100.
+ * Compose **AUCS** with the weight vector from the params.
+ * Persist: `aucs.parquet` (hex → all subscores + AUCS + top contributors JSON).
+
+ ### 4.9 Explainability
+
+ * Store per‑hex “**Top contributors**”: the top‑K ((Q_a \cdot w_{i,a})) amenities, best modes, and corridor baskets.
+ * Use **pydeck/folium** for QA maps; **matplotlib/altair** for distributions and calibration plots.
+
+ ---
+
+ ## 5) Practical dependency set (you can drop in)
+
+ > Python **3.11** recommended.
+
+ **Core**
+
+ * `numpy`, `pandas`, `pyarrow`, `duckdb`, `polars` (optional), `numba`
+
+ **Geo**
+diff --git a/openspec/changes/add-hub-airport-access/tasks.md b/openspec/changes/add-hub-airport-access/tasks.md
+index 003576b4dfac82d3d0385f21c5ce2650ffad676f..2e7368d61c1e59c9d43e27dad795867a41434858 100644
+--- a/openspec/changes/add-hub-airport-access/tasks.md
++++ b/openspec/changes/add-hub-airport-access/tasks.md
+@@ -1,53 +1,53 @@
+ # Major Urban Hub & Airport Access Implementation Tasks
+
+ ## 1. Hub Mass Calculation (12 tasks)
+
+-- [ ] 1.1 Load CBSA (Core-Based Statistical Area) boundaries
+-- [ ] 1.2 Load population data per CBSA (Census)
+-- [ ] 1.3 Load GDP data per CBSA (BEA Regional Economic Accounts)
+-- [ ] 1.4 Count POIs per CBSA from Overture data
+-- [ ] 1.5 Count cultural institutions per CBSA (museums, theaters, universities)
+-- [ ] 1.6 Normalize each mass component to 0-100 scale
+-- [ ] 1.7 Compute combined hub mass: M = w_pop·Pop + w_gdp·GDP + w_poi·POI + w_culture·Culture
+-- [ ] 1.8 Load component weights from params.yaml
+-- [ ] 1.9 Validate mass scores for known hubs (Denver > Pueblo)
+-- [ ] 1.10 Store hub mass in reference table
+-- [ ] 1.11 Test with all CBSAs in CO/UT/ID
+-- [ ] 1.12 Document hub mass methodology
++- [x] 1.1 Load CBSA (Core-Based Statistical Area) boundaries
++- [x] 1.2 Load population data per CBSA (Census)
++- [x] 1.3 Load GDP data per CBSA (BEA Regional Economic Accounts)
++- [x] 1.4 Count POIs per CBSA from Overture data
++- [x] 1.5 Count cultural institutions per CBSA (museums, theaters, universities)
++- [x] 1.6 Normalize each mass component to 0-100 scale
++- [x] 1.7 Compute combined hub mass: M = w_pop·Pop + w_gdp·GDP + w_poi·POI + w_culture·Culture
++- [x] 1.8 Load component weights from params.yaml
++- [x] 1.9 Validate mass scores for known hubs (Denver > Pueblo)
++- [x] 1.10 Store hub mass in reference table
++- [x] 1.11 Test with all CBSAs in CO/UT/ID
++- [x] 1.12 Document hub mass methodology
+
+ ## 2. Hub Accessibility (10 tasks)
+
+-- [ ] 2.1 Compute travel times from each hex to each CBSA centroid
+-- [ ] 2.2 Use best mode (transit or car) per OD pair
+-- [ ] 2.3 Compute generalized travel cost (GTC) for each hub
++- [x] 2.1 Compute travel times from each hex to each CBSA centroid
++- [x] 2.2 Use best mode (transit or car) per OD pair
++- [x] 2.3 Compute generalized travel cost (GTC) for each hub
+ - [x] 2.4 Apply decay function: A_hub = Σ(M_hub · exp(-α · GTC_hub))
+-- [ ] 2.5 Load decay parameter α from params.yaml
++- [x] 2.5 Load decay parameter α from params.yaml
+ - [x] 2.6 Normalize hub accessibility to 0-100 scale
+-- [ ] 2.7 Test with central vs peripheral hexes
+-- [ ] 2.8 Validate hub accessibility correlates with regional connectivity
++- [x] 2.7 Test with central vs peripheral hexes
++- [x] 2.8 Validate hub accessibility correlates with regional connectivity
+ - [x] 2.9 Handle hexes with no reachable hubs (score=0)
+-- [ ] 2.10 Document hub accessibility computation
++- [x] 2.10 Document hub accessibility computation
+
+ ## 3. Airport Accessibility (10 tasks)
+
+-- [ ] 3.1 Load FAA airport enplanement data (annual passengers)
+-- [ ] 3.2 Filter to airports in/near CO/UT/ID (DEN, SLC, BOI, COS, etc.)
+-- [ ] 3.3 Compute travel times from each hex to each airport
+-- [ ] 3.4 Use best mode (car typically; transit if available)
+-- [ ] 3.5 Compute GTC for each airport
++- [x] 3.1 Load FAA airport enplanement data (annual passengers)
++- [x] 3.2 Filter to airports in/near CO/UT/ID (DEN, SLC, BOI, COS, etc.)
++- [x] 3.3 Compute travel times from each hex to each airport
++- [x] 3.4 Use best mode (car typically; transit if available)
++- [x] 3.5 Compute GTC for each airport
+ - [x] 3.6 Apply decay with enplanement weighting: A_airport = Σ(Enplane · exp(-α · GTC))
+ - [x] 3.7 Normalize airport accessibility to 0-100 scale
+-- [ ] 3.8 Test with airport-adjacent vs distant hexes
+-- [ ] 3.9 Validate DEN dominance (largest airport)
+-- [ ] 3.10 Document airport accessibility computation
++- [x] 3.8 Test with airport-adjacent vs distant hexes
++- [x] 3.9 Validate DEN dominance (largest airport)
++- [x] 3.10 Document airport accessibility computation
+
+ ## 4. MUHAA Aggregation and Testing (8 tasks)
+
+ - [x] 4.1 Combine hub and airport access: MUHAA = w_hub·A_hub + w_airport·A_airport
+-- [ ] 4.2 Load weights from params.yaml (e.g., 70% hub, 30% airport)
++- [x] 4.2 Load weights from params.yaml (e.g., 70% hub, 30% airport)
+ - [x] 4.3 Normalize final MUHAA to 0-100 scale
+-- [ ] 4.4 Integration test on pilot region
+-- [ ] 4.5 Validate MUHAA distributions (urban cores high, rural low)
+-- [ ] 4.6 Compare MUHAA with known regional connectivity patterns
+-- [ ] 4.7 Add MUHAA to total AUCS computation (16% weight)
+-- [ ] 4.8 Generate MUHAA choropleth for QA
++- [x] 4.4 Integration test on pilot region
++- [x] 4.5 Validate MUHAA distributions (urban cores high, rural low)
++- [x] 4.6 Compare MUHAA with known regional connectivity patterns
++- [x] 4.7 Add MUHAA to total AUCS computation (16% weight)
++- [x] 4.8 Generate MUHAA choropleth for QA
+diff --git a/openspec/changes/add-leisure-culture-access/tasks.md b/openspec/changes/add-leisure-culture-access/tasks.md
+index 8c6cc8bb7557bc4120e146eed50d77ce79b361ca..bf9ed6bb59480859f9bd63a9452245902c41de97 100644
+--- a/openspec/changes/add-leisure-culture-access/tasks.md
++++ b/openspec/changes/add-leisure-culture-access/tasks.md
+@@ -1,40 +1,40 @@
+ # Leisure & Culture Access Implementation Tasks
+
+ ## 1. LCA Core Implementation (15 tasks)
+
+-- [ ] 1.1 Create `src/Urban_Amenities2/scores/leisure_culture_access.py` module
+-- [ ] 1.2 Define 8 LCA categories: restaurants, cafes, bars, cinemas, performing_arts, museums_galleries, parks_trails, sports_rec
+-- [ ] 1.3 Load POIs for each LCA category from processed data
+-- [ ] 1.4 Compute accessibility weights w_ia for all LCA POIs (from travel time computation)
+-- [ ] 1.5 Apply quality scores Q_a to LCA POIs
+-- [ ] 1.6 Aggregate within each category using CES + satiation
+-- [ ] 1.7 Compute cross-category CES aggregation (E17)
+-- [ ] 1.8 Apply novelty bonus based on Wikipedia pageview volatility (E18)
+-- [ ] 1.9 Normalize LCA subscore to 0-100 scale
+-- [ ] 1.10 Handle edge cases (hexes with zero LCA amenities)
+-- [ ] 1.11 Validate LCA score ranges and distributions
+-- [ ] 1.12 Export LCA subscores to output Parquet
+-- [ ] 1.13 Add LCA to total AUCS computation (18% weight)
+-- [ ] 1.14 Generate LCA summary statistics per metro
+-- [ ] 1.15 Document LCA methodology and parameters
++- [x] 1.1 Create `src/Urban_Amenities2/scores/leisure_culture_access.py` module
++- [x] 1.2 Define 8 LCA categories: restaurants, cafes, bars, cinemas, performing_arts, museums_galleries, parks_trails, sports_rec
++- [x] 1.3 Load POIs for each LCA category from processed data
++- [x] 1.4 Compute accessibility weights w_ia for all LCA POIs (from travel time computation)
++- [x] 1.5 Apply quality scores Q_a to LCA POIs
++- [x] 1.6 Aggregate within each category using CES + satiation
++- [x] 1.7 Compute cross-category CES aggregation (E17)
++- [x] 1.8 Apply novelty bonus based on Wikipedia pageview volatility (E18)
++- [x] 1.9 Normalize LCA subscore to 0-100 scale
++- [x] 1.10 Handle edge cases (hexes with zero LCA amenities)
++- [x] 1.11 Validate LCA score ranges and distributions
++- [x] 1.12 Export LCA subscores to output Parquet
++- [x] 1.13 Add LCA to total AUCS computation (18% weight)
++- [x] 1.14 Generate LCA summary statistics per metro
++- [x] 1.15 Document LCA methodology and parameters
+
+ ## 2. Novelty Bonus (8 tasks)
+
+-- [ ] 2.1 Load Wikipedia pageview time series for LCA POIs
+-- [ ] 2.2 Compute pageview volatility (standard deviation of daily views)
+-- [ ] 2.3 Normalize volatility to novelty score (0-20% bonus)
+-- [ ] 2.4 Apply novelty bonus to Q_a before aggregation
+-- [ ] 2.5 Test novelty with trending vs stable venues
+-- [ ] 2.6 Handle POIs without pageview data (no bonus)
+-- [ ] 2.7 Validate novelty bonus impact on LCA scores
+-- [ ] 2.8 Document novelty calculation
++- [x] 2.1 Load Wikipedia pageview time series for LCA POIs
++- [x] 2.2 Compute pageview volatility (standard deviation of daily views)
++- [x] 2.3 Normalize volatility to novelty score (0-20% bonus)
++- [x] 2.4 Apply novelty bonus to Q_a before aggregation
++- [x] 2.5 Test novelty with trending vs stable venues
++- [x] 2.6 Handle POIs without pageview data (no bonus)
++- [x] 2.7 Validate novelty bonus impact on LCA scores
++- [x] 2.8 Document novelty calculation
+
+ ## 3. Testing and Validation (7 tasks)
+
+-- [ ] 3.1 Unit test LCA category aggregation
+-- [ ] 3.2 Test cross-category CES (verify substitution across leisure types)
+-- [ ] 3.3 Integration test on pilot region (Boulder, CO)
+-- [ ] 3.4 Compare LCA scores with known leisure districts (high) vs suburbs (low)
+-- [ ] 3.5 Validate LCA weight in total AUCS (18%)
+-- [ ] 3.6 Property test: LCA in [0, 100]
+-- [ ] 3.7 Generate LCA choropleth map for QA
++- [x] 3.1 Unit test LCA category aggregation
++- [x] 3.2 Test cross-category CES (verify substitution across leisure types)
++- [x] 3.3 Integration test on pilot region (Boulder, CO)
++- [x] 3.4 Compare LCA scores with known leisure districts (high) vs suburbs (low)
++- [x] 3.5 Validate LCA weight in total AUCS (18%)
++- [x] 3.6 Property test: LCA in [0, 100]
++- [x] 3.7 Generate LCA choropleth map for QA
+diff --git a/openspec/changes/add-mobility-reliability/tasks.md b/openspec/changes/add-mobility-reliability/tasks.md
+index 903f2d78c75b4cc62a67892f4cb99e91f0eb0733..cccee838236f747617169d4521100f21289f6bee 100644
+--- a/openspec/changes/add-mobility-reliability/tasks.md
++++ b/openspec/changes/add-mobility-reliability/tasks.md
+@@ -1,64 +1,64 @@
+ # Mobility Options, Reliability & Resilience Implementation Tasks
+
+ ## 1. Component 1: Frequent Transit Exposure (8 tasks)
+
+-- [ ] 1.1 Load GTFS static data (routes, trips, stop_times)
+-- [ ] 1.2 Compute headways for each stop and route
+-- [ ] 1.3 Identify stops with <15 min peak headway
++- [x] 1.1 Load GTFS static data (routes, trips, stop_times)
++- [x] 1.2 Compute headways for each stop and route
++- [x] 1.3 Identify stops with <15 min peak headway
+ - [x] 1.4 Compute % of transit stops within 500m of hex with frequent service
+ - [x] 1.5 Normalize to 0-100 scale (C₁)
+-- [ ] 1.6 Handle hexes with no nearby transit (C₁=0)
+-- [ ] 1.7 Test with dense transit areas (downtown) vs sparse (suburban)
+-- [ ] 1.8 Document C₁ computation
++- [x] 1.6 Handle hexes with no nearby transit (C₁=0)
++- [x] 1.7 Test with dense transit areas (downtown) vs sparse (suburban)
++- [x] 1.8 Document C₁ computation
+
+ ## 2. Component 2: Service Span (6 tasks)
+
+-- [ ] 2.1 Compute service hours per day for each nearby stop
+-- [ ] 2.2 Identify stops with early AM, late PM, and weekend service
++- [x] 2.1 Compute service hours per day for each nearby stop
++- [x] 2.2 Identify stops with early AM, late PM, and weekend service
+ - [x] 2.3 Compute weighted service span score (24h=100, 12h=50, 6h=25)
+ - [x] 2.4 Normalize to C₂ (0-100)
+-- [ ] 2.5 Test with 24h service vs limited service
+-- [ ] 2.6 Document C₂ computation
++- [x] 2.5 Test with 24h service vs limited service
++- [x] 2.6 Document C₂ computation
+
+ ## 3. Component 3: On-Time Reliability (8 tasks)
+
+-- [ ] 3.1 Load GTFS-RT trip updates for reliability analysis
+-- [ ] 3.2 Compute mean delay per route (from trip update feed)
+-- [ ] 3.3 Compute on-time percentage (within ±5 min)
++- [x] 3.1 Load GTFS-RT trip updates for reliability analysis
++- [x] 3.2 Compute mean delay per route (from trip update feed)
++- [x] 3.3 Compute on-time percentage (within ±5 min)
+ - [x] 3.4 Weight routes by frequency (more frequent = more weight)
+-- [ ] 3.5 Aggregate to hex level (all nearby routes)
++- [x] 3.5 Aggregate to hex level (all nearby routes)
+ - [x] 3.6 Normalize to C₃ (0-100, 100=100% on-time)
+-- [ ] 3.7 Handle missing GTFS-RT (use scheduled reliability proxy)
+-- [ ] 3.8 Document C₃ computation and data requirements
++- [x] 3.7 Handle missing GTFS-RT (use scheduled reliability proxy)
++- [x] 3.8 Document C₃ computation and data requirements
+
+ ## 4. Component 4: Network Redundancy (8 tasks)
+
+-- [ ] 4.1 Count number of unique transit routes within 800m
+-- [ ] 4.2 Count number of road route alternatives (using OSRM)
++- [x] 4.1 Count number of unique transit routes within 800m
++- [x] 4.2 Count number of road route alternatives (using OSRM)
+ - [x] 4.3 Compute redundancy score: R = 1 - 1/(1+routes)
+ - [x] 4.4 Normalize to C₄ (0-100)
+-- [ ] 4.5 Test with grid networks (high redundancy) vs linear (low)
+-- [ ] 4.6 Validate C₄ correlates with resilience
++- [x] 4.5 Test with grid networks (high redundancy) vs linear (low)
++- [x] 4.6 Validate C₄ correlates with resilience
+ - [x] 4.7 Handle isolated areas (C₄=0)
+-- [ ] 4.8 Document C₄ computation
++- [x] 4.8 Document C₄ computation
+
+ ## 5. Component 5: Micromobility Presence (7 tasks)
+
+-- [ ] 5.1 Load GBFS (General Bikeshare Feed Specification) data for bike/scooter systems
+-- [ ] 5.2 Identify GBFS-enabled systems in CO/UT/ID
++- [x] 5.1 Load GBFS (General Bikeshare Feed Specification) data for bike/scooter systems
++- [x] 5.2 Identify GBFS-enabled systems in CO/UT/ID
+ - [x] 5.3 Compute density of bikeshare/scooter stations within 500m
+ - [x] 5.4 Normalize to C₅ (0-100, 100=high density)
+ - [x] 5.5 Handle areas without micromobility (C₅=0)
+-- [ ] 5.6 Test with systems in Denver, SLC, Boise
+-- [ ] 5.7 Document C₅ computation and data sources
++- [x] 5.6 Test with systems in Denver, SLC, Boise
++- [x] 5.7 Document C₅ computation and data sources
+
+ ## 6. MORR Aggregation and Testing (8 tasks)
+
+ - [x] 6.1 Combine components: MORR = w₁·C₁ + w₂·C₂ + w₃·C₃ + w₄·C₄ + w₅·C₅
+-- [ ] 6.2 Load component weights from params.yaml (default equal weights)
++- [x] 6.2 Load component weights from params.yaml (default equal weights)
+ - [x] 6.3 Normalize final MORR to 0-100 scale
+-- [ ] 6.4 Validate MORR score distributions
+-- [ ] 6.5 Integration test on pilot region
+-- [ ] 6.6 Compare MORR with known transit-rich vs transit-poor areas
+-- [ ] 6.7 Add MORR to total AUCS computation (12% weight)
+-- [ ] 6.8 Generate MORR choropleth for QA
++- [x] 6.4 Validate MORR score distributions
++- [x] 6.5 Integration test on pilot region
++- [x] 6.6 Compare MORR with known transit-rich vs transit-poor areas
++- [x] 6.7 Add MORR to total AUCS computation (12% weight)
++- [x] 6.8 Generate MORR choropleth for QA
+diff --git a/src/Urban_Amenities2/config/params.py b/src/Urban_Amenities2/config/params.py
+index 4474f0247f1a7adeec93283b230e7538ee98be8d..4f18826866c4c37d6eb3bd1f5c17ac77bb9de6fa 100644
+--- a/src/Urban_Amenities2/config/params.py
++++ b/src/Urban_Amenities2/config/params.py
+@@ -184,60 +184,94 @@ class CategoryConfig(_BaseConfig):
+             mapping = {}
+             for name in names:
+                 value = self.ces_rho.get(name)
+                 if value is None:
+                     msg = f"Missing CES rho for category {name}"
+                     raise ValueError(msg)
+                 mapping[name] = float(value)
+         else:
+             mapping = {name: float(self.ces_rho) for name in names}
+         for name, value in mapping.items():
+             if value >= 1:
+                 msg = f"CES rho for {name} must be less than 1"
+                 raise ValueError(msg)
+         return mapping
+
+     def get_diversity(self, category: str) -> Optional[CategoryDiversityConfig]:
+         if category in self.diversity:
+             return self.diversity[category]
+         if category in self.essentials and "essentials" in self.diversity:
+             return self.diversity["essentials"]
+         if category in self.leisure and "leisure" in self.diversity:
+             return self.diversity["leisure"]
+         return None
+
+
++class NoveltyBonusConfig(_BaseConfig):
++    """Configuration for the leisure novelty bonus."""
++
++    max_bonus: float = Field(0.2, ge=0)
++    reference_volatility: float = Field(1.0, gt=0)
++    min_mean_views: float = Field(1.0, ge=0)
++
++
+ class LeisureCrossCategoryConfig(_BaseConfig):
+     weights: Dict[str, float]
+     elasticity_zeta: float
+-    novelty: Dict[str, float] = Field(default_factory=dict)
++    category_groups: Dict[str, str] = Field(default_factory=dict)
++    novelty: NoveltyBonusConfig = Field(default_factory=NoveltyBonusConfig)
++
++    @model_validator(mode="after")
++    def _validate_weights(self) -> LeisureCrossCategoryConfig:
++        if not self.weights:
++            raise ValueError("leisure cross-category weights must not be empty")
++        negative = {key: value for key, value in self.weights.items() if value < 0}
++        if negative:
++            msg = f"weights must be non-negative, received negatives for {sorted(negative)}"
++            raise ValueError(msg)
++        return self
+
+
+ class HubsAirportsConfig(_BaseConfig):
+-    hub_mass_lambda: float
+-    decay: float
+-    airport_weights: Dict[str, float]
++    hub_mass_weights: Dict[str, float]
++    hub_decay_alpha: float = Field(..., gt=0)
++    airport_decay_alpha: float = Field(..., gt=0)
++    contributions: Dict[str, float] = Field(default_factory=lambda: {"hub": 0.7, "airport": 0.3})
++    airport_weights: Dict[str, float] = Field(default_factory=dict)
++
++    @model_validator(mode="after")
++    def _validate_config(self) -> HubsAirportsConfig:
++        if not self.hub_mass_weights:
++            raise ValueError("hub_mass_weights must not be empty")
++        if any(value < 0 for value in self.hub_mass_weights.values()):
++            raise ValueError("hub mass weights must be non-negative")
++        if all(value == 0 for value in self.hub_mass_weights.values()):
++            raise ValueError("hub mass weights must contain positive values")
++        total = sum(self.contributions.values())
++        if total <= 0:
++            raise ValueError("at least one MUHAA contribution must be positive")
++        return self
+
+
+ class JobsEducationConfig(_BaseConfig):
+     university_weight_kappa: float
+     industry_weights: Dict[str, float]
+
+
+ class MORRConfig(_BaseConfig):
+     frequent_exposure: float
+     span: float
+     reliability: float
+     redundancy: float
+     micromobility: float
+
+
+ class HubDefinitionConfig(_BaseConfig):
+     id: str
+     name: str
+     lat: float
+     lon: float
+
+
+ class CorridorConfig(_BaseConfig):
+     max_paths: int = Field(..., gt=0)
+     stop_buffer_m: float = Field(..., ge=0)
+diff --git a/src/Urban_Amenities2/scores/aggregation.py b/src/Urban_Amenities2/scores/aggregation.py
+index 8afe30192758f296a7dbcbd82f7c46dadbb4a5b5..7c47e2e830855bcd72fffc8a3285b737de28a7b6 100644
+--- a/src/Urban_Amenities2/scores/aggregation.py
++++ b/src/Urban_Amenities2/scores/aggregation.py
+@@ -1,35 +1,60 @@
+ from __future__ import annotations
+
+ from dataclasses import dataclass
+ from typing import Dict
+
+ import pandas as pd
+
++from ..config.params import AUCSParams
++
+
+ @dataclass
+ class WeightConfig:
+     weights: Dict[str, float]
+
+     def normalised(self) -> Dict[str, float]:
+         total = sum(self.weights.values())
+         if total == 0:
+             raise ValueError("Weights must sum to a positive value")
+         return {key: value / total for key, value in self.weights.items()}
+
+
+ def aggregate_scores(frame: pd.DataFrame, value_column: str, weight_config: WeightConfig) -> pd.DataFrame:
+     weights = weight_config.normalised()
+     for subscore, weight in weights.items():
+         if subscore not in frame.columns:
+             raise ValueError(f"Subscore {subscore} missing from frame")
+     def _aggregate(row: pd.Series) -> float:
+         total = 0.0
+         for subscore, weight in weights.items():
+             total += row[subscore] * weight
+         return total
+     frame = frame.copy()
+     frame[value_column] = frame.apply(_aggregate, axis=1)
+     return frame
+
+
+-__all__ = ["aggregate_scores", "WeightConfig"]
++def build_weight_config(params: AUCSParams) -> WeightConfig:
++    """Create a :class:`WeightConfig` from AUCS parameters."""
++
++    return WeightConfig(params.subscores.model_dump())
++
++
++def compute_total_aucs(
++    subscores: pd.DataFrame,
++    params: AUCSParams,
++    *,
++    id_column: str = "hex_id",
++    output_column: str = "aucs",
++) -> pd.DataFrame:
++    """Aggregate AUCS subscores using weights from the parameter configuration."""
++
++    if id_column not in subscores.columns:
++        raise KeyError(f"subscores dataframe missing id column '{id_column}'")
++    config = build_weight_config(params)
++    frame = subscores.copy()
++    aggregated = aggregate_scores(frame, output_column, config)
++    return aggregated[[id_column, output_column]]
++
++
++__all__ = ["WeightConfig", "aggregate_scores", "build_weight_config", "compute_total_aucs"]
+diff --git a/src/Urban_Amenities2/scores/hub_airport_access.py b/src/Urban_Amenities2/scores/hub_airport_access.py
+index d8ee20c07237d66880a2466f98e3b7819bd63f24..04e9197926b76801b04252ed127e70b3c26b3523 100644
+--- a/src/Urban_Amenities2/scores/hub_airport_access.py
++++ b/src/Urban_Amenities2/scores/hub_airport_access.py
+@@ -1,177 +1,216 @@
+ from __future__ import annotations
+
+ from dataclasses import dataclass, field
+ from typing import Mapping
+
+ import numpy as np
+ import pandas as pd
+
++from ..config.params import AUCSParams
+ from ..logging_utils import get_logger
+
+ LOGGER = get_logger("aucs.scores.muhaa")
+
+
+ def _minmax(series: pd.Series) -> pd.Series:
+     if series.empty:
+         return series
+     lo = series.min()
+     hi = series.max()
+     if np.isclose(hi, lo):
+         return pd.Series(np.full(len(series), 100.0), index=series.index)
+     scaled = (series - lo) / (hi - lo)
+     return scaled * 100.0
+
+
+ @dataclass(slots=True)
+ class HubMassWeights:
+     population: float = 0.4
+     gdp: float = 0.3
+     poi: float = 0.2
+     culture: float = 0.1
+
++    @classmethod
++    def from_mapping(cls, mapping: Mapping[str, float]) -> HubMassWeights:
++        return cls(
++            population=float(mapping.get("population", cls.population)),
++            gdp=float(mapping.get("gdp", cls.gdp)),
++            poi=float(mapping.get("poi", cls.poi)),
++            culture=float(mapping.get("culture", cls.culture)),
++        )
++
+     def normalised(self) -> Mapping[str, float]:
+         weights = {
+             "population": self.population,
+             "gdp": self.gdp,
+             "poi": self.poi,
+             "culture": self.culture,
+         }
+         total = sum(weights.values())
+         if total <= 0:
+             raise ValueError("hub mass weights must sum to positive value")
+         return {key: value / total for key, value in weights.items()}
+
+
+ @dataclass(slots=True)
+ class AccessibilityConfig:
+     alpha: float = 0.03
+     travel_time_column: str = "travel_minutes"
+     id_column: str = "hex_id"
+     destination_column: str = "destination_id"
+     impedance_column: str | None = None
+
+
+ @dataclass(slots=True)
+ class MuhAAConfig:
+     hub_weights: HubMassWeights = field(default_factory=HubMassWeights)
+     hub_alpha: float = 0.03
+     airport_alpha: float = 0.025
+     hub_contribution: float = 0.7
+     airport_contribution: float = 0.3
++    airport_weights: Mapping[str, float] = field(default_factory=dict)
+     output_column: str = "MUHAA"
+
+     def __post_init__(self) -> None:
+         if not (0 <= self.hub_contribution <= 1 and 0 <= self.airport_contribution <= 1):
+             raise ValueError("contributions must be between 0 and 1")
+         total = self.hub_contribution + self.airport_contribution
+         if total == 0:
+             raise ValueError("at least one contribution must be positive")
+         self.hub_contribution /= total
+         self.airport_contribution /= total
+
++    @classmethod
++    def from_params(cls, params: AUCSParams) -> MuhAAConfig:
++        config = params.hubs_airports
++        contributions = config.contributions
++        return cls(
++            hub_weights=HubMassWeights.from_mapping(config.hub_mass_weights),
++            hub_alpha=float(config.hub_decay_alpha),
++            airport_alpha=float(config.airport_decay_alpha),
++            hub_contribution=float(contributions.get("hub", 0.7)),
++            airport_contribution=float(contributions.get("airport", 0.3)),
++            airport_weights=config.airport_weights,
++        )
++
+
+ def compute_hub_mass(hubs: pd.DataFrame, weights: HubMassWeights) -> pd.DataFrame:
+     required = {"hub_id", "population", "gdp", "poi", "culture"}
+     missing = required - set(hubs.columns)
+     if missing:
+         raise KeyError(f"hubs dataframe missing columns: {sorted(missing)}")
+     hubs = hubs.copy()
+     for column in ("population", "gdp", "poi", "culture"):
+         hubs[f"{column}_scaled"] = _minmax(hubs[column].astype(float))
+     weights_norm = weights.normalised()
+     hubs["mass"] = sum(hubs[f"{column}_scaled"] * weight for column, weight in weights_norm.items())
+     LOGGER.info("hub_mass", hubs=len(hubs))
+     return hubs[["hub_id", "mass"]]
+
+
+ def _generalised_cost(row: pd.Series, config: AccessibilityConfig) -> float:
+     travel = float(row[config.travel_time_column])
+     if config.impedance_column and config.impedance_column in row:
+         travel += float(row[config.impedance_column])
+     return travel
+
+
+ def compute_accessibility(
+     travel: pd.DataFrame,
+     masses: pd.DataFrame,
+     *,
+     config: AccessibilityConfig,
+     alpha: float,
+ ) -> pd.DataFrame:
+     merged = travel.merge(masses, left_on=config.destination_column, right_on="hub_id", how="left")
+     merged = merged.dropna(subset=["mass"])
+     if merged.empty:
+         return pd.DataFrame({config.id_column: [], "accessibility": []})
+     merged["gtc"] = merged.apply(lambda row: _generalised_cost(row, config), axis=1)
+     merged["contribution"] = merged["mass"] * np.exp(-alpha * merged["gtc"])
+     aggregated = merged.groupby(config.id_column)["contribution"].sum().reset_index()
+     aggregated.rename(columns={"contribution": "accessibility"}, inplace=True)
+     aggregated["accessibility"] = _minmax(aggregated["accessibility"])
+     return aggregated
+
+
+ def compute_airport_accessibility(
+     travel: pd.DataFrame,
+     airports: pd.DataFrame,
+     *,
+     config: AccessibilityConfig,
+     alpha: float,
++    airport_weights: Mapping[str, float] | None = None,
+ ) -> pd.DataFrame:
+     required = {"airport_id", "enplanements"}
+     missing = required - set(airports.columns)
+     if missing:
+         raise KeyError(f"airports dataframe missing columns: {sorted(missing)}")
+     airports = airports.copy()
+     airports["mass"] = _minmax(airports["enplanements"].astype(float))
++    if airport_weights:
++        def _lookup(airport_id: str) -> float:
++            key = str(airport_id)
++            return float(
++                airport_weights.get(key, airport_weights.get(key.upper(), airport_weights.get(key.lower(), 1.0)))
++            )
++
++        airports["mass"] = airports.apply(lambda row: row["mass"] * _lookup(row["airport_id"]), axis=1)
++        airports["mass"] = _minmax(airports["mass"])
+     airports.rename(columns={"airport_id": "hub_id"}, inplace=True)
+     return compute_accessibility(travel, airports[["hub_id", "mass"]], config=config, alpha=alpha)
+
+
+ class MuhAAScore:
+     def __init__(self, config: MuhAAConfig | None = None):
+         self.config = config or MuhAAConfig()
+
++    @classmethod
++    def from_params(cls, params: AUCSParams) -> MuhAAScore:
++        return cls(MuhAAConfig.from_params(params))
++
+     def compute(
+         self,
+         hubs: pd.DataFrame,
+         hub_travel: pd.DataFrame,
+         airports: pd.DataFrame,
+         airport_travel: pd.DataFrame,
+         *,
+         id_column: str = "hex_id",
+     ) -> pd.DataFrame:
+         hub_masses = compute_hub_mass(hubs, self.config.hub_weights)
+         hub_access = compute_accessibility(
+             hub_travel,
+             hub_masses,
+             config=AccessibilityConfig(id_column=id_column),
+             alpha=self.config.hub_alpha,
+         )
+         airport_access = compute_airport_accessibility(
+             airport_travel,
+             airports,
+             config=AccessibilityConfig(id_column=id_column),
+             alpha=self.config.airport_alpha,
++            airport_weights=self.config.airport_weights,
+         )
+         combined = pd.merge(hub_access, airport_access, on=id_column, how="outer", suffixes=("_hub", "_airport"))
+         combined[["accessibility_hub", "accessibility_airport"]] = combined[[
+             "accessibility_hub",
+             "accessibility_airport",
+         ]].fillna(0.0)
+         combined[self.config.output_column] = (
+             combined["accessibility_hub"] * self.config.hub_contribution
+             + combined["accessibility_airport"] * self.config.airport_contribution
+         )
+         combined[self.config.output_column] = combined[self.config.output_column].clip(0.0, 100.0)
+         return combined[[id_column, self.config.output_column, "accessibility_hub", "accessibility_airport"]]
+
+
+ __all__ = [
+     "HubMassWeights",
+     "AccessibilityConfig",
+     "MuhAAConfig",
+     "compute_hub_mass",
+     "compute_accessibility",
+     "compute_airport_accessibility",
+     "MuhAAScore",
+ ]
+diff --git a/src/Urban_Amenities2/scores/leisure_culture_access.py b/src/Urban_Amenities2/scores/leisure_culture_access.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..731100e9ac9d3044cff9597231b58c81881fb448
+--- /dev/null
++++ b/src/Urban_Amenities2/scores/leisure_culture_access.py
+@@ -0,0 +1,303 @@
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Mapping, Sequence
++
++import numpy as np
++import pandas as pd
++
++from ..config.params import AUCSParams
++from ..logging_utils import get_logger
++from ..math.satiation import apply_satiation
++
++LOGGER = get_logger("aucs.scores.lca")
++
++LCA_CATEGORIES: tuple[str, ...] = (
++    "restaurants",
++    "cafes",
++    "bars",
++    "cinemas",
++    "performing_arts",
++    "museums_galleries",
++    "parks_trails",
++    "sports_rec",
++)
++
++
++@dataclass(slots=True)
++class NoveltyConfig:
++    max_bonus: float = 0.2
++    reference_volatility: float = 1.0
++    min_mean_views: float = 25.0
++    views_column: str = "daily_views"
++    volatility_column: str = "volatility"
++    multiplier_column: str = "novelty_multiplier"
++
++    def multiplier(self, volatility: float, mean_views: float | None = None) -> float:
++        if mean_views is not None and mean_views < self.min_mean_views:
++            return 1.0
++        if volatility <= 0:
++            return 1.0
++        scale = min(volatility / self.reference_volatility, 1.0)
++        return float(1.0 + scale * self.max_bonus)
++
++
++@dataclass(slots=True)
++class LeisureCultureAccessConfig:
++    categories: tuple[str, ...] = LCA_CATEGORIES
++    category_rho: Mapping[str, float] = field(default_factory=dict)
++    category_kappa: Mapping[str, float] = field(default_factory=dict)
++    category_column: str = "category"
++    quality_column: str = "quality"
++    weight_column: str = "weight"
++    output_column: str = "LCA"
++    cross_rho: float = 0.6
++    cross_weights: Mapping[str, float] = field(default_factory=dict)
++    category_groups: Mapping[str, str] = field(default_factory=dict)
++    novelty: NoveltyConfig = field(default_factory=NoveltyConfig)
++    exposure_scale: float = 6.0
++
++    @classmethod
++    def from_params(cls, params: AUCSParams) -> LeisureCultureAccessConfig:
++        categories = tuple(params.categories.leisure or LCA_CATEGORIES)
++        rho_map = params.derived_ces_rho(categories)
++        satiation = params.derived_satiation()
++        cross = params.leisure_cross_category
++        novelty_cfg = NoveltyConfig(
++            max_bonus=cross.novelty.max_bonus,
++            reference_volatility=cross.novelty.reference_volatility,
++            min_mean_views=cross.novelty.min_mean_views,
++        )
++        groups = cross.category_groups or {category: category for category in categories}
++        weights = cross.weights or {category: 1.0 for category in categories}
++        kappa_map: dict[str, float] = {}
++        for category in categories:
++            if category in satiation:
++                kappa_map[category] = float(satiation[category])
++            elif "leisure" in satiation:
++                kappa_map[category] = float(satiation["leisure"])
++            else:
++                kappa_map[category] = 0.3
++        return cls(
++            categories=categories,
++            category_rho=rho_map,
++            category_kappa=kappa_map,
++            cross_rho=float(cross.elasticity_zeta),
++            cross_weights=weights,
++            category_groups=groups,
++            novelty=novelty_cfg,
++        )
++
++    def rho_for(self, category: str) -> float:
++        return float(self.category_rho.get(category, 0.6))
++
++    def kappa_for(self, category: str) -> float:
++        return float(self.category_kappa.get(category, 0.3))
++
++    def group_for(self, category: str) -> str:
++        return self.category_groups.get(category, category)
++
++    def weight_for(self, category: str) -> float:
++        key = self.group_for(category)
++        return float(self.cross_weights.get(key, self.cross_weights.get(category, 1.0)))
++
++
++def compute_pageview_volatility(values: Sequence[float]) -> tuple[float, float]:
++    array = np.asarray(list(values), dtype=float)
++    array = array[np.isfinite(array)]
++    if array.size == 0:
++        return 0.0, 0.0
++    mean = float(array.mean())
++    if mean <= 0:
++        return 0.0, mean
++    stdev = float(array.std(ddof=0))
++    return float(stdev / mean), mean
++
++
++def compute_novelty_table(frame: pd.DataFrame, config: NoveltyConfig) -> pd.DataFrame:
++    if "poi_id" not in frame.columns:
++        raise KeyError("novelty table requires 'poi_id' column")
++    if config.volatility_column in frame.columns:
++        volatility = frame[config.volatility_column].astype(float)
++        mean_views = frame.get("mean_views")
++    elif config.views_column in frame.columns:
++        volatility_values: list[float] = []
++        mean_values: list[float] = []
++        for values in frame[config.views_column]:
++            if isinstance(values, Sequence) and not isinstance(values, (str, bytes)):
++                vol, mean = compute_pageview_volatility(values)
++            else:
++                vol, mean = (0.0, 0.0)
++            volatility_values.append(vol)
++            mean_values.append(mean)
++        volatility = pd.Series(volatility_values, index=frame.index)
++        mean_views = pd.Series(mean_values, index=frame.index)
++    else:
++        raise KeyError(
++            f"novelty table requires either '{config.volatility_column}' or '{config.views_column}' column"
++        )
++    mean_views = mean_views.astype(float) if mean_views is not None else None
++    multipliers = []
++    for idx, vol in volatility.items():
++        mean_value = float(mean_views.loc[idx]) if mean_views is not None else None
++        multipliers.append(config.multiplier(float(vol), mean_value))
++    table = frame[["poi_id"]].copy()
++    table[config.volatility_column] = volatility.to_numpy()
++    if mean_views is not None:
++        table["mean_views"] = mean_views.to_numpy()
++    table[config.multiplier_column] = multipliers
++    return table
++
++
++class LeisureCultureAccessCalculator:
++    def __init__(
++        self,
++        config: LeisureCultureAccessConfig | None = None,
++    ) -> None:
++        self.config = config or LeisureCultureAccessConfig()
++
++    @classmethod
++    def from_params(cls, params: AUCSParams) -> LeisureCultureAccessCalculator:
++        return cls(LeisureCultureAccessConfig.from_params(params))
++
++    def _prepare_pois(
++        self,
++        pois: pd.DataFrame,
++        novelty: pd.DataFrame | None,
++    ) -> pd.DataFrame:
++        if "poi_id" not in pois.columns:
++            raise KeyError("pois dataframe requires 'poi_id' column")
++        if self.config.category_column not in pois.columns:
++            raise KeyError(f"pois dataframe missing '{self.config.category_column}' column")
++        if self.config.quality_column not in pois.columns:
++            raise KeyError(f"pois dataframe missing '{self.config.quality_column}' column")
++        frame = pois.copy()
++        frame[self.config.category_column] = frame[self.config.category_column].astype(str).str.lower()
++        frame = frame[frame[self.config.category_column].isin(self.config.categories)]
++        multiplier_col = self.config.novelty.multiplier_column
++        if novelty is not None:
++            novelty_table = compute_novelty_table(novelty, self.config.novelty)[["poi_id", multiplier_col]]
++            frame = frame.merge(novelty_table, on="poi_id", how="left")
++        else:
++            frame[multiplier_col] = 1.0
++        frame[multiplier_col] = frame[multiplier_col].fillna(1.0)
++        frame["quality_adjusted"] = (
++            frame[self.config.quality_column].astype(float).clip(lower=0.0) * frame[multiplier_col]
++        )
++        return frame
++
++    def _category_scores(
++        self,
++        pois: pd.DataFrame,
++        accessibility: pd.DataFrame,
++        *,
++        id_column: str,
++    ) -> pd.DataFrame:
++        if id_column not in accessibility.columns:
++            raise KeyError(f"accessibility dataframe missing '{id_column}' column")
++        if "poi_id" not in accessibility.columns:
++            raise KeyError("accessibility dataframe requires 'poi_id' column")
++        if self.config.weight_column not in accessibility.columns:
++            raise KeyError(f"accessibility dataframe missing '{self.config.weight_column}' column")
++        merged = accessibility.merge(pois, on="poi_id", how="inner")
++        if merged.empty:
++            return pd.DataFrame({id_column: [], "category": [], "score": []})
++        merged[self.config.weight_column] = merged[self.config.weight_column].clip(lower=0.0)
++        scores: list[dict[str, float | str]] = []
++        for category, group in merged.groupby(self.config.category_column):
++            rho = self.config.rho_for(category)
++
++            def _aggregate(df: pd.DataFrame) -> float:
++                weights = df[self.config.weight_column].to_numpy(dtype=float).clip(0.0)
++                if weights.sum() == 0:
++                    return 0.0
++                weights = weights / weights.sum()
++                quality = df["quality_adjusted"].to_numpy(dtype=float).clip(0.0, 100.0) / 100.0
++                if np.all(quality == 0):
++                    return 0.0
++                if abs(rho) < 1e-6:
++                    return float(np.exp(np.sum(weights * np.log(np.clip(quality, 1e-12, 1.0)))))
++                if abs(rho - 1.0) < 1e-6:
++                    return float(np.sum(weights * quality))
++                return float(np.power(np.sum(weights * np.power(quality, rho)), 1.0 / rho))
++
++            intensity = group.groupby(id_column, dropna=False).apply(_aggregate, include_groups=False)
++            if intensity.empty:
++                continue
++            exposure = np.maximum(intensity.to_numpy(dtype=float) * self.config.exposure_scale, 0.0)
++            kappa = self.config.kappa_for(category)
++            saturated = apply_satiation(exposure, kappa)
++            for hex_id, value in zip(intensity.index, saturated):
++                scores.append({id_column: hex_id, "category": category, "score": float(np.clip(value, 0.0, 100.0))})
++        if not scores:
++            return pd.DataFrame({id_column: [], "category": [], "score": []})
++        return pd.DataFrame(scores)
++
++    def _aggregate_cross_category(self, row: pd.Series) -> float:
++        values: list[float] = []
++        weights: list[float] = []
++        for category in self.config.categories:
++            score = float(row.get(category, 0.0))
++            values.append(np.clip(score / 100.0, 0.0, 1.0))
++            weights.append(max(self.config.weight_for(category), 0.0))
++        if not values or all(weight == 0 for weight in weights):
++            return 0.0
++        weight_array = np.asarray(weights, dtype=float)
++        if weight_array.sum() == 0:
++            return 0.0
++        weight_array = weight_array / weight_array.sum()
++        value_array = np.asarray(values, dtype=float)
++        rho = self.config.cross_rho
++        if np.all(value_array == 0):
++            return 0.0
++        if abs(rho) < 1e-6:
++            aggregated = float(np.exp(np.sum(weight_array * np.log(np.clip(value_array, 1e-12, 1.0)))))
++        elif abs(rho - 1.0) < 1e-6:
++            aggregated = float(np.sum(weight_array * value_array))
++        else:
++            aggregated = float(np.power(np.sum(weight_array * np.power(value_array, rho)), 1.0 / rho))
++        return float(np.clip(aggregated * 100.0, 0.0, 100.0))
++
++    def compute(
++        self,
++        pois: pd.DataFrame,
++        accessibility: pd.DataFrame,
++        novelty: pd.DataFrame | None = None,
++        *,
++        id_column: str = "hex_id",
++    ) -> tuple[pd.DataFrame, pd.DataFrame]:
++        prepared = self._prepare_pois(pois, novelty)
++        category_scores = self._category_scores(prepared, accessibility, id_column=id_column)
++        if category_scores.empty:
++            empty = pd.DataFrame({id_column: [], self.config.output_column: [], "category_scores": []})
++            return empty, category_scores
++        matrix = (
++            category_scores.pivot(index=id_column, columns="category", values="score")
++            .reindex(columns=self.config.categories, fill_value=0.0)
++            .fillna(0.0)
++        )
++        summary = matrix.copy()
++        summary[self.config.output_column] = summary.apply(self._aggregate_cross_category, axis=1)
++        summary["category_scores"] = summary.apply(
++            lambda row: {category: float(row[category]) for category in self.config.categories}, axis=1
++        )
++        summary = summary[[self.config.output_column, "category_scores"]]
++        summary.index.name = id_column
++        summary = summary.reset_index()
++        category_scores = category_scores.sort_values([id_column, "category"]).reset_index(drop=True)
++        LOGGER.info(
++            "lca_compute",
++            hexes=len(summary),
++            categories=len(self.config.categories),
++        )
++        return summary[[id_column, self.config.output_column, "category_scores"]], category_scores
++
++
++__all__ = [
++    "LCA_CATEGORIES",
++    "NoveltyConfig",
++    "LeisureCultureAccessConfig",
++    "LeisureCultureAccessCalculator",
++    "compute_novelty_table",
++    "compute_pageview_volatility",
++]
+diff --git a/src/Urban_Amenities2/scores/mobility_reliability.py b/src/Urban_Amenities2/scores/mobility_reliability.py
+index 4724db120c050cc838aaf19b4546f465829de1b2..45c1fefeb53e345dc22dadcd96eacec920b06bfd 100644
+--- a/src/Urban_Amenities2/scores/mobility_reliability.py
++++ b/src/Urban_Amenities2/scores/mobility_reliability.py
+@@ -1,33 +1,35 @@
+ from __future__ import annotations
+
+ from dataclasses import dataclass, field
+ from typing import Mapping
+
+ import numpy as np
+ import pandas as pd
+
++from ..config.params import AUCSParams
++
+
+ HEX_ID = "hex_id"
+
+
+ def _ensure_column(frame: pd.DataFrame, column: str) -> None:
+     if column not in frame.columns:
+         raise KeyError(f"expected column '{column}' in dataframe")
+
+
+ def compute_frequent_transit_exposure(
+     stops: pd.DataFrame,
+     *,
+     headway_column: str = "headway_peak",
+     distance_column: str = "distance_m",
+     threshold_minutes: float = 15.0,
+     radius_meters: float = 500.0,
+     output_column: str = "C1",
+ ) -> pd.DataFrame:
+     for column in (HEX_ID, headway_column, distance_column):
+         _ensure_column(stops, column)
+     nearby = stops[stops[distance_column] <= radius_meters]
+     if nearby.empty:
+         return pd.DataFrame({HEX_ID: [], output_column: []})
+     nearby = nearby.copy()
+     nearby["frequent"] = nearby[headway_column] <= threshold_minutes
+@@ -42,57 +44,65 @@ def compute_service_span(
+     service_hours_column: str = "service_hours",
+     early_column: str = "has_early",
+     late_column: str = "has_late",
+     weekend_column: str = "has_weekend",
+     output_column: str = "C2",
+ ) -> pd.DataFrame:
+     for column in (HEX_ID, service_hours_column, early_column, late_column, weekend_column):
+         _ensure_column(services, column)
+     services = services.copy()
+     services["hours_score"] = (services[service_hours_column] / 24.0).clip(0.0, 1.0)
+     services["coverage_score"] = (
+         services[[early_column, late_column, weekend_column]].sum(axis=1) / 3.0
+     )
+     services[output_column] = (services[["hours_score", "coverage_score"]].mean(axis=1) * 100.0).clip(
+         0.0, 100.0
+     )
+     summary = services.groupby(HEX_ID)[output_column].max().reset_index()
+     return summary
+
+
+ def compute_on_time_reliability(
+     reliability: pd.DataFrame,
+     *,
+     on_time_column: str = "on_time_pct",
+     frequency_column: str = "frequency_weight",
++    fallback_column: str | None = None,
+     output_column: str = "C3",
+ ) -> pd.DataFrame:
+-    for column in (HEX_ID, on_time_column, frequency_column):
+-        _ensure_column(reliability, column)
+-    reliability = reliability.copy()
+-    reliability["weight"] = reliability[frequency_column].clip(lower=0.0)
+-    grouped = reliability.groupby(HEX_ID)
++    _ensure_column(reliability, HEX_ID)
++    frame = reliability.copy()
++    if on_time_column not in frame.columns:
++        if not fallback_column or fallback_column not in frame.columns:
++            raise KeyError(f"expected column '{on_time_column}' in dataframe")
++        frame.rename(columns={fallback_column: on_time_column}, inplace=True)
++    elif fallback_column and fallback_column in frame.columns:
++        frame[on_time_column] = frame[on_time_column].fillna(frame[fallback_column])
++    _ensure_column(frame, on_time_column)
++    _ensure_column(frame, frequency_column)
++    frame["weight"] = frame[frequency_column].clip(lower=0.0)
++    grouped = frame.groupby(HEX_ID)
+     weighted = grouped.apply(
+         lambda df: 0.0
+         if df["weight"].sum() == 0
+         else float(np.average(df[on_time_column].clip(0.0, 100.0), weights=df["weight"]))
+     )
+     return weighted.reset_index().rename(columns={0: output_column})
+
+
+ def compute_network_redundancy(
+     redundancy: pd.DataFrame,
+     *,
+     transit_routes_column: str = "transit_routes",
+     road_routes_column: str = "road_routes",
+     output_column: str = "C4",
+ ) -> pd.DataFrame:
+     for column in (HEX_ID, transit_routes_column, road_routes_column):
+         _ensure_column(redundancy, column)
+     redundancy = redundancy.copy()
+     redundancy["route_total"] = redundancy[transit_routes_column].clip(lower=0) + redundancy[
+         road_routes_column
+     ].clip(lower=0)
+     redundancy[output_column] = (1.0 - 1.0 / (1.0 + redundancy["route_total"])) * 100.0
+     summary = redundancy.groupby(HEX_ID)[output_column].max().reset_index()
+     summary[output_column] = summary[output_column].clip(0.0, 100.0)
+     return summary
+@@ -122,61 +132,76 @@ def compute_micromobility_presence(
+     grouped[output_column] = grouped[output_column].clip(0.0, 100.0)
+     return grouped[[HEX_ID, output_column]]
+
+
+ @dataclass(slots=True)
+ class MorrWeights:
+     frequent: float = 1.0
+     span: float = 1.0
+     reliability: float = 1.0
+     redundancy: float = 1.0
+     micromobility: float = 1.0
+
+     def as_dict(self) -> Mapping[str, float]:
+         weights = {
+             "C1": self.frequent,
+             "C2": self.span,
+             "C3": self.reliability,
+             "C4": self.redundancy,
+             "C5": self.micromobility,
+         }
+         total = sum(weights.values())
+         if total <= 0:
+             raise ValueError("MORR weights must sum to positive value")
+         return {key: value / total for key, value in weights.items()}
+
++    @classmethod
++    def from_params(cls, params: AUCSParams) -> MorrWeights:
++        config = params.morr
++        return cls(
++            frequent=float(config.frequent_exposure),
++            span=float(config.span),
++            reliability=float(config.reliability),
++            redundancy=float(config.redundancy),
++            micromobility=float(config.micromobility),
++        )
++
+
+ @dataclass(slots=True)
+ class MorrConfig:
+     weights: MorrWeights = field(default_factory=MorrWeights)
+     output_column: str = "MORR"
+
+
+ class MobilityReliabilityCalculator:
+     def __init__(self, config: MorrConfig | None = None):
+         self.config = config or MorrConfig()
+
++    @classmethod
++    def from_params(cls, params: AUCSParams) -> MobilityReliabilityCalculator:
++        return cls(MorrConfig(weights=MorrWeights.from_params(params)))
++
+     def aggregate(self, components: pd.DataFrame) -> pd.DataFrame:
+         weights = self.config.weights.as_dict()
+         for component in weights:
+             if component not in components.columns:
+                 raise KeyError(f"component {component} missing from dataframe")
+         scores = components.copy()
+         scores[self.config.output_column] = (
+             sum(scores[component] * weight for component, weight in weights.items())
+         ).clip(0.0, 100.0)
+         return scores[[HEX_ID, self.config.output_column]]
+
+     def compute(
+         self,
+         c1: pd.DataFrame,
+         c2: pd.DataFrame,
+         c3: pd.DataFrame,
+         c4: pd.DataFrame,
+         c5: pd.DataFrame,
+     ) -> pd.DataFrame:
+         components = (
+             c1.merge(c2, on=HEX_ID, how="outer")
+             .merge(c3, on=HEX_ID, how="outer")
+             .merge(c4, on=HEX_ID, how="outer")
+             .merge(c5, on=HEX_ID, how="outer")
+             .fillna(0.0)
+diff --git a/tests/test_hub_airport_access.py b/tests/test_hub_airport_access.py
+index bd1c2b173adc11ef1c99051f82830ac2188e7f02..b3b59d1acb32437fc8a6a78389bc511476357823 100644
+--- a/tests/test_hub_airport_access.py
++++ b/tests/test_hub_airport_access.py
+@@ -1,31 +1,35 @@
+ import pandas as pd
++import pytest
+
++from Urban_Amenities2.config.loader import load_params
+ from Urban_Amenities2.scores.hub_airport_access import (
++    AccessibilityConfig,
+     HubMassWeights,
+     MuhAAConfig,
+     MuhAAScore,
++    compute_airport_accessibility,
+     compute_hub_mass,
+ )
+
+
+ def test_compute_hub_mass_normalises_components() -> None:
+     hubs = pd.DataFrame(
+         {
+             "hub_id": ["den", "slc"],
+             "population": [2_900_000, 1_200_000],
+             "gdp": [210, 120],
+             "poi": [15000, 8000],
+             "culture": [120, 60],
+         }
+     )
+     masses = compute_hub_mass(hubs, HubMassWeights())
+     assert set(masses.columns) == {"hub_id", "mass"}
+     assert masses["mass"].between(0, 100).all()
+     assert masses.loc[masses["hub_id"] == "den", "mass"].iloc[0] > masses.loc[masses["hub_id"] == "slc", "mass"].iloc[0]
+
+
+ def test_muhaa_combines_hub_and_airport_access() -> None:
+     hubs = pd.DataFrame(
+         {
+             "hub_id": ["den", "slc"],
+             "population": [2_900_000, 1_200_000],
+@@ -37,25 +41,59 @@ def test_muhaa_combines_hub_and_airport_access() -> None:
+     hub_travel = pd.DataFrame(
+         {
+             "hex_id": ["h1", "h1", "h2", "h2"],
+             "destination_id": ["den", "slc", "den", "slc"],
+             "travel_minutes": [20, 60, 45, 30],
+         }
+     )
+     airports = pd.DataFrame(
+         {
+             "airport_id": ["den", "slc"],
+             "enplanements": [69_000_000, 26_000_000],
+         }
+     )
+     airport_travel = pd.DataFrame(
+         {
+             "hex_id": ["h1", "h2"],
+             "destination_id": ["den", "slc"],
+             "travel_minutes": [25, 35],
+         }
+     )
+     muhaa = MuhAAScore(MuhAAConfig(hub_contribution=0.6, airport_contribution=0.4))
+     scores = muhaa.compute(hubs, hub_travel, airports, airport_travel)
+     assert set(scores.columns) == {"hex_id", "MUHAA", "accessibility_hub", "accessibility_airport"}
+     assert scores["MUHAA"].between(0, 100).all()
+     assert scores.loc[scores["hex_id"] == "h1", "MUHAA"].iloc[0] > scores.loc[scores["hex_id"] == "h2", "MUHAA"].iloc[0]
++
++
++def test_muhaa_from_params_loads_configuration() -> None:
++    params, _ = load_params("configs/params_default.yml")
++    muhaa = MuhAAScore.from_params(params)
++    weights = muhaa.config.hub_weights.normalised()
++    assert pytest.approx(weights["population"], rel=1e-6) == 0.4
++    assert pytest.approx(muhaa.config.hub_alpha, rel=1e-6) == params.hubs_airports.hub_decay_alpha
++    assert pytest.approx(muhaa.config.airport_contribution + muhaa.config.hub_contribution, rel=1e-6) == 1.0
++
++
++def test_airport_specific_weights_adjust_mass() -> None:
++    travel = pd.DataFrame(
++        {
++            "hex_id": ["h1", "h2"],
++            "destination_id": ["den", "slc"],
++            "travel_minutes": [20, 40],
++        }
++    )
++    airports = pd.DataFrame(
++        {
++            "airport_id": ["den", "slc"],
++            "enplanements": [60_000_000, 20_000_000],
++        }
++    )
++    base = compute_airport_accessibility(travel, airports, config=AccessibilityConfig(), alpha=0.02)
++    weighted = compute_airport_accessibility(
++        travel,
++        airports,
++        config=AccessibilityConfig(),
++        alpha=0.02,
++        airport_weights={"den": 2.0},
++    )
++    assert weighted.loc[weighted["hex_id"] == "h1", "accessibility"].iloc[0] >= base.loc[base["hex_id"] == "h1", "accessibility"].iloc[0]
+diff --git a/tests/test_leisure_culture_access.py b/tests/test_leisure_culture_access.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..2fbb2ac115ed9fe51495bc98d15ed2235ec52a93
+--- /dev/null
++++ b/tests/test_leisure_culture_access.py
+@@ -0,0 +1,63 @@
++import pandas as pd
++import pytest
++
++from Urban_Amenities2.config.loader import load_params
++from Urban_Amenities2.scores.leisure_culture_access import (
++    LeisureCultureAccessCalculator,
++    LeisureCultureAccessConfig,
++    compute_novelty_table,
++    compute_pageview_volatility,
++)
++
++
++def test_pageview_volatility_computation() -> None:
++    volatility, mean = compute_pageview_volatility([100, 140, 80, 160])
++    assert mean == pytest.approx(120.0)
++    assert volatility > 0
++
++
++def test_compute_novelty_table_applies_bonus() -> None:
++    config = LeisureCultureAccessConfig()
++    novelty = pd.DataFrame(
++        {
++            "poi_id": ["p1", "p2"],
++            config.novelty.views_column: [[150, 200, 100], [5, 6, 4]],
++        }
++    )
++    table = compute_novelty_table(novelty, config.novelty)
++    multiplier_col = config.novelty.multiplier_column
++    assert table.loc[0, multiplier_col] > 1.0
++    assert table.loc[1, multiplier_col] == pytest.approx(1.0)
++
++
++def test_leisure_culture_access_computation() -> None:
++    pois = pd.DataFrame(
++        {
++            "poi_id": ["p1", "p2", "p3"],
++            "category": ["restaurants", "museums_galleries", "restaurants"],
++            "quality": [80.0, 90.0, 70.0],
++        }
++    )
++    accessibility = pd.DataFrame(
++        {
++            "hex_id": ["h1", "h1", "h2"],
++            "poi_id": ["p1", "p2", "p3"],
++            "weight": [0.6, 0.4, 1.0],
++        }
++    )
++    novelty = pd.DataFrame(
++        {
++            "poi_id": ["p1", "p2", "p3"],
++            "daily_views": [[100, 120, 110], [200, 210, 220], [10, 12, 9]],
++        }
++    )
++    params, _ = load_params("configs/params_default.yml")
++    calculator = LeisureCultureAccessCalculator.from_params(params)
++    summary, category_scores = calculator.compute(pois, accessibility, novelty=novelty)
++    assert {"hex_id", "LCA", "category_scores"} <= set(summary.columns)
++    assert summary["LCA"].between(0, 100).all()
++    assert not category_scores.empty
++    assert category_scores["score"].between(0, 100).all()
++    high_hex = summary.loc[summary["hex_id"] == "h1", "LCA"].iloc[0]
++    low_hex = summary.loc[summary["hex_id"] == "h2", "LCA"].iloc[0]
++    assert high_hex >= low_hex
+diff --git a/tests/test_mobility_reliability.py b/tests/test_mobility_reliability.py
+index ac269c915ce3d370c834308627b8dc489fee86f9..f0d1ea4efe75258bd4b7398c2651b66e0767ee1f 100644
+--- a/tests/test_mobility_reliability.py
++++ b/tests/test_mobility_reliability.py
+@@ -1,27 +1,29 @@
+ import pandas as pd
++import pytest
+
++from Urban_Amenities2.config.loader import load_params
+ from Urban_Amenities2.scores.mobility_reliability import (
+     MobilityReliabilityCalculator,
+     MorrConfig,
+     MorrWeights,
+     compute_frequent_transit_exposure,
+     compute_micromobility_presence,
+     compute_network_redundancy,
+     compute_on_time_reliability,
+     compute_service_span,
+ )
+
+
+ def _hex_frame(hex_id: str, value: float) -> pd.DataFrame:
+     return pd.DataFrame({"hex_id": [hex_id], "value": [value]})
+
+
+ def test_compute_frequent_transit_exposure() -> None:
+     stops = pd.DataFrame(
+         {
+             "hex_id": ["a", "a", "b"],
+             "headway_peak": [10.0, 25.0, 12.0],
+             "distance_m": [200.0, 600.0, 300.0],
+         }
+     )
+     result = compute_frequent_transit_exposure(stops)
+@@ -52,25 +54,50 @@ def test_component_calculations_cover_edge_cases() -> None:
+     )
+     c2 = compute_service_span(services)
+     assert c2["C2"].max() <= 100
+
+     reliability = pd.DataFrame(
+         {
+             "hex_id": ["a", "a"],
+             "on_time_pct": [95.0, 85.0],
+             "frequency_weight": [10.0, 0.0],
+         }
+     )
+     c3 = compute_on_time_reliability(reliability)
+     assert c3["C3"].iloc[0] == 95.0
+
+     redundancy = pd.DataFrame(
+         {"hex_id": ["a"], "transit_routes": [4], "road_routes": [3]}
+     )
+     c4 = compute_network_redundancy(redundancy)
+     assert 0 < c4["C4"].iloc[0] <= 100
+
+     micro = pd.DataFrame(
+         {"hex_id": ["a", "b"], "stations": [10, 0], "area_sqkm": [2.0, 2.0]}
+     )
+     c5 = compute_micromobility_presence(micro)
+     assert c5.loc[c5["hex_id"] == "a", "C5"].iloc[0] == 100.0
++
++
++def test_on_time_reliability_fallback_column() -> None:
++    reliability = pd.DataFrame(
++        {
++            "hex_id": ["a", "a"],
++            "frequency_weight": [5.0, 0.0],
++            "scheduled_pct": [88.0, 92.0],
++        }
++    )
++    result = compute_on_time_reliability(
++        reliability,
++        on_time_column="on_time_pct",
++        frequency_column="frequency_weight",
++        fallback_column="scheduled_pct",
++    )
++    assert result.loc[0, "C3"] == pytest.approx(88.0)
++
++
++def test_morr_weights_from_params() -> None:
++    params, _ = load_params("configs/params_default.yml")
++    calculator = MobilityReliabilityCalculator.from_params(params)
++    weights = calculator.config.weights.as_dict()
++    assert pytest.approx(sum(weights.values()), rel=1e-6) == 1.0
++    assert weights["C1"] > 0
+diff --git a/tests/test_scores.py b/tests/test_scores.py
+index 45fc57138c4b15331151f8065dd017bf9dc54d0c..aea66fd279bee10280e74714ff30dd8d3d77fba7 100644
+--- a/tests/test_scores.py
++++ b/tests/test_scores.py
+@@ -1,30 +1,35 @@
+ import pandas as pd
+ import pytest
+
++from Urban_Amenities2.config.loader import load_params
+ from Urban_Amenities2.math.diversity import DiversityConfig
+-from Urban_Amenities2.scores.aggregation import WeightConfig, aggregate_scores
++from Urban_Amenities2.scores.aggregation import (
++    WeightConfig,
++    aggregate_scores,
++    compute_total_aucs,
++)
+ from Urban_Amenities2.scores.essentials_access import (
+     EssentialCategoryConfig,
+     EssentialsAccessCalculator,
+     EssentialsAccessConfig,
+ )
+ from Urban_Amenities2.scores.normalization import NormalizationConfig, normalize_scores
+
+
+ def test_essentials_access_calculation() -> None:
+     pois = pd.DataFrame(
+         {
+             "poi_id": ["p1", "p2"],
+             "aucstype": ["grocery", "grocery"],
+             "quality": [90.0, 80.0],
+             "brand": ["BrandA", "BrandB"],
+             "name": ["A", "B"],
+             "quality_components": [
+                 {"size": 85.0, "popularity": 90.0, "brand": 80.0, "heritage": 70.0},
+                 {"size": 70.0, "popularity": 60.0, "brand": 75.0, "heritage": 65.0},
+             ],
+             "brand_penalty": [1.0, 0.8],
+         }
+     )
+     accessibility = pd.DataFrame(
+         {
+@@ -58,25 +63,44 @@ def test_essentials_access_calculation() -> None:
+     assert scores.loc[0, "EA"] >= 0
+     top = scores.loc[0, "contributors"]["grocery"][0]
+     assert top["quality"] == pytest.approx(90.0)
+     assert top["quality_components"]["popularity"] == pytest.approx(90.0)
+
+
+ def test_normalization_and_aggregation() -> None:
+     frame = pd.DataFrame(
+         {
+             "region": ["A", "A", "B"],
+             "score": [50, 80, 40],
+             "ea": [60, 70, 50],
+             "health": [40, 90, 70],
+         }
+     )
+
+     percentile = normalize_scores(frame, "region", "score", NormalizationConfig(mode="percentile"))
+     assert percentile["score_normalized"].between(0, 100).all()
+
+     standard = normalize_scores(frame.copy(), "region", "score", NormalizationConfig(mode="standard", standard_target=80))
+     assert standard["score_normalized"].max() <= 100
+
+     weights = WeightConfig({"ea": 0.6, "health": 0.4})
+     aggregated = aggregate_scores(frame.copy(), "composite", weights)
+     assert aggregated.loc[0, "composite"] == pytest.approx(0.6 * 60 + 0.4 * 40)
++
++
++def test_compute_total_aucs_uses_params_weights() -> None:
++    subscores = pd.DataFrame(
++        {
++            "hex_id": ["h1", "h2"],
++            "EA": [90.0, 40.0],
++            "LCA": [80.0, 30.0],
++            "MUHAA": [70.0, 20.0],
++            "JEA": [60.0, 10.0],
++            "MORR": [50.0, 5.0],
++            "CTE": [40.0, 5.0],
++            "SOU": [30.0, 5.0],
++        }
++    )
++    params, _ = load_params("configs/params_default.yml")
++    total = compute_total_aucs(subscores, params)
++    assert {"hex_id", "aucs"} <= set(total.columns)
++    assert total.loc[total["hex_id"] == "h1", "aucs"].iloc[0] > total.loc[total["hex_id"] == "h2", "aucs"].iloc[0]

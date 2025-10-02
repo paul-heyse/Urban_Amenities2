@@ -1,5 +1,7 @@
 import pandas as pd
+import pytest
 
+from Urban_Amenities2.config.loader import load_params
 from Urban_Amenities2.scores.mobility_reliability import (
     MobilityReliabilityCalculator,
     MorrConfig,
@@ -74,3 +76,28 @@ def test_component_calculations_cover_edge_cases() -> None:
     )
     c5 = compute_micromobility_presence(micro)
     assert c5.loc[c5["hex_id"] == "a", "C5"].iloc[0] == 100.0
+
+
+def test_on_time_reliability_fallback_column() -> None:
+    reliability = pd.DataFrame(
+        {
+            "hex_id": ["a", "a"],
+            "frequency_weight": [5.0, 0.0],
+            "scheduled_pct": [88.0, 92.0],
+        }
+    )
+    result = compute_on_time_reliability(
+        reliability,
+        on_time_column="on_time_pct",
+        frequency_column="frequency_weight",
+        fallback_column="scheduled_pct",
+    )
+    assert result.loc[0, "C3"] == pytest.approx(88.0)
+
+
+def test_morr_weights_from_params() -> None:
+    params, _ = load_params("configs/params_default.yml")
+    calculator = MobilityReliabilityCalculator.from_params(params)
+    weights = calculator.config.weights.as_dict()
+    assert pytest.approx(sum(weights.values()), rel=1e-6) == 1.0
+    assert weights["C1"] > 0

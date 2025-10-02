@@ -1,9 +1,13 @@
 import pandas as pd
+import pytest
 
+from Urban_Amenities2.config.loader import load_params
 from Urban_Amenities2.scores.hub_airport_access import (
+    AccessibilityConfig,
     HubMassWeights,
     MuhAAConfig,
     MuhAAScore,
+    compute_airport_accessibility,
     compute_hub_mass,
 )
 
@@ -59,3 +63,37 @@ def test_muhaa_combines_hub_and_airport_access() -> None:
     assert set(scores.columns) == {"hex_id", "MUHAA", "accessibility_hub", "accessibility_airport"}
     assert scores["MUHAA"].between(0, 100).all()
     assert scores.loc[scores["hex_id"] == "h1", "MUHAA"].iloc[0] > scores.loc[scores["hex_id"] == "h2", "MUHAA"].iloc[0]
+
+
+def test_muhaa_from_params_loads_configuration() -> None:
+    params, _ = load_params("configs/params_default.yml")
+    muhaa = MuhAAScore.from_params(params)
+    weights = muhaa.config.hub_weights.normalised()
+    assert pytest.approx(weights["population"], rel=1e-6) == 0.4
+    assert pytest.approx(muhaa.config.hub_alpha, rel=1e-6) == params.hubs_airports.hub_decay_alpha
+    assert pytest.approx(muhaa.config.airport_contribution + muhaa.config.hub_contribution, rel=1e-6) == 1.0
+
+
+def test_airport_specific_weights_adjust_mass() -> None:
+    travel = pd.DataFrame(
+        {
+            "hex_id": ["h1", "h2"],
+            "destination_id": ["den", "slc"],
+            "travel_minutes": [20, 40],
+        }
+    )
+    airports = pd.DataFrame(
+        {
+            "airport_id": ["den", "slc"],
+            "enplanements": [60_000_000, 20_000_000],
+        }
+    )
+    base = compute_airport_accessibility(travel, airports, config=AccessibilityConfig(), alpha=0.02)
+    weighted = compute_airport_accessibility(
+        travel,
+        airports,
+        config=AccessibilityConfig(),
+        alpha=0.02,
+        airport_weights={"den": 2.0},
+    )
+    assert weighted.loc[weighted["hex_id"] == "h1", "accessibility"].iloc[0] >= base.loc[base["hex_id"] == "h1", "accessibility"].iloc[0]

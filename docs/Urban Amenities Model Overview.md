@@ -206,10 +206,10 @@ Below is an opinionated stack that balances performance, stability, and ecosyste
 
 ### 4.7 Subscores
 
-* **EA/LCA**: apply category rules; add **carry penalties** and **novelty** bonus.
-* **MUHAA**: build **hub mass** table (BEA/Census) → decay by best access time; airports weighted by enplanements; use **duckdb** for fast joins.
+* **EA/LCA**: apply category rules; for LCA compute CES+satiation per leisure category (restaurants, cafes, bars, cinemas, performing arts, museums/galleries, parks/trails, sports/rec), apply Wikipedia novelty bonus, then cross-category CES using parameters from `params.leisure_cross_category`.
+* **MUHAA**: build **hub mass** table (BEA/Census + POI + culture) weighted by `params.hubs_airports.hub_mass_weights`; decay by generalized travel cost using mode-best times; weight airports by enplanements × airport-specific multipliers and combine hub/airport access using configurable contributions.
 * **JEA**: load LODES with **duckdb**, aggregate by hex, then gravity via (w_{i,\text{block}}) matrices.
-* **MORR**: poll GTFS‑RT with **httpx**, compute punctuality/headway variance; compute span & frequency from static GTFS with **partridge/gtfs‑kit**.
+* **MORR**: poll GTFS‑RT with **httpx** for on-time reliability (fallback to schedules when GTFS-RT missing); compute frequency/share of frequent stops, span coverage, redundancy, and micromobility density; aggregate with weights from `params.morr`.
 * **CTE**: build top 2 paths using OTP2; buffer stops (Shapely), collect corridor POIs, compute small‑detour utility.
 * **SOU**: compute (\sigma_{\text{out}}) per time slice from **NOAA** monthly normals and multiply parks score.
 

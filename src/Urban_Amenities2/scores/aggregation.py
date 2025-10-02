@@ -5,6 +5,8 @@ from typing import Dict
 
 import pandas as pd
 
+from ..config.params import AUCSParams
+
 
 @dataclass
 class WeightConfig:
@@ -32,4 +34,27 @@ def aggregate_scores(frame: pd.DataFrame, value_column: str, weight_config: Weig
     return frame
 
 
-__all__ = ["aggregate_scores", "WeightConfig"]
+def build_weight_config(params: AUCSParams) -> WeightConfig:
+    """Create a :class:`WeightConfig` from AUCS parameters."""
+
+    return WeightConfig(params.subscores.model_dump())
+
+
+def compute_total_aucs(
+    subscores: pd.DataFrame,
+    params: AUCSParams,
+    *,
+    id_column: str = "hex_id",
+    output_column: str = "aucs",
+) -> pd.DataFrame:
+    """Aggregate AUCS subscores using weights from the parameter configuration."""
+
+    if id_column not in subscores.columns:
+        raise KeyError(f"subscores dataframe missing id column '{id_column}'")
+    config = build_weight_config(params)
+    frame = subscores.copy()
+    aggregated = aggregate_scores(frame, output_column, config)
+    return aggregated[[id_column, output_column]]
+
+
+__all__ = ["WeightConfig", "aggregate_scores", "build_weight_config", "compute_total_aucs"]

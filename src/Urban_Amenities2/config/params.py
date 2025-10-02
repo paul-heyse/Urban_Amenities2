@@ -206,16 +206,50 @@ class CategoryConfig(_BaseConfig):
         return None
 
 
+class NoveltyBonusConfig(_BaseConfig):
+    """Configuration for the leisure novelty bonus."""
+
+    max_bonus: float = Field(0.2, ge=0)
+    reference_volatility: float = Field(1.0, gt=0)
+    min_mean_views: float = Field(1.0, ge=0)
+
+
 class LeisureCrossCategoryConfig(_BaseConfig):
     weights: Dict[str, float]
     elasticity_zeta: float
-    novelty: Dict[str, float] = Field(default_factory=dict)
+    category_groups: Dict[str, str] = Field(default_factory=dict)
+    novelty: NoveltyBonusConfig = Field(default_factory=NoveltyBonusConfig)
+
+    @model_validator(mode="after")
+    def _validate_weights(self) -> LeisureCrossCategoryConfig:
+        if not self.weights:
+            raise ValueError("leisure cross-category weights must not be empty")
+        negative = {key: value for key, value in self.weights.items() if value < 0}
+        if negative:
+            msg = f"weights must be non-negative, received negatives for {sorted(negative)}"
+            raise ValueError(msg)
+        return self
 
 
 class HubsAirportsConfig(_BaseConfig):
-    hub_mass_lambda: float
-    decay: float
-    airport_weights: Dict[str, float]
+    hub_mass_weights: Dict[str, float]
+    hub_decay_alpha: float = Field(..., gt=0)
+    airport_decay_alpha: float = Field(..., gt=0)
+    contributions: Dict[str, float] = Field(default_factory=lambda: {"hub": 0.7, "airport": 0.3})
+    airport_weights: Dict[str, float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_config(self) -> HubsAirportsConfig:
+        if not self.hub_mass_weights:
+            raise ValueError("hub_mass_weights must not be empty")
+        if any(value < 0 for value in self.hub_mass_weights.values()):
+            raise ValueError("hub mass weights must be non-negative")
+        if all(value == 0 for value in self.hub_mass_weights.values()):
+            raise ValueError("hub mass weights must contain positive values")
+        total = sum(self.contributions.values())
+        if total <= 0:
+            raise ValueError("at least one MUHAA contribution must be positive")
+        return self
 
 
 class JobsEducationConfig(_BaseConfig):

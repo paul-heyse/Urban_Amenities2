@@ -1,8 +1,13 @@
 import pandas as pd
 import pytest
 
+from Urban_Amenities2.config.loader import load_params
 from Urban_Amenities2.math.diversity import DiversityConfig
-from Urban_Amenities2.scores.aggregation import WeightConfig, aggregate_scores
+from Urban_Amenities2.scores.aggregation import (
+    WeightConfig,
+    aggregate_scores,
+    compute_total_aucs,
+)
 from Urban_Amenities2.scores.essentials_access import (
     EssentialCategoryConfig,
     EssentialsAccessCalculator,
@@ -80,3 +85,22 @@ def test_normalization_and_aggregation() -> None:
     weights = WeightConfig({"ea": 0.6, "health": 0.4})
     aggregated = aggregate_scores(frame.copy(), "composite", weights)
     assert aggregated.loc[0, "composite"] == pytest.approx(0.6 * 60 + 0.4 * 40)
+
+
+def test_compute_total_aucs_uses_params_weights() -> None:
+    subscores = pd.DataFrame(
+        {
+            "hex_id": ["h1", "h2"],
+            "EA": [90.0, 40.0],
+            "LCA": [80.0, 30.0],
+            "MUHAA": [70.0, 20.0],
+            "JEA": [60.0, 10.0],
+            "MORR": [50.0, 5.0],
+            "CTE": [40.0, 5.0],
+            "SOU": [30.0, 5.0],
+        }
+    )
+    params, _ = load_params("configs/params_default.yml")
+    total = compute_total_aucs(subscores, params)
+    assert {"hex_id", "aucs"} <= set(total.columns)
+    assert total.loc[total["hex_id"] == "h1", "aucs"].iloc[0] > total.loc[total["hex_id"] == "h2", "aucs"].iloc[0]

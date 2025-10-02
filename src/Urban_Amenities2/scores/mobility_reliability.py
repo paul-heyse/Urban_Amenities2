@@ -6,6 +6,8 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
+from ..config.params import AUCSParams
+
 
 HEX_ID = "hex_id"
 
@@ -64,13 +66,21 @@ def compute_on_time_reliability(
     *,
     on_time_column: str = "on_time_pct",
     frequency_column: str = "frequency_weight",
+    fallback_column: str | None = None,
     output_column: str = "C3",
 ) -> pd.DataFrame:
-    for column in (HEX_ID, on_time_column, frequency_column):
-        _ensure_column(reliability, column)
-    reliability = reliability.copy()
-    reliability["weight"] = reliability[frequency_column].clip(lower=0.0)
-    grouped = reliability.groupby(HEX_ID)
+    _ensure_column(reliability, HEX_ID)
+    frame = reliability.copy()
+    if on_time_column not in frame.columns:
+        if not fallback_column or fallback_column not in frame.columns:
+            raise KeyError(f"expected column '{on_time_column}' in dataframe")
+        frame.rename(columns={fallback_column: on_time_column}, inplace=True)
+    elif fallback_column and fallback_column in frame.columns:
+        frame[on_time_column] = frame[on_time_column].fillna(frame[fallback_column])
+    _ensure_column(frame, on_time_column)
+    _ensure_column(frame, frequency_column)
+    frame["weight"] = frame[frequency_column].clip(lower=0.0)
+    grouped = frame.groupby(HEX_ID)
     weighted = grouped.apply(
         lambda df: 0.0
         if df["weight"].sum() == 0
@@ -144,6 +154,17 @@ class MorrWeights:
             raise ValueError("MORR weights must sum to positive value")
         return {key: value / total for key, value in weights.items()}
 
+    @classmethod
+    def from_params(cls, params: AUCSParams) -> MorrWeights:
+        config = params.morr
+        return cls(
+            frequent=float(config.frequent_exposure),
+            span=float(config.span),
+            reliability=float(config.reliability),
+            redundancy=float(config.redundancy),
+            micromobility=float(config.micromobility),
+        )
+
 
 @dataclass(slots=True)
 class MorrConfig:
@@ -154,6 +175,10 @@ class MorrConfig:
 class MobilityReliabilityCalculator:
     def __init__(self, config: MorrConfig | None = None):
         self.config = config or MorrConfig()
+
+    @classmethod
+    def from_params(cls, params: AUCSParams) -> MobilityReliabilityCalculator:
+        return cls(MorrConfig(weights=MorrWeights.from_params(params)))
 
     def aggregate(self, components: pd.DataFrame) -> pd.DataFrame:
         weights = self.config.weights.as_dict()

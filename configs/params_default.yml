@@ -67,12 +67,18 @@ quality:
     cafe: extended
 categories:
   essentials: [groceries, pharmacy]
-  leisure: [park, cafe]
+  leisure: [restaurants, cafes, bars, cinemas, performing_arts, museums_galleries, parks_trails, sports_rec]
   ces_rho:
     groceries: 0.5
     pharmacy: 0.4
-    park: 0.35
-    cafe: 0.45
+    restaurants: 0.45
+    cafes: 0.45
+    bars: 0.45
+    cinemas: 0.4
+    performing_arts: 0.35
+    museums_galleries: 0.35
+    parks_trails: 0.35
+    sports_rec: 0.35
   satiation_mode: anchor
   satiation_targets:
     groceries:
@@ -106,15 +112,39 @@ categories:
       max_multiplier: 1.2
 leisure_cross_category:
   weights:
-    arts: 0.5
-    recreation: 0.5
-  elasticity_zeta: 0.9
+    restaurants: 1.0
+    cafes: 0.8
+    bars: 0.8
+    cinemas: 1.0
+    performing_arts: 1.1
+    museums_galleries: 1.1
+    parks_trails: 0.9
+    sports_rec: 0.9
+  elasticity_zeta: 0.7
+  category_groups:
+    restaurants: dining
+    cafes: dining
+    bars: dining
+    cinemas: arts
+    performing_arts: arts
+    museums_galleries: arts
+    parks_trails: recreation
+    sports_rec: recreation
   novelty:
-    jazz: 1.2
-    climbing: 0.9
+    max_bonus: 0.2
+    reference_volatility: 1.0
+    min_mean_views: 25.0
 hubs_airports:
-  hub_mass_lambda: 0.4
-  decay: 0.6
+  hub_mass_weights:
+    population: 0.4
+    gdp: 0.3
+    poi: 0.2
+    culture: 0.1
+  hub_decay_alpha: 0.03
+  airport_decay_alpha: 0.025
+  contributions:
+    hub: 0.7
+    airport: 0.3
   airport_weights:
     DEN: 1.0
 jobs_education:
