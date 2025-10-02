@@ -1,0 +1,716 @@
+Below is a **self‑contained parameter specification** for **AUCS 2.0** (Aker Urban Convenience Score), focusing only on **equations** and the **parameters** that control them. It is organized as:
+
+1. **Equations** (numbered, with symbols)
+2. **Parameter dictionary** (names, units, ranges, defaults)
+3. **Reference YAML** (machine‑readable defaults you can drop into code)
+
+> **Scope:** This document is intentionally *source‑agnostic*. It specifies *what* to compute and *which parameters* govern behavior. In the next step you can bind data sources to the variables.
+
+---
+
+## 1) Equations
+
+### 1.1 Indices and sets
+
+* (i): origin hex (250 m)
+* (a): amenity/attraction (POI)
+* (c \in \mathcal{C}): amenity category
+
+  * Essentials (\mathcal{C}_E): {grocery, pharmacy, primary_care, childcare, K8_school, bank_atm, postal_parcel}
+  * Leisure (\mathcal{C}_L): {restaurants, cafes, bars, cinemas, performing_arts, museums_galleries, parks_trails, sports_rec}
+* (h \in \mathcal{H}): major urban hub (e.g., MSA CBD)
+* (p \in \mathcal{P}): airport
+* (b): LEHD block (jobs)
+* (u): university
+* (m \in \mathcal{M}): mode (walk, bike, ebike, bus, rail, ferry, car)
+* (n \in {\text{non_motorized}, \text{transit}, \text{car}}): mode nests
+* (\tau \in \mathcal{T}): time slice (WD‑AM, WD‑MD, WD‑PM, WD‑EV, WE‑MD)
+
+### 1.2 Generalized travel cost (minutes equivalent)
+
+For any (i,a,m,\tau):
+[
+\begin{aligned}
+\text{GTC}*{i,a,m,\tau} &=
+\theta*{\text{iv},m}, t^{\text{iv}}_{i,a,m,\tau}
+
+* \theta_{\text{wait},m}, t^{\text{wait}}_{i,a,m,\tau}
+* \theta_{\text{walk},m}, t^{\text{fm}}*{i,a,m,\tau} \
+  &\quad + \delta_m, x^{\text{tx}}*{i,a,m,\tau}
+* \rho_{m,\tau}, \tilde{t}^{\text{rel}}_{i,a,m,\tau}
+* \frac{f_{i,a,m,\tau}}{\text{VOT}*\tau} \
+  &\quad + \mathbf{1}[m=\text{car}] \cdot \left(\pi*{\text{park}} + \pi_{\text{toll}}\right)
+* \chi_{c(a)} \cdot \text{CarryPenalty}_m
+  \end{aligned}
+  \tag{E1}
+  ]
+
+Notes:
+
+* (t^{\text{iv}}) in‑vehicle, (t^{\text{wait}}) expected wait, (t^{\text{fm}}) first/last mile walk/bike.
+* (x^{\text{tx}}) number of transfers.
+* (\tilde{t}^{\text{rel}}) reliability buffer (e.g., (P90-P50) travel time); if unavailable, set 0.
+* (f) fare/tolls in currency; divided by (\text{VOT}_\tau) to convert to minutes.
+* (\chi_{c(a)} \cdot \text{CarryPenalty}_m) only applies to “carry‑heavy” tasks (e.g., grocery).
+
+### 1.3 Mode utility and nested logsum
+
+Perceived utility (dimensionless):
+[
+U_{i,a,m,\tau} = \beta_{m0} - \alpha_m \cdot \text{GTC}_{i,a,m,\tau}
+
+* \gamma_m \cdot \text{Comfort}_{i,m,\tau}
+  \tag{E2}
+  ]
+
+Nest‑level inclusive value:
+[
+\text{IV}*{i,a,n,\tau} = \frac{1}{\mu_n} \ln!\left(\sum*{m\in n} e^{\mu_n U_{i,a,m,\tau}}\right)
+\tag{E3}
+]
+
+Top‑level inclusive value across nests:
+[
+W_{i,a,\tau} = \frac{1}{\mu_{\text{top}}} \ln!\left(\sum_{n} e^{\mu_{\text{top}}(\text{IV}_{i,a,n,\tau} + \eta_n)}\right)
+\tag{E4}
+]
+
+Time‑aggregated **reach weight** for destination (a):
+[
+w_{i,a} = \sum_{\tau \in \mathcal{T}} w_\tau \cdot \exp!\big(W_{i,a,\tau}\big)
+\tag{E5}
+]
+
+> (w_{i,a}) is the **accessibility term** used everywhere below.
+
+### 1.4 Destination quality & de‑duplication
+
+Raw quality (dimensionless):
+[
+q_a = \lambda_0
+
+* \lambda_1 \cdot \text{Size}_a^{z}
+* \lambda_2 \cdot \text{Capacity}_a^{z}
+* \lambda_3 \cdot \text{Popularity}_a^{z}
+* \lambda_4 \cdot \mathbf{1}[\text{wikidata}]
+* \lambda_5 \cdot \mathbf{1}[\text{heritage}]
+* \lambda_6 \cdot \text{TagBonus}_a
+  \tag{E6}
+  ]
+
+Opening‑hours bonus (optional):
+[
+\tilde{q}*a = q_a \cdot (1 + \xi \cdot \omega_a), \quad
+\omega_a = \sum*{\tau} w_\tau \cdot \mathbf{1}[a \text{ open in } \tau]
+\tag{E7}
+]
+
+Brand‑proximity de‑duplication:
+[
+d_a = \frac{1}{1 + \sum_{a'\neq a:,\text{brand}(a')=\text{brand}(a)}
+\exp!\left(-\beta_d \cdot \text{dist}(a,a')\right)}
+\tag{E8}
+]
+
+Final destination attractiveness:
+[
+Q_a = \tilde{q}_a \cdot d_a
+\tag{E9}
+]
+
+### 1.5 Category aggregation (CES + satiation)
+
+Per‑destination contribution:
+[
+z_{i,a} = \left(Q_a \cdot w_{i,a}\right)^{\rho_c}
+\tag{E10}
+]
+
+Within‑category CES aggregator:
+[
+V_c(i) = \left(\sum_{a \in c} z_{i,a} \right)^{\tfrac{1}{\rho_c}}
+\tag{E11}
+]
+
+Satiation‑mapped category score (0–100):
+[
+S_c(i)= 100 \cdot \left(1 - \exp\left[-\kappa_c \cdot V_c(i)\right]\right)
+\tag{E12}
+]
+
+Optional within‑category diversity bonus (Hill number, (q=1)):
+[
+\text{DivBonus}*c(i) = \upsilon_c \cdot \left(e^{H_c(i)} - 1\right), \quad
+H_c(i) = -\sum*{g} p_{c,g}(i)\ln p_{c,g}(i)
+\tag{E13}
+]
+(where (p_{c,g}) is the share of Q‑weighted subtypes (g) within category (c); cap (\text{DivBonus}_c) per category.)
+
+### 1.6 Essentials Access (EA)
+
+Mean of essential categories, with shortfall penalty:
+[
+\text{EA}(i) = \frac{1}{|\mathcal{C}*E|}\sum*{c\in\mathcal{C}*E}\left[S_c(i) + \text{DivBonus}*c(i)\right]
+;-;
+\text{ShortfallPenalty}(i)
+\tag{E14}
+]
+[
+\text{ShortfallPenalty}(i)=
+\min!\left(P*{\max}, ~ \sum*{c\in\mathcal{C}*E} \mathbf{1}[S_c(i) < S*{\min}] \cdot P_{\text{per_miss}}\right)
+\tag{E15}
+]
+
+### 1.7 Leisure & Culture Access (LCA)
+
+Cross‑category CES of leisure categories + novelty:
+[
+V_L(i) = \left(\sum_{c \in \mathcal{C}*L} v_c \cdot \left[S_c(i)+\text{DivBonus}*c(i)\right]^{\zeta}\right)^{!\frac{1}{\zeta}}
+\tag{E16}
+]
+[
+\text{Novel}(i) = \min!\left(N*{\max},~ \lambda*{\text{nov}} \cdot \text{IQR}\big(\text{Popularity}^{z}_{a \in \text{top-}K}\big)\right)
+\tag{E17}
+]
+[
+\text{LCA}(i) = \min!\left(100,~ V_L(i) + \text{Novel}(i)\right)
+\tag{E18}
+]
+
+### 1.8 Major Urban Hub & Airport Access (MUHAA)
+
+Hub mass:
+[
+M_h = \lambda_1 \widetilde{\text{Pop}}_h + \lambda_2 \widetilde{\text{GDP}}_h + \lambda_3 \widetilde{\text{POI}}_h + \lambda_4 \widetilde{\text{Culture}}_h
+\tag{E19}
+]
+
+Best generalized cost to hub:
+[
+\text{GTC}^{\text{best}}*{i,h} = \min*{m\in{\text{transit},\text{car}}} ~ \min_{\tau\in\mathcal{T}} \text{GTC}*{i,h,m,\tau}
+\tag{E20}
+]
+[
+A_h(i) = M_h \cdot \exp!\left(-\alpha*{\text{hub}} \cdot \text{GTC}^{\text{best}}_{i,h}\right)
+\tag{E21}
+]
+
+Airport connectivity and access:
+[
+F_p = \omega_1 \widetilde{\text{destinations}}*p + \omega_2 \widetilde{\text{seats}}*p
+\tag{E22}
+]
+[
+\text{GTC}^{\text{best}}*{i,p} = \min*{m\in{\text{transit},\text{car}}} ~ \min_{\tau\in\mathcal{T}} \text{GTC}*{i,p,m,\tau}
+\tag{E23}
+]
+[
+A_p(i) = F_p \cdot \exp!\left(-\alpha*{\text{air}} \cdot \text{GTC}^{\text{best}}_{i,p}\right)
+\tag{E24}
+]
+
+Normalized subscore:
+[
+\text{MUHAA}(i) = 100 \cdot
+\frac{\sum_{h} A_h(i) + \upsilon_{\text{air}} \sum_{p} A_p(i)}
+{\sum_{h} M_h + \upsilon_{\text{air}} \sum_{p} F_p}
+\tag{E25}
+]
+
+### 1.9 Jobs & Education Access (JEA)
+
+[
+J(i) = \sum_{b} J_b \cdot \left[\sum_{\tau} w_\tau \cdot \exp\big(W_{i,b,\tau}\big)\right]
+\quad;\quad
+U(i) = \sum_{u} q_u \cdot \left[\sum_{\tau} w_\tau \cdot \exp\big(W_{i,u,\tau}\big)\right]
+\tag{E26}
+]
+Industry weighting (optional): multiply (J_b) by (\pi_{\text{ind}(b)}).
+
+[
+\text{JEA}(i) = 100 \cdot \text{Norm}!\left(J(i) + \kappa \cdot U(i)\right)
+\tag{E27}
+]
+
+### 1.10 Mobility Options, Reliability & Resilience (MORR)
+
+Five components (0–100 each), arithmetic mean:
+[
+\text{MORR}(i) = \frac{1}{5}\sum_{q=1}^{5} C_q(i)
+\tag{E28}
+]
+
+**C₁. Frequent transit exposure** within 800 m:
+[
+C_1 = 100 \cdot \min!\left(1, \sum_{r \in \mathcal{R}_{\le h^*}} \min!\left(1, \frac{H^*}{\bar{h}_r}\right) \cdot w_r \right)
+\tag{E29}
+]
+(\bar{h}_r) mean peak headway of route (r); (w_r) de‑overlaps routes sharing the same trunk; (H^*) nominal frequent headway (e.g., 10 min).
+
+**C₂. Span of service** (weighted hours/day with headway (\le h^\dagger)):
+[
+C_2 = 100 \cdot \min!\left(1, \frac{\sum_{\tau} \tilde{w}*\tau \cdot \text{hours}*{\tau,h\le h^\dagger}}{H_{\text{target}}}\right)
+\tag{E30}
+]
+
+**C₃. Reliability** (choose available measure):
+[
+C_3 = 100 \cdot \left(1 - \min!\left(1, \frac{\text{RVar}}{\text{RVar}_{\max}}\right)\right)
+\tag{E31}
+]
+with (\text{RVar} = \max!\left(\frac{P90}{P50}-1,~ \text{HVI}\right)). If absent, proxy from headway variability + transfer exposure.
+
+**C₄. Network redundancy/resilience**:
+[
+C_4 = 50 \cdot \min!\left(1, \frac{N^{\text{tr}}*{\text{alt}}}{N^{\text{tr}}*{\text{cap}}}\right)
+
+* 50 \cdot \min!\left(1, \frac{N^{\text{rd}}*{\text{alt}}}{N^{\text{rd}}*{\text{cap}}}\right)
+  \tag{E32}
+  ]
+  where (N^{\text{tr}}*{\text{alt}}) = disjoint frequent transit paths to CBD with (\text{GTC}) within ((1+\epsilon)) of best; (N^{\text{rd}}*{\text{alt}}) = independent arterials reachable within (t_{\text{drive}}).
+
+**C₅. Micromobility presence**:
+[
+C_5 = 100 \cdot \min!\left(1, a_1 \cdot \frac{S_{300}}{S^**{300}} + a_2 \cdot \frac{S*{800}}{S^**{800}} + a_3 \cdot \frac{L*{\text{bikeway}}}{L^*} \right)
+\tag{E33}
+]
+
+### 1.11 Corridor Trip‑Chaining Enrichment (CTE)
+
+For each top path (P) (up to (P_{\max})) from (i) to CBD/hub, buffer stops by (r), collect (\mathcal{A}*P). For 2‑stop chains among designated pairs:
+[
+C*{P}(i) = \sum_{(a,b)\in \mathcal{Pairs}}
+\Big[ Q_a e^{-\alpha_{\text{walk}} t_{s\to a}} + Q_b e^{-\alpha_{\text{walk}} t_{s\to b}} \Big]
+\cdot \mathbf{1}!\left(\Delta T_{\text{detour}} \le \epsilon\right)
+\tag{E34}
+]
+Aggregate:
+[
+\text{CTE}(i) = 100 \cdot \text{Norm}*{\text{metro}}!\left(\sum*{P} C_{P}(i)\right)
+\tag{E35}
+]
+
+### 1.12 Seasonal Outdoors Usability (SOU)
+
+[
+\text{SOU}(i) = S_{\text{parks}}(i) \times \left(\sum_{\tau} w_\tau \cdot \sigma_{\text{out}}(i,\tau)\right)
+\tag{E36}
+]
+(\sigma_{\text{out}}\in[0,1]) from climate comfort rules.
+
+### 1.13 Weighted total score
+
+With subscore weights (w_k) summing to 100:
+[
+\boxed{\text{AUCS}(i) = \sum_{k \in {\text{EA,LCA,MUHAA,JEA,MORR,CTE,SOU}}} w_k \cdot S_k(i)}
+\tag{E37}
+]
+
+### 1.14 Normalization operators
+
+Metro‑relative percentile clamp (default):
+[
+\text{Norm}*{\text{metro}}(X) = 100 \cdot \frac{\min(\max(X,P_5),P*{95}) - P_5}{P_{95}-P_5}
+\tag{E38}
+]
+Standards‑based anchors (optional):
+[
+\text{Norm}*{\text{anchor}}(X) = 100 \cdot \frac{\min(\max(X,A*{\min}),A_{\max}) - A_{\min}}{A_{\max}-A_{\min}}
+\tag{E39}
+]
+
+---
+
+## 2) Parameter dictionary (defaults reflect the “as‑it‑stands” model)
+
+### 2.1 Top‑level weights & grid
+
+* (w_{\text{EA}}, w_{\text{LCA}}, w_{\text{MUHAA}}, w_{\text{JEA}}, w_{\text{MORR}}, w_{\text{CTE}}, w_{\text{SOU}}) → **[30, 18, 16, 14, 12, 5, 5]**
+* Hex resolution: **250 m** (H3 res≈9/8; implementation choice)
+* Isochrone durations: **[15, 30, 45, 60] min**; search cap: **180 min**
+
+### 2.2 Time slices (\tau) and weights (w_\tau)
+
+* WD‑AM=0.25, WD‑MD=0.20, WD‑PM=0.25, WD‑EV=0.15, WE‑MD=0.15 (sum 1.0)
+
+Value of time (\text{VOT}_\tau): WD slices **$18/h**, WE **$15/h** (used in E1)
+
+### 2.3 Mode parameters (per mode (m))
+
+| Param                         |   walk |   bike |  ebike |                     bus |                    rail |                   ferry |                     car |
+| ----------------------------- | -----: | -----: | -----: | ----------------------: | ----------------------: | ----------------------: | ----------------------: |
+| (\theta_{\text{iv},m})        |    1.0 |    1.0 |    1.0 |                     1.0 |                     1.0 |                     1.0 |                     1.0 |
+| (\theta_{\text{wait},m})      |      — |      — |      — |                     2.0 |                     2.0 |                     2.0 |                       — |
+| (\theta_{\text{walk},m})      |    1.6 |    1.3 |    1.2 |                     1.6 |                     1.6 |                     1.6 |                       — |
+| (\delta_m) (min/tx)           |      — |      — |      — |                       6 |                       6 |                       6 |                       — |
+| (t_{1/2,m}) (min)             |      7 |     12 |     10 |                      25 |                      25 |                      25 |                      20 |
+| (\alpha_m=\ln2/t_{1/2,m})     | derive | derive | derive |                  derive |                  derive |                  derive |                  derive |
+| (\beta_{m0})                  |    0.0 |    0.0 |    0.0 |                    −0.2 |                    +0.1 |                     0.0 |                     0.0 |
+| (\rho_{m,\tau}) (rel. buffer) |      0 |      0 |      0 | 0.10 (peak), 0.05 (off) | 0.10 (peak), 0.05 (off) | 0.10 (peak), 0.05 (off) | 0.15 (peak), 0.05 (off) |
+| (\pi_{\text{park}}) (min)     |      — |      — |      — |                       — |                       — |                       — |                       6 |
+| (\pi_{\text{toll}}) (min eq.) |      — |      — |      — |                       — |                       — |                       — |    ($4/\text{VOT}_\tau) |
+| (\gamma_m) (comfort coef.)    |      0 |      0 |      0 |                       0 |                       0 |                       0 |                       0 |
+
+*Set ebike `enabled=false` if not modeling; parameters provided for completeness.*
+
+### 2.4 Nest & top‑level logit parameters
+
+* Nests:
+
+  * non_motorized = {walk, bike, ebike}, (\mu_{\text{nm}}=1.0), (\eta_{\text{nm}}=0)
+  * transit = {bus, rail, ferry}, (\mu_{\text{tr}}=1.0), (\eta_{\text{tr}}=0)
+  * car = {car}, (\mu_{\text{car}}=1.0), (\eta_{\text{car}}=0)
+* (\mu_{\text{top}} = 0.8)
+
+### 2.5 Carry penalties (by category and mode)
+
+* (\chi_{\text{grocery}}=1), (\chi_{\text{postal_parcel}}=1); others 0 by default
+* (\text{CarryPenalty}_{\text{walk}}=6) min, bike 3, transit 2, car 0
+
+### 2.6 Destination quality (q_a) (E6–E9)
+
+* (\lambda)-weights: (\lambda_0=0.7), (\lambda_1=0.2), (\lambda_2=0.2), (\lambda_3=0.2), (\lambda_4=0.1), (\lambda_5=0.1), (\lambda_6=0.1)
+  (apply per‑term caps via z‑score clipping, e.g., (|z|\le 2))
+* Opening hours: (\xi=0.2); treat missing hours as (\omega_a=1) (neutral)
+* Brand de‑duplication: (\beta_d=0.25) km(^{-1})
+* Popularity smoothing: rolling 12‑month median (parameterize length if needed)
+
+### 2.7 Category CES, satiation & diversity (E10–E13)
+
+* Essentials (\rho_c=0.65); Leisure (\rho_c=0.75)
+* Satiation (\kappa_c): computed by anchor (recommended)
+  [
+  \kappa_c = -\ln!\left(1-\frac{S^{\text{target}}_c}{100}\right)\big/ V^{\text{target}}_c
+  ]
+  with default anchors: (S^{\text{target}}_c=75) at **3 solid options** accessible in ~12–15 min.
+* Within‑category diversity cap per (c): (\text{DivBonus}_{c,\max}=5) points; (\upsilon_c) chosen to respect that cap.
+
+### 2.8 Essentials penalty (E15)
+
+* Floor (S_{\min}=20); penalty per miss (P_{\text{per_miss}}=2) points; cap (P_{\max}=8).
+
+### 2.9 Leisure cross‑category CES and novelty (E16–E18)
+
+* Leisure weights (v_c) (sum 1): restaurants .20, cafes .10, bars .08, cinemas .07, performing_arts .10, museums_galleries .15, parks_trails .20, sports_rec .10
+* Cross‑category elasticity: (\zeta=0.85)
+* Novelty: (K=50) top venues; (\lambda_{\text{nov}}=1.0) point per IQR unit; cap (N_{\max}=5)
+
+### 2.10 Hubs & airports (E19–E25)
+
+* Hub mass weights: (\lambda_1=0.5), (\lambda_2=0.25), (\lambda_3=0.15), (\lambda_4=0.10)
+* Decays: (\alpha_{\text{hub}}=\ln2/25), (\alpha_{\text{air}}=\ln2/30) (half‑lives 25 and 30 min)
+* Airport connectivity weights: (\omega_1=0.6) (destinations), (\omega_2=0.4) (seats)
+* Airport overall weight in MUHAA: (\upsilon_{\text{air}}=0.5)
+
+### 2.11 Jobs & education (E26–E27)
+
+* University weight (\kappa=50) (so a nearby R1 contributes similar to (\sim)50k jobs)
+* Optional industry weights (\pi_{\text{ind}}): default all 1.0
+
+### 2.12 MORR components (E28–E33)
+
+* **C₁ (Frequent exposure)**: (h^* = 10) min; (H^*=10); route overlap down‑weighting (w_r \in (0,1]) (default 1 unless overlapping trunk segments are detected).
+* **C₂ (Span)**: (h^\dagger = 15) min; target hours (H_{\text{target}}=18); daypart weights (\tilde{w}*\tau) mirror (w*\tau).
+* **C₃ (Reliability)**: (RVar_{\max}=0.5) (i.e., (P90/P50=1.5) maps to 0); if no P‑percentiles, use headway variability index (HVI) proxy.
+* **C₄ (Redundancy)**: transit ((N^{\text{tr}}*{\text{cap}}=3,\ \epsilon=0.25)); road ((N^{\text{rd}}*{\text{cap}}=3,\ t_{\text{drive}}=10,\text{min})).
+* **C₅ (Micromobility)**: caps (S^*_{300}=4) docks, (S^*_{800}=8), (L^*=3) km/km²; weights (a_1=0.4,a_2=0.3,a_3=0.3).
+
+### 2.13 Corridor trip‑chaining (E34–E35)
+
+* Paths considered (P_{\max}=2); stop buffer radius (r=350) m
+* Detour threshold (\epsilon=10) min
+* Pair set (\mathcal{Pairs}): {(grocery, pharmacy), (grocery, parcel), (pharmacy, bank_atm)}
+* Walk decay (\alpha_{\text{walk}}=\ln2/7) (same as mode table)
+* Normalization: metro‑relative (E38)
+
+### 2.14 Seasonal outdoors (E36)
+
+* Comfort rule produces (\sigma_{\text{out}}(i,\tau)\in[0,1]); defaults if unavailable: 1.0
+  (Typical comfort: 10–27 °C apparent temp, precipitation probability <40%, wind <8 m/s.)
+
+### 2.15 Normalization (E38–E39)
+
+* Default mode: **metro‑relative** with ((P_5,P_{95})).
+* Standards‑based anchors: set ((A_{\min},A_{\max})) per metric if you need cross‑metro comparability.
+
+---
+
+## 3) Reference YAML (drop‑in defaults)
+
+```yaml
+version: "AUCS_2.0_paramspec_v1"
+grid:
+  hex_size_m: 250
+  isochrone_minutes: [15, 30, 45, 60]
+  search_cap_minutes: 180
+weights:
+  EA: 30
+  LCA: 18
+  MUHAA: 16
+  JEA: 14
+  MORR: 12
+  CTE: 5
+  SOU: 5
+time_slices:
+  - id: WD_AM   # Weekday morning peak
+    weight: 0.25
+    VOT_per_hour: 18
+  - id: WD_MD
+    weight: 0.20
+    VOT_per_hour: 18
+  - id: WD_PM
+    weight: 0.25
+    VOT_per_hour: 18
+  - id: WD_EV
+    weight: 0.15
+    VOT_per_hour: 18
+  - id: WE_MD   # Weekend midday
+    weight: 0.15
+    VOT_per_hour: 15
+modes:
+  walk:
+    theta_iv: 1.0
+    theta_wait: null
+    theta_walk: 1.6
+    transfer_penalty_min: 0
+    half_life_min: 7
+    beta0: 0.0
+    reliability_buffer:
+      peak: 0.0
+      offpeak: 0.0
+    parking_search_min: 0
+    toll_time_equiv_min: 0
+    comfort_coef: 0.0
+  bike:
+    theta_iv: 1.0
+    theta_wait: null
+    theta_walk: 1.3
+    transfer_penalty_min: 0
+    half_life_min: 12
+    beta0: 0.0
+    reliability_buffer:
+      peak: 0.0
+      offpeak: 0.0
+    parking_search_min: 0
+    toll_time_equiv_min: 0
+    comfort_coef: 0.0
+  ebike:
+    enabled: false
+    theta_iv: 1.0
+    theta_wait: null
+    theta_walk: 1.2
+    transfer_penalty_min: 0
+    half_life_min: 10
+    beta0: 0.0
+    reliability_buffer:
+      peak: 0.0
+      offpeak: 0.0
+    parking_search_min: 0
+    toll_time_equiv_min: 0
+    comfort_coef: 0.0
+  bus:
+    theta_iv: 1.0
+    theta_wait: 2.0
+    theta_walk: 1.6
+    transfer_penalty_min: 6
+    half_life_min: 25
+    beta0: -0.2
+    reliability_buffer:
+      peak: 0.10
+      offpeak: 0.05
+    parking_search_min: 0
+    toll_time_equiv_min: 0
+    comfort_coef: 0.0
+  rail:
+    theta_iv: 1.0
+    theta_wait: 2.0
+    theta_walk: 1.6
+    transfer_penalty_min: 6
+    half_life_min: 25
+    beta0: 0.1
+    reliability_buffer:
+      peak: 0.10
+      offpeak: 0.05
+    parking_search_min: 0
+    toll_time_equiv_min: 0
+    comfort_coef: 0.0
+  ferry:
+    theta_iv: 1.0
+    theta_wait: 2.0
+    theta_walk: 1.6
+    transfer_penalty_min: 6
+    half_life_min: 25
+    beta0: 0.0
+    reliability_buffer:
+      peak: 0.10
+      offpeak: 0.05
+    parking_search_min: 0
+    toll_time_equiv_min: 0
+    comfort_coef: 0.0
+  car:
+    theta_iv: 1.0
+    theta_wait: null
+    theta_walk: null
+    transfer_penalty_min: 0
+    half_life_min: 20
+    beta0: 0.0
+    reliability_buffer:
+      peak: 0.15
+      offpeak: 0.05
+    parking_search_min: 6
+    toll_amount_usd: 4
+    comfort_coef: 0.0
+nests:
+  non_motorized:
+    modes: [walk, bike, ebike]
+    mu: 1.0
+    eta: 0.0
+  transit:
+    modes: [bus, rail, ferry]
+    mu: 1.0
+    eta: 0.0
+  car:
+    modes: [car]
+    mu: 1.0
+    eta: 0.0
+logit:
+  mu_top: 0.8
+carry_penalties:
+  category_multipliers:
+    grocery: 1.0
+    postal_parcel: 1.0
+    pharmacy: 0.0
+    primary_care: 0.0
+    childcare: 0.0
+    K8_school: 0.0
+    bank_atm: 0.0
+  per_mode_extra_minutes:
+    walk: 6
+    bike: 3
+    transit: 2
+    car: 0
+quality:
+  lambda:
+    base: 0.7        # λ0
+    size_z: 0.2      # λ1
+    capacity_z: 0.2  # λ2
+    popularity_z: 0.2# λ3
+    has_wikidata: 0.1# λ4
+    heritage: 0.1    # λ5
+    tag_bonus: 0.1   # λ6
+  z_clip_abs: 2.0
+  opening_hours_bonus_xi: 0.2
+  dedupe_beta_per_km: 0.25
+  popularity_window_months: 12
+categories:
+  essentials: [grocery, pharmacy, primary_care, childcare, K8_school, bank_atm, postal_parcel]
+  leisure: [restaurants, cafes, bars, cinemas, performing_arts, museums_galleries, parks_trails, sports_rec]
+  ces_rho:
+    essentials: 0.65
+    leisure: 0.75
+  satiation_kappa:
+    mode: "anchor"    # "fixed" or "anchor"
+    fixed_values: {}  # use if mode=fixed
+    anchors:
+      target_score: 75
+      target_description: "3 solid options at ~12–15 min typical access"
+  diversity:
+    per_category_bonus_cap: 5
+    coefficient_v: 1.0   # auto‑scaled to respect cap
+leisure_cross_category:
+  weights:
+    restaurants: 0.20
+    cafes: 0.10
+    bars: 0.08
+    cinemas: 0.07
+    performing_arts: 0.10
+    museums_galleries: 0.15
+    parks_trails: 0.20
+    sports_rec: 0.10
+  elasticity_zeta: 0.85
+  novelty:
+    topK: 50
+    lambda_per_IQR: 1.0
+    cap_points: 5
+essentials_penalty:
+  floor_score: 20
+  per_missing_category_points: 2
+  cap_points: 8
+hubs_airports:
+  hub_mass_lambda:
+    pop: 0.5
+    gdp: 0.25
+    poi: 0.15
+    culture: 0.10
+  decay:
+    alpha_hub: !!float 0.027726   # ln(2)/25
+    alpha_air: !!float 0.0231049  # ln(2)/30
+  airport_connectivity_weights:
+    destinations: 0.6
+    seats: 0.4
+  airport_weight_v: 0.5
+jobs_education:
+  university_weight_kappa: 50
+  industry_weights: {}  # optional NAICS weights (defaults to 1.0)
+morr:
+  frequent_exposure:
+    headway_frequent_min: 10
+    Hstar: 10
+    route_overlap_downweight: false
+  span:
+    headway_threshold_min: 15
+    target_hours_per_day: 18
+  reliability:
+    RVar_max: 0.5     # maps to score 0
+  redundancy:
+    transit:
+      cap_paths: 3
+      epsilon_relative_time: 0.25
+    road:
+      cap_paths: 3
+      alt_drive_time_min: 10
+  micromobility:
+    weights: {a1: 0.4, a2: 0.3, a3: 0.3}
+    caps:
+      stations_within_300m: 4
+      stations_within_800m: 8
+      bikeway_km_per_km2: 3
+corridor:
+  max_paths: 2
+  stop_buffer_m: 350
+  detour_cap_min: 10
+  pair_categories:
+    - [grocery, pharmacy]
+    - [grocery, postal_parcel]
+    - [pharmacy, bank_atm]
+  walk_decay_alpha: !!float 0.099021  # ln(2)/7
+seasonality:
+  comfort:
+    default_sigma: 1.0
+    # climate rules configurable later
+normalization:
+  mode: "metro_percentile"  # or "standards"
+  metro_percentile:
+    low_q: 5
+    high_q: 95
+  standards:
+    anchors: {}   # fill only if using "standards"
+compute:
+  topK_per_category: 50
+  hub_max_minutes: 180
+  airport_max_minutes: 180
+  leisure_topK_for_novelty: 50
+```
+
+---
+
+### Notes on calibration knobs (all already present above)
+
+* **Behavioral sensitivities:** (\theta_{\text{wait}}, \theta_{\text{walk}}, \delta_m, \rho_{m,\tau}) (E1–E2)
+* **Substitution strength:** (\mu_n, \mu_{\text{top}}) (E3–E4)
+* **Distance/time decay:** (\alpha_m, \alpha_{\text{hub}}, \alpha_{\text{air}}) (E2, E21, E24)
+* **Category economics:** (\rho_c, \zeta, \kappa_c, v_c) (E11–E12, E16)
+* **Quality & duplicates:** (\lambda_\cdot, \xi, \beta_d) (E6–E9)
+* **Penalties & bonuses:** essentials shortfall, diversity caps, novelty caps (E15, E13, E17)
+
+This spec is sufficient for an engineering team to implement the AUCS 2.0 pipeline and to expose each knob for precise tuning. When you’re ready, we can produce the **data‑to‑parameter mapping spec** (tables/joins from GTFS, Overture/OSM, LEHD, PAD‑US, etc.) keyed to these variable names.

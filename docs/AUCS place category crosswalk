@@ -1,0 +1,373 @@
+Absolutely—below is a production‑ready mapping package for the **Aker Urban Convenience Score (AUCS)** focusing on (1) an explicit **Overture → AUCS place‑category crosswalk** and (2) a **state‑scoped GTFS registry** for **Colorado, Utah, and Idaho** (with key alternates) plus a concise **GTFS spec cheat‑sheet** tied directly to our model variables.
+
+---
+
+## 1) Overture → AUCS category crosswalk (implementation‑ready)
+
+**How to read these rules**
+AUCS place‑ca
+* Each AUCS category lists **inclusion rules** by *Overture Places* category “paths.”
+  The Overture docs present hierarchies like `eat_and_drink > restaurant > ...` (we match by **prefix**), and there are >2,000 categories under a consistent tree.([Overture Maps Documentation][1])
+  If you ingest Overture from GeoParquet, the category will be a single string—treat the `>` as the logical hierarchy delimiter in our matcher.
+* `prefix:` means “**category path starts with** this sequence.” You can implement `startswith()` matching on the canonical category string.
+* Use the **exclusion** lists to drop false positives.
+* Notes call out **state add‑ons** or **fallbacks** when Overture is incomplete.
+
+> Source for the category tree and naming: Overture Places schema/category reference and the community mapping page. (The OSM wiki page is useful for validating that names like `eat_and_drink.restaurant.*` and many cuisine subtypes exist in Overture’s tree.) ([Overture Maps Documentation][1])
+
+```yaml
+aucscrosswalk:
+  essentials:
+    groceries_supermarkets:
+      include:
+        - prefix: ["retail", "grocery_store"]        # use if present in your build
+        - prefix: ["shopping", "supermarket"]        # alternative top-level in older dumps
+        - prefix: ["shop_and_service", "grocery"]    # defensive matcher variant
+      notes: "Overture enumerates supermarket/grocery-like nodes under retail/shopping. Validate against your Overture build; if coverage is thin in mountain towns, augment with state ag & SNAP retailer datasets later."
+    convenience_bodega:
+      include:
+        - prefix: ["retail", "convenience_store"]
+        - prefix: ["retail", "corner_shop"]
+    pharmacy:
+      include:
+        - prefix: ["health_and_medical", "pharmacy"]
+      notes: "Use DEA/NPI as secondary quality filters when we wire data sources."
+    bank_atm:
+      include:
+        - prefix: ["financial_service", "bank"]
+        - prefix: ["financial_service", "atm"]
+    post_parcel:
+      include:
+        - prefix: ["public_service", "post_office"]
+        - prefix: ["shop_and_service", "shipping_and_mailing"]
+    hardware_home_improvement:
+      include:
+        - prefix: ["retail", "hardware_store"]
+        - prefix: ["retail", "home_improvement"]
+    laundry_dry_clean:
+      include:
+        - prefix: ["shop_and_service", "laundry"]
+        - prefix: ["shop_and_service", "dry_cleaner"]
+
+  food_and_drink:
+    restaurants_full_service:
+      include:
+        - prefix: ["eat_and_drink", "restaurant"]    # includes all cuisine subtypes
+      exclude:
+        - prefix: ["eat_and_drink", "fast_food"]
+      notes: "Covers >100 cuisine subcategories in Overture (asian_restaurant, italian_restaurant, etc.)."  # see OSM wiki mapping list
+    fast_food_quick:
+      include:
+        - prefix: ["eat_and_drink", "fast_food"]
+    cafes_bakeries:
+      include:
+        - prefix: ["eat_and_drink", "cafe"]
+        - prefix: ["eat_and_drink", "bakery"]
+        - prefix: ["eat_and_drink", "coffee_shop"]
+    bars_pubs_breweries:
+      include:
+        - prefix: ["eat_and_drink", "bar"]
+        - prefix: ["eat_and_drink", "pub"]
+        - prefix: ["eat_and_drink", "brewery"]
+
+  health:
+    primary_care_clinic:
+      include:
+        - prefix: ["health_and_medical", "clinic"]
+        - prefix: ["health_and_medical", "primary_care"]
+    urgent_care:
+      include:
+        - prefix: ["health_and_medical", "urgent_care"]
+    hospital:
+      include:
+        - prefix: ["health_and_medical", "hospital"]
+    dental_vision:
+      include:
+        - prefix: ["health_and_medical", "dentist"]
+        - prefix: ["health_and_medical", "optometrist"]
+
+  education_childcare:
+    childcare_daycare_preschool:
+      include:
+        - prefix: ["education", "preschool"]
+        - prefix: ["education", "childcare"]  # if present in your build
+      notes: "Augment with state licensing registries in CO/UT/ID for accuracy and coverage."
+    k12_public:
+      include:
+        - prefix: ["education", "school", "primary_school"]
+        - prefix: ["education", "school", "middle_school"]
+        - prefix: ["education", "school", "high_school"]
+    k12_private:
+      include:
+        - prefix: ["education", "private_school"]
+    colleges_universities:
+      include:
+        - prefix: ["education", "university"]
+        - prefix: ["education", "college"]
+        - prefix: ["education", "community_college"]
+    libraries:
+      include:
+        - prefix: ["education", "library"]
+        - prefix: ["public_service", "library"]
+
+  culture_leisure:
+    museums_galleries:
+      include:
+        - prefix: ["arts_and_entertainment", "museum"]
+        - prefix: ["arts_and_entertainment", "art_gallery"]
+    performing_arts:
+      include:
+        - prefix: ["arts_and_entertainment", "performing_arts_venue"]
+        - prefix: ["arts_and_entertainment", "theater"]
+        - prefix: ["arts_and_entertainment", "opera_house"]
+    cinemas:
+      include:
+        - prefix: ["arts_and_entertainment", "cinema"]
+    live_music_nightlife:
+      include:
+        - prefix: ["arts_and_entertainment", "music_venue"]
+        - prefix: ["eat_and_drink", "bar", "live_music_bar"]
+
+  parks_outdoors_sport:
+    urban_parks_playgrounds:
+      include:
+        - prefix: ["active_life", "playground"]    # Overture lists many sports & outdoor venues
+        - prefix: ["active_life", "park"]          # if present in your build
+    dog_parks:
+      include:
+        - prefix: ["active_life", "dog_park"]
+    sports_fields_courts_pools:
+      include:
+        - prefix: ["active_life", "soccer_field"]
+        - prefix: ["active_life", "baseball_field"]
+        - prefix: ["active_life", "basketball_court"]
+        - prefix: ["active_life", "tennis_court"]
+        - prefix: ["active_life", "swimming_pool"]
+        - prefix: ["active_life", "gym"]
+    trailheads_trails:
+      include:
+        - prefix: ["active_life", "trailhead"]   # if present
+      notes: "For trails themselves, prefer USFS/BLM/RIDB feeds; Overture Places focuses on POIs, not linear trails."
+
+  retail_clusters:
+    general_department_stores:
+      include:
+        - prefix: ["retail", "department_store"]
+        - prefix: ["retail", "shopping_mall"]
+    specialty_retail:
+      include:
+        - prefix: ["retail", "bookstore"]
+        - prefix: ["retail", "electronics_store"]
+        - prefix: ["retail", "apparel_store"]
+        - prefix: ["retail", "outdoor_sports_store"]
+
+  mobility_assets:
+    transit_rail_stations:
+      include:
+        - prefix: ["transportation", "rail_station"]
+        - prefix: ["transportation", "light_rail_station"]
+        - prefix: ["transportation", "commuter_rail_station"]
+    transit_bus_stops:
+      include:
+        - prefix: ["transportation", "bus_stop"]
+        - prefix: ["transportation", "bus_station"]
+    bikeshare_docks:
+      include:
+        - prefix: ["transportation", "bikeshare_station"]
+    carshare:
+      include:
+        - prefix: ["transportation", "car_sharing_station"]
+    ev_charging:
+      include:
+        - prefix: ["transportation", "charging_station"]
+```
+
+**Why we’re confident in this approach**
+
+* Overture’s Places theme exposes a deep, hierarchical category system (50M+ features, thousands of categories). Our prefix match rules align to that organization and will remain stable even if new leaf categories appear. ([Overture Maps Documentation][1])
+* Community mappings confirm granular subtypes under `eat_and_drink` (hundreds of cuisines) and reinforce the path naming we target. ([OpenStreetMap][2])
+
+---
+
+## 2) Transit data registry for Colorado, Utah, Idaho (GTFS & alternates)
+
+Below is a **curated, state‑scoped registry** of **static GTFS** and **GTFS‑Realtime** (when available), with notes on mode coverage and spec variants (e.g., GTFS‑Flex). This plugs directly into AUCS’s **Transit Accessibility** and **Reliability** components via the GTFS mapping in §3.
+
+> **Legend:**
+> **Modes** use GTFS `route_type` (0–7 & 11–12). We summarize as **Bus/Local**, **BRT**, **Light Rail/Tram**, **Commuter Rail**, **Intercity Rail**, **Ferry**, **Trolleybus/Monorail**.
+> **Feeds:** *Static* = GTFS Schedule; *RT* = GTFS‑Realtime.
+
+### Colorado
+
+* **RTD (Denver metro)** — Modes: **Bus, Light Rail, Commuter Rail, FlexRide (Flex)**. Feeds: **Static, RT**, plus **GTFS‑Flex** for FlexRide; RTD’s developer page also lists **CDOT Bustang** links for convenience. Excellent coverage & cadence. ([RTD Denver][3])
+* **CDOT Bustang / Outrider (statewide intercity bus)** — Modes: **Intercity Bus**. Feeds: **Static GTFS** (state portal/aggregators); useful for cross‑regional access (Fort Collins, Colorado Springs, mountain corridors). ([RTD Denver][3])
+* **Transfort (Fort Collins)** — Modes: **Bus**. Feeds: **Static**; license & download on developer page. ([Transfort][4])
+* **Mountain Metro Transit (Colorado Springs)** — Modes: **Bus**. Feed availability is indicated via agency resources and statewide aggregators; realtime is surfaced in Google Maps. (If a direct static link isn’t present, pull via Colorado GTFS clearinghouse.) ([City of Colorado Springs][5])
+* **Pueblo Transit** — Modes: **Bus**. Feeds: **Static GTFS** & **GTFS‑RT** (TripUpdates/VehiclePositions/Alerts). ([Pueblo][6])
+* **Grand Valley Transit (Mesa County/Grand Junction)** — Modes: **Bus** (plus separate GTFS‑Flex). Feeds: **Static GTFS** and **Flex** variants on aggregators. ([Transitland][7])
+* **Summit Stage (Summit County)** — Modes: **Bus (Mountain resorts)**. Feeds: **Static GTFS** (recent versions visible in Transitland; canonical file via Trillium). ([Transitland][8])
+* **ECO Transit (Eagle County/Vail)** — Modes: **Bus**. Feeds: **Static GTFS**. ([Transitland][9])
+* **RFTA (Roaring Fork/Aspen–Glenwood)** — Modes: **Bus/BRT (VelociRFTA)**. Feeds: **Static GTFS**; agency hosts canonical download. ([RFTA][10])
+* **Greeley–Evans Transit (GET)** — Modes: **Bus**. Feeds: **Static GTFS** (agency site & aggregators). ([Transitland][11])
+
+**Colorado notes:** For statewide harvesting, the **Colorado GTFS portal** consolidates many feeds (including smaller mountain systems). Use it as a fallback source of truth and for checking update cadence. ([Colorado GTFS][12])
+
+---
+
+### Utah
+
+* **UTA (Utah Transit Authority)** — Modes: **Bus/BRT, TRAX Light Rail, FrontRunner Commuter Rail, S-Line Streetcar**. Feeds: **Static GTFS** and **GTFS‑RT** (TripUpdates/VehiclePositions/Alerts). UTA Open Data Portal provides transit datasets & APIs. ([Transitland][13])
+* **Cache Valley Transit District (CVTD, Logan)** — Modes: **Bus**. Feeds: **Static GTFS** and **GTFS‑RT**. ([Transitland][14])
+* **Park City Transit** — Modes: **Bus (resort area)**. Feed: **Static GTFS** (city page + aggregators). ([Park City][15])
+* **High Valley Transit (Summit County)** — Modes: **Bus + Microtransit (on‑demand)**. HVT publicly documents operations and GTFS usage; if a direct static GTFS link is not exposed, pull via aggregator or contact agency for latest export (microtransit often not in standard GTFS; may be GTFS‑Flex). ([Summit County Utah][16])
+* **St. George SunTran** — Modes: **Bus**. Feed: **Static GTFS** (city page; realtime via app vendor). ([St. George, UT][17])
+* **National Parks (seasonal shuttles)** — **NPS** publishes GTFS for select park shuttle systems (e.g., Bryce; NPS advises seasonal updates). Useful for visitor accessibility scoring near gateway towns. ([National Park Service][18])
+
+---
+
+### Idaho
+
+* **Valley Regional Transit (Boise metro)** — Modes: **Bus**. Feeds: **Static GTFS** and **GTFS‑RT** (Alerts, TripUpdates, VehiclePositions) with open license; canonical links on VRT site. ([Valley Regional Transit][19])
+* **Pocatello Regional Transit** — Modes: **Bus**. Feed: **Static GTFS** (developer page). ([Pocatello Regional Transit][20])
+* **Citylink (Kootenai County/Coeur d’Alene)** — Modes: **Bus**. Feed: **Static GTFS** (Passio‑hosted; visible in Transitland). ([Transitland][21])
+* **Mountain Rides (Sun Valley/Ketchum)** — Modes: **Bus**. Feed: **Static GTFS** (aggregators). ([Transitland][22])
+* **START Bus (Jackson WY ⇄ Teton Valley ID commuter)** — Modes: **Commuter Bus**. Feed present via registry/aggregators; **relevant to eastern Idaho** (Victor/Driggs commuter access over Teton Pass). ([Transitland][23])
+* **Idaho Falls (GIFT On‑Demand)** — **Microtransit** only (no fixed‑route GTFS; treat as presence/coverage, or seek **GTFS‑Flex** if/when published). ([Idaho Falls Official Website][24])
+
+---
+
+### Intercity rail (multi‑state relevance)
+
+* **Amtrak** — Modes: **Intercity Rail**. **Static GTFS** is publicly available and tracked by multiple registries; use to score long‑distance access (e.g., Zephyr in CO; FrontRunner interconnect in UT; Empire Builder at Sandpoint, ID). Quality reports indicate stable publication. ([Transitland][25])
+
+---
+
+### Outdoor access datasets (augmenting Overture for parks/trails)
+
+These **complement** Overture Places for outdoor accessibility sub‑scores (trailheads/trails/public lands):
+
+* **USFS National Forest System Trails** (feature service; CSV/GeoJSON/Shape) — line features + attributes; coverage across CO/UT/ID. ([Data.gov][26])
+* **RIDB / Recreation.gov API** — federal recreation areas, trailheads, campgrounds; robust API for facility metadata. ([Recreation.gov][27])
+* **USGS PAD‑US 4.0** — authoritative **parks & protected areas** with public‑access flags; ideal for parks proximity/diversity indices and deduping. ([USGS][28])
+
+### Childcare (to harden the “childcare_daycare_preschool” category)
+
+* **Colorado** — Licensed providers via **CDPHE/CDEC** (ArcGIS service + dashboards). ([CDPHE Open Data][29])
+* **Utah** — Child Care Licensing/Market Rate reports & tools; **Care About Child Care** portal for ratings. Use for roster/attributes. ([Utah Jobs][30])
+* **Idaho** — **Idaho Child Care Check** search (state licensing). If a bulk export isn’t exposed, coordinate for periodic retrieval/API access. ([Idaho Child Care Check][31])
+
+---
+
+## 3) GTFS specification → AUCS variable mapping (cheat‑sheet)
+
+**Core Schedule files & roles** *(GTFS “Static”)*
+
+* **Required**: `agency.txt`, `stops.txt`, `routes.txt`, `trips.txt`, `stop_times.txt`.
+* **Conditional**: `calendar.txt` and/or `calendar_dates.txt`.
+* **Important optionals** we will use if present: `shapes.txt`, `frequencies.txt`, `transfers.txt`, `fare_attributes.txt`/`fare_rules.txt`, `pathways.txt`, `levels.txt`, `translations.txt`, `attributions.txt`, `feed_info.txt`. ([General Transit Feed Specification][32])
+
+**Realtime** *(GTFS‑RT)*
+
+* Entities: **TripUpdates** (delays/cancellations), **VehiclePositions**, **Alerts**; feed/record timestamps required. Use these for **on‑time performance** and **headway adherence** metrics. ([General Transit Feed Specification][33])
+
+**Field‑to‑Model bindings**
+
+* **Stop locations / parent stations → station density & hierarchy**
+  `stops.stop_lat/stop_lon`, `stops.location_type`, `stops.parent_station` → cluster by `parent_station` to identify stations vs. platforms; map to H3^8/9/10 cells (AUCS grid = 250 m). ([General Transit Feed Specification][34])
+* **Route mode → mode weights**
+  `routes.route_type` → AUCS modal uplift (**rail > BRT > frequent bus > local bus**). (Use 0=Tram/Light Rail, 1=Subway, 2=Rail, 3=Bus, 4=Ferry, 5=Cable Car, 6=Gondola, 7=Funicular, 11=Trolleybus, 12=Monorail.) ([General Transit Feed Specification][35])
+* **Service span & frequency**
+
+  * If **`frequencies.txt`** exists: compute time‑window headways per route/stop for (AM peak, midday, PM peak, evening, late night).
+  * Else: derive headways from `stop_times.txt` by counting departures per hour, per route, per stop (after filtering with `calendar*`). ([General Transit Feed Specification][35])
+* **Travel time accessibility**
+
+  * Build a transit graph per time slice from `stop_times` + `trips` (+ `shapes` for path distances/speeds).
+  * For each origin hex, run **multi‑modal** isochrones (walk → transit → walk) to POI hexes; accumulate **access value** with **distance/time decay** and **mode multipliers** (as defined in your AUCS equations).
+* **Reliability (RT)**
+
+  * Match **TripUpdates** to scheduled `trips`; compute **mean absolute deviation** at key timepoints, **percent on‑time**, **cancellation rates**, and **headway adherence** for frequent routes (E(gap) differences). Use **VehiclePositions** for real vehicle spacing variance. ([General Transit Feed Specification][33])
+* **Transfers**
+
+  * Use `transfers.txt` (if present) to recognize guaranteed transfers and penalties in the routing graph. ([General Transit Feed Specification][35])
+* **Flex (Microtransit/DRT)**
+
+  * If agencies publish **GTFS‑Flex**, ingest zones/booking rules for a **coverage bonus** and conservative travel‑time (door‑to‑stop) treatment; for CO this appears for RTD FlexRide & some rural services. ([RTD Denver][3])
+
+**Production guidance & best practices**
+
+* Cross‑validate static feeds with **GTFS best practices** to avoid schedule anomalies (loops, direction_id, stop sequences). ([General Transit Feed Specification][36])
+* Expect differences between official GTFS and **Google’s GTFS ingestion** (deviations/extensions); this does not affect AUCS logic but matters when you sanity‑check feed health in Google‑style tools. ([Google for Developers][37])
+
+---
+
+## 4) How these datasets fully support the AUCS design for CO/UT/ID
+
+* **Place diversity & density** — Overture’s rich category tree (e.g., restaurants with extensive cuisine subtypes; gyms/sports venues; arts) provides the depth needed for **amenity diversity** and **quality weighting** at 250 m granularity. ([Overture Maps Documentation][1])
+* **Transit reach & reliability** — The state‑scoped GTFS registry covers every major fixed‑route provider in CO/UT/ID, plus **intercity (Bustang/Amtrak)** and **resort/gateway systems**, enabling our **multi‑scale access** concept (local walkable POIs *and* day‑trip reach via rail/bus). ([RTD Denver][3])
+* **Outdoors** — PAD‑US + USFS Trails + RIDB give a robust **open‑space / trailhead** foundation that Overture alone cannot deliver (linear trails, public access flags), critical across the Mountain West markets. ([USGS][28])
+* **Childcare** — State licensing registries in CO/UT/ID fill a known POI gap for **daycare/preschool**, ensuring high fidelity for family‑oriented convenience scoring. ([CDPHE Open Data][29])
+
+---
+
+## 5) Implementation pointers (quick)
+
+* **Parser**: Build a small “category matcher” that splits Overture category strings on `>` (trim/normalize case/underscores) and applies `prefix` rules from the YAML above. The matcher emits **AUCS category IDs** for downstream aggregation.
+* **Deduping**: Within each 250 m hex, dedupe Overture POIs by brand + name + distance threshold to avoid overcounting multi‑pin venues.
+* **Transit graph**: Use per‑state feed registry to hydrate an **agency → (static, RT)** config. Cache shapes and stop indexes by H3 cell for fast isochrone seeding.
+* **Cross‑border**: Where services cross state lines (e.g., START Bus into ID; Bustang intercity corridors; Amtrak), keep them **in scope** for reach scoring if they materially reduce **door‑to‑destination** generalized cost (time+transfers).
+
+---
+
+### Appendix — Primary references (selected)
+
+* **Overture Places categories**: official schema/concepts and the long category list (top‑level & deep subtypes). ([Overture Maps Documentation][1])
+* **Overture categories ↔ OSM** (community mapping, shows depth under `eat_and_drink.restaurant.*`). ([OpenStreetMap][2])
+* **GTFS Schedule/Realtime reference** and best practices. ([General Transit Feed Specification][32])
+* **Colorado**: RTD developer (incl. Bustang & Flex), Colorado GTFS portal; agency pages & aggregators for local systems (Transfort, Summit Stage, ECO, RFTA, Pueblo, GVT, GET). ([RTD Denver][3])
+* **Utah**: UTA static/RT & open data; Park City; CVTD static/RT; HVT; SunTran St. George; NPS park GTFS. ([Transitland][13])
+* **Idaho**: VRT static/RT; Pocatello static; Citylink static; Mountain Rides static; START Bus cross‑border commuter; GIFT microtransit. ([Valley Regional Transit][19])
+* **Outdoors**: USFS Trails; PAD‑US; RIDB API. ([Data.gov][26])
+* **Intercity rail**: Amtrak GTFS (availability tracked by registries/quality reports). ([Transitland][25])
+
+---
+
+If you’d like, I can now *export* the YAML crosswalk and a **CSV registry** for these agencies (with columns: state, agency, modes, static_url, rt_urls, license, update_cadence, notes) so engineering can wire ingestion directly into the AUCS pipeline.
+
+[1]: https://docs.overturemaps.org/schema/concepts/by-theme/places/ "Places schema concepts | Overture Maps Documentation"
+[2]: https://wiki.openstreetmap.org/wiki/Overture_categories "Overture categories - OpenStreetMap Wiki"
+[3]: https://www.rtd-denver.com/open-records/open-spatial-information/gtfs?utm_source=chatgpt.com "GTFS | RTD-Denver"
+[4]: https://ridetransfort.com/developers/?utm_source=chatgpt.com "Transfort schedule data for developers."
+[5]: https://coloradosprings.gov/mountainmetro?utm_source=chatgpt.com "Mountain Metro Transit | City of Colorado Springs"
+[6]: https://www.pueblo.us/3027/GTFS-Schedule-Dataset?utm_source=chatgpt.com "GTFS Schedule Dataset | Pueblo, CO - Official Website"
+[7]: https://www.transit.land/feeds/f-9wfy-grandvalleytransit?utm_source=chatgpt.com "Grand Valley Transit (GVT) • GTFS feed details"
+[8]: https://www.transit.land/feeds/f-summitstage~co~us?utm_source=chatgpt.com "Summit Stage • GTFS feed details: f-summitstage~co~us"
+[9]: https://www.transit.land/feeds/f-9xh-ecotransit~co~us?utm_source=chatgpt.com "ECO Transit • GTFS feed details: f-9xh-ecotransit~co~us"
+[10]: https://www.rfta.com/regional-planning-resources/?utm_source=chatgpt.com "Regional Planning & Transportation Resources"
+[11]: https://www.transit.land/feeds/f-greeley~evans~transit?utm_source=chatgpt.com "GTFS feed: Greeley-Evans Transit (GET)"
+[12]: https://colorado-gtfs.trilliumtransit.com/?utm_source=chatgpt.com "Colorado GTFS – Welcome to the download site for ..."
+[13]: https://www.transit.land/feeds/f-9x0-uta?utm_source=chatgpt.com "Utah Transit Authority (UTA) • GTFS feed details: f-9x0-uta"
+[14]: https://www.transit.land/feeds/f-9x2-cachevalleytransitdistrict?utm_source=chatgpt.com "GTFS feed: Cache Valley Transit District (CVTD)"
+[15]: https://parkcity.gov/departments/transit-bus/gtfs?utm_source=chatgpt.com "GTFS | Park City, UT"
+[16]: https://www.summitcountyutah.gov/2423/High-Valley-Transit?utm_source=chatgpt.com "High Valley Transit in Summit County, UT"
+[17]: https://sgcityutah.gov/services/suntran_bus_system/gtfs.php?utm_source=chatgpt.com "St. George, UT - GTFS"
+[18]: https://www.nps.gov/subjects/developer/gtfs.htm?utm_source=chatgpt.com "General Transit Feed Specification Files"
+[19]: https://www.valleyregionaltransit.org/about-us/resources/ "Resources - Valley Regional Transit"
+[20]: https://pocatellotransit.com/developer/ "Developer Resources – Pocatello Regional Transit"
+[21]: https://www.transit.land/feeds/f-kootenai~citylink/versions/80950666da655bf3cb0f6f646a6c14b4492e0156 "Transitland • f-kootenai~citylink • 80950666da655bf3cb0f6f646a6c14b4492e0156 • Feed version"
+[22]: https://www.transit.land/feeds/f-9ry8-mountainridestransportationauthoritymrta?utm_source=chatgpt.com "GTFS feed: Mountain Rides Transportation Authority (MRTA)"
+[23]: https://www.transit.land/operators/o-jackson~wy~us?utm_source=chatgpt.com "Southern Teton Area Rapid Transit (START)"
+[24]: https://www.idahofallsidaho.gov/1744/GIFT-On-Demand-Rides?utm_source=chatgpt.com "GIFT On-Demand Rides | Idaho Falls, ID"
+[25]: https://www.transit.land/feeds/f-9-amtrak~amtrakcalifornia~amtrakcharteredvehicle?utm_source=chatgpt.com "GTFS feed: Amtrak, Temporary Amtrak Chartered ... - Transitland"
+[26]: https://catalog.data.gov/dataset/national-forest-system-trails-feature-layer-f51e8?utm_source=chatgpt.com "National Forest System Trails (Feature Layer) - Catalog"
+[27]: https://ridb.recreation.gov/docs?utm_source=chatgpt.com "RIDB API"
+[28]: https://www.usgs.gov/programs/gap-analysis-project/science/pad-us-data-download?utm_source=chatgpt.com "PAD-US Data Download | U.S. Geological Survey"
+[29]: https://data-cdphe.opendata.arcgis.com/datasets/cdec-colorado-licensed-childcare-providers?utm_source=chatgpt.com "CDEC Colorado Licensed Childcare Providers"
+[30]: https://jobs.utah.gov/occ/occmarket.pdf?utm_source=chatgpt.com "Utah 2024 Child Care Market Rate Study and Narrow Cost ..."
+[31]: https://www.idahochildcarecheck.org/search?utm_source=chatgpt.com "Search Childcare Providers in Idaho"
+[32]: https://gtfs.org/documentation/overview/?utm_source=chatgpt.com "General Transit Feed Specification (GTFS)"
+[33]: https://gtfs.org/documentation/realtime/reference/?utm_source=chatgpt.com "GTFS Realtime Reference"
+[34]: https://gtfs.org/documentation/schedule/examples/routes-stops-trips/?utm_source=chatgpt.com "Routes, Stops & Trips"
+[35]: https://gtfs.org/documentation/schedule/reference/?utm_source=chatgpt.com "General Transit Feed Specification Reference"
+[36]: https://gtfs.org/documentation/schedule/schedule-best-practices/?utm_source=chatgpt.com "GTFS Schedule Best Practices"
+[37]: https://developers.google.com/transit/gtfs/reference?utm_source=chatgpt.com "Google Transit GTFS Schedule Reference and Differences"
