@@ -51,12 +51,20 @@ carry_penalty:
     walk: 4
     transit: 2
 quality:
-  lambda_weights:
-    rating: 0.7
-    freshness: 0.3
+  component_weights:
+    size: 0.3
+    popularity: 0.4
+    brand: 0.15
+    heritage: 0.15
   z_clip_abs: 3
   opening_hours_bonus_xi: 0.5
   dedupe_beta_per_km: 0.8
+  hours_defaults:
+    default: standard
+    groceries: extended
+    pharmacy: standard
+    park: extended
+    cafe: extended
 categories:
   essentials: [groceries, pharmacy]
   leisure: [park, cafe]

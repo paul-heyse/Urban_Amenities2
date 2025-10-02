@@ -110,10 +110,11 @@ class CarryPenaltyConfig(_BaseConfig):
 class QualityConfig(_BaseConfig):
     """Quality scoring parameters."""
 
-    lambda_weights: Dict[str, float]
+    component_weights: Dict[str, float]
     z_clip_abs: float = Field(..., ge=0)
     opening_hours_bonus_xi: float = Field(..., ge=0)
     dedupe_beta_per_km: float = Field(..., ge=0)
+    hours_defaults: Dict[str, str] = Field(default_factory=dict)
 
 
 class CategoryDiversityConfig(_BaseConfig):

@@ -18,6 +18,9 @@ def top_contributors(ea_frame: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
                         "poi_id": item.get("poi_id"),
                         "name": item.get("name"),
                         "contribution": item.get("contribution"),
+                        "quality": item.get("quality"),
+                        "quality_components": item.get("quality_components"),
+                        "brand_penalty": item.get("brand_penalty"),
                     }
                 )
     return pd.DataFrame.from_records(records)

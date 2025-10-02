@@ -65,6 +65,15 @@ Subscores map to 0–100 via metro‑relative percentiles (or absolute anchors),
 **E) Quality, diversity, novelty**
 
 * Compute (Q_a) from venue attributes (capacity, popularity, tags/brand).
+  * **Size & capacity** → log-scaled metric that blends square footage, seating, collection size, or Wikidata capacity with category medians filling gaps.
+  * **Popularity** → combines Wikipedia median pageviews, sitelink counts, and observed z-scores, clipped per category to avoid single-outlier spikes.
+  * **Brand recognition** → boosts well-known chains or Wikidata-branded venues while tempering unnamed independents.
+  * **Heritage** → flags museums, libraries, and official heritage designations (e.g., UNESCO) as premium destinations.
+* Normalize each component to 0–100 inside the category, then weight by (size=30 %, popularity=40 %, brand=15 %, heritage=15 %).
+* Apply an opening-hours bonus (24/7 → +20 %, extended → +10 %, limited → −10 %) blended by `opening_hours_bonus_xi` to ensure late-night access matters without overwhelming other factors.
+* Deduplicate chain saturation: same-brand POIs inside 500 m get an exponential penalty (`1 - exp(-β·d_km)`), and weights are rescaled so total category mass is preserved.
+* Emit `quality_components`, `quality_hours_category`, `brand_penalty`, and `brand_weight` for explainability and downstream auditing.
+* Automated validation: unit coverage in `tests/test_quality.py` and integration coverage via `tests/test_data_ingestion.py::test_enrichment_and_quality`.
 * Aggregate (Q_a \cdot w_{i,a}) within categories via **CES + satiation**; add **within‑category diversity** bonus and **novelty** from pageview volatility.
 
 **F) Subscores & AUCS**
