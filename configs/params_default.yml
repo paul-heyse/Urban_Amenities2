@@ -1,0 +1,128 @@
+grid:
+  hex_size_m: 250
+  isochrone_minutes: [5, 10, 15]
+  search_cap_minutes: 45
+subscores:
+  EA: 20
+  LCA: 15
+  MUHAA: 10
+  JEA: 15
+  MORR: 10
+  CTE: 15
+  SOU: 15
+time_slices:
+  - id: am_peak
+    weight: 0.4
+    VOT_per_hour: 18
+  - id: off_peak
+    weight: 0.6
+    VOT_per_hour: 12
+modes:
+  walk:
+    name: walk
+    theta_iv: -0.1
+    theta_wait: -0.05
+    theta_walk: -0.2
+    transfer_penalty_min: 0
+    half_life_min: 30
+    beta0: 0
+    reliability_buffer: 2
+  transit:
+    name: transit
+    theta_iv: -0.2
+    theta_wait: -0.1
+    theta_walk: -0.15
+    transfer_penalty_min: 5
+    half_life_min: 40
+    beta0: -1
+    reliability_buffer: 4
+nests:
+  - id: sustainable
+    modes: [walk, transit]
+    mu: 0.5
+    eta: 0.7
+logit:
+  mu_top: 1.0
+carry_penalty:
+  category_multipliers:
+    groceries: 1.2
+    pharmacy: 1.1
+  per_mode_extra_minutes:
+    walk: 4
+    transit: 2
+quality:
+  lambda_weights:
+    rating: 0.7
+    freshness: 0.3
+  z_clip_abs: 3
+  opening_hours_bonus_xi: 0.5
+  dedupe_beta_per_km: 0.8
+categories:
+  essentials: [groceries, pharmacy]
+  leisure: [park, cafe]
+  ces_rho: 0.8
+  satiation_mode: anchor
+  satiation_targets:
+    groceries:
+      score: 80
+      value: 5
+    park:
+      score: 60
+      value: 3
+    cafe:
+      score: 50
+      value: 2
+  diversity:
+    essentials:
+      ramp_start: 2
+      ramp_end: 6
+      weight: 0.5
+    leisure:
+      ramp_start: 1
+      ramp_end: 4
+      weight: 0.6
+leisure_cross_category:
+  weights:
+    arts: 0.5
+    recreation: 0.5
+  elasticity_zeta: 0.9
+  novelty:
+    jazz: 1.2
+    climbing: 0.9
+hubs_airports:
+  hub_mass_lambda: 0.4
+  decay: 0.6
+  airport_weights:
+    DEN: 1.0
+jobs_education:
+  university_weight_kappa: 1.5
+  industry_weights:
+    tech: 0.6
+    healthcare: 0.4
+morr:
+  frequent_exposure: 0.7
+  span: 0.5
+  reliability: 0.6
+  redundancy: 0.3
+  micromobility: 0.4
+corridor:
+  max_paths: 3
+  stop_buffer_m: 150
+  detour_cap_min: 8
+  pair_categories: [groceries, transit_hub]
+  walk_decay_alpha: 0.05
+seasonality:
+  comfort_index_default: 0.7
+  weather_adjustments:
+    winter: -0.1
+    summer: 0.05
+normalization:
+  mode: metro
+  metro_percentile: 95
+  standards:
+    - name: denver
+      percentile: 90
+compute:
+  topK_per_category: 5
+  hub_max_minutes: 45
+  preload_hex_neighbors: true
