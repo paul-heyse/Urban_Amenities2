@@ -6,10 +6,10 @@ from Urban_Amenities2.scores.corridor_trip_chaining import CorridorConfig, Corri
 def test_corridor_trip_chaining_filters_long_detours() -> None:
     chains = pd.DataFrame(
         {
-            "hex_id": ["a", "a", "b"],
-            "quality": [80.0, 70.0, 90.0],
-            "likelihood": [0.8, 0.5, 0.3],
-            "detour_minutes": [5.0, 12.0, 4.0],
+            "hex_id": ["a", "a", "b", "c"],
+            "quality": [50.0, 40.0, 100.0, 60.0],
+            "likelihood": [0.4, 0.2, 0.9, 0.6],
+            "detour_minutes": [5.0, 12.0, 4.0, 15.0],
         }
     )
     calculator = CorridorTripChaining(CorridorConfig(max_detour_minutes=10.0))
@@ -18,3 +18,4 @@ def test_corridor_trip_chaining_filters_long_detours() -> None:
     assert result.loc[result["hex_id"] == "a", "CTE"].iloc[0] > 0
     assert result.loc[result["hex_id"] == "a", "CTE"].iloc[0] < 100
     assert result.loc[result["hex_id"] == "b", "CTE"].iloc[0] == 100
+    assert result.loc[result["hex_id"] == "c", "CTE"].iloc[0] == 0

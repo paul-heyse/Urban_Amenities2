@@ -3,13 +3,13 @@ grid:
   isochrone_minutes: [5, 10, 15]
   search_cap_minutes: 45
 subscores:
-  EA: 20
-  LCA: 15
-  MUHAA: 10
-  JEA: 15
-  MORR: 10
-  CTE: 15
-  SOU: 15
+  EA: 30
+  LCA: 18
+  MUHAA: 16
+  JEA: 14
+  MORR: 12
+  CTE: 5
+  SOU: 5
 time_slices:
   - id: am_peak
     weight: 0.4
@@ -68,12 +68,19 @@ quality:
 categories:
   essentials: [groceries, pharmacy]
   leisure: [park, cafe]
-  ces_rho: 0.8
+  ces_rho:
+    groceries: 0.5
+    pharmacy: 0.4
+    park: 0.35
+    cafe: 0.45
   satiation_mode: anchor
   satiation_targets:
     groceries:
       score: 80
       value: 5
+    pharmacy:
+      score: 70
+      value: 3
     park:
       score: 60
       value: 3
@@ -81,14 +88,22 @@ categories:
       score: 50
       value: 2
   diversity:
-    essentials:
-      ramp_start: 2
-      ramp_end: 6
-      weight: 0.5
-    leisure:
-      ramp_start: 1
-      ramp_end: 4
-      weight: 0.6
+    groceries:
+      weight: 0.25
+      min_multiplier: 1.0
+      max_multiplier: 1.2
+    pharmacy:
+      weight: 0.2
+      min_multiplier: 1.0
+      max_multiplier: 1.15
+    park:
+      weight: 0.3
+      min_multiplier: 1.0
+      max_multiplier: 1.18
+    cafe:
+      weight: 0.35
+      min_multiplier: 1.0
+      max_multiplier: 1.2
 leisure_cross_category:
   weights:
     arts: 0.5
@@ -114,11 +129,31 @@ morr:
   redundancy: 0.3
   micromobility: 0.4
 corridor:
-  max_paths: 3
-  stop_buffer_m: 150
-  detour_cap_min: 8
-  pair_categories: [groceries, transit_hub]
-  walk_decay_alpha: 0.05
+  max_paths: 2
+  stop_buffer_m: 350
+  detour_cap_min: 10
+  pair_categories:
+    - [groceries, pharmacy]
+    - [bank, post]
+    - [groceries, childcare]
+  walk_decay_alpha: 0.25
+  major_hubs:
+    denver:
+      - id: den_cbd
+        name: Downtown Denver
+        lat: 39.7392
+        lon: -104.9903
+    slc:
+      - id: slc_cbd
+        name: Downtown Salt Lake City
+        lat: 40.7608
+        lon: -111.8910
+  chain_weights:
+    groceries+pharmacy: 1.0
+    bank+post: 0.7
+    groceries+childcare: 0.9
+  min_stop_count: 5
+  cache_size: 2048
 seasonality:
   comfort_index_default: 0.7
   weather_adjustments:

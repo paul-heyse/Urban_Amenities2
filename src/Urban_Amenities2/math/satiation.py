@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from __future__ import annotations
+
+from typing import Dict
+
 import numpy as np
 
 
@@ -14,17 +18,28 @@ def compute_kappa_from_anchor(target_score: float, target_value: float) -> float
 def apply_satiation(values: np.ndarray, kappa: np.ndarray | float) -> np.ndarray:
     values = np.asarray(values, dtype=float)
     kappa = np.asarray(kappa, dtype=float)
-    return 100.0 * (1.0 - np.exp(-kappa * values))
+    if np.any(kappa <= 0):
+        raise ValueError("kappa must be positive")
+    scores = 100.0 * (1.0 - np.exp(-kappa * values))
+    return np.clip(scores, 0.0, 100.0)
 
 
-def resolve_kappa(kappa: float | dict[str, float], anchors: dict[str, tuple[float, float]] | None = None) -> dict[str, float]:
-    resolved: dict[str, float] = {}
+def resolve_kappa(
+    kappa: float | dict[str, float] | None,
+    anchors: dict[str, tuple[float, float]] | None = None,
+) -> Dict[str, float]:
+    resolved: Dict[str, float] = {}
     if isinstance(kappa, dict):
-        resolved.update(kappa)
+        for key, value in kappa.items():
+            if value <= 0:
+                raise ValueError("kappa values must be positive")
+            resolved[key] = float(value)
     elif isinstance(kappa, (float, int)):
+        if kappa <= 0:
+            raise ValueError("kappa must be positive")
         resolved = {"default": float(kappa)}
-    else:
-        raise TypeError("kappa must be float or dict")
+    elif kappa is not None:
+        raise TypeError("kappa must be float, dict, or None")
     if anchors:
         for key, (target_score, target_value) in anchors.items():
             resolved[key] = compute_kappa_from_anchor(target_score, target_value)

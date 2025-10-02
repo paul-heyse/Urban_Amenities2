@@ -32,15 +32,21 @@ class CorridorTripChaining:
         for column in (cfg.quality_column, cfg.detour_column, cfg.weight_column, cfg.hex_column):
             if column not in chains.columns:
                 raise KeyError(f"chains dataframe missing column {column}")
+        unique_hexes = chains[cfg.hex_column].unique()
         filtered = chains[chains[cfg.detour_column] <= cfg.max_detour_minutes].copy()
         if filtered.empty:
-            return pd.DataFrame({cfg.hex_column: [], cfg.output_column: []})
+            zeros = np.zeros(len(unique_hexes), dtype=float)
+            return pd.DataFrame({cfg.hex_column: unique_hexes, cfg.output_column: zeros})
         filtered["weight"] = filtered[cfg.weight_column].fillna(1.0)
         filtered["adjusted_quality"] = filtered[cfg.quality_column] * np.exp(
             -filtered[cfg.detour_column] / cfg.detour_decay
         )
         filtered["score_component"] = filtered["adjusted_quality"] * filtered["weight"]
         aggregated = filtered.groupby(cfg.hex_column)["score_component"].sum().reset_index()
+        missing_hexes = sorted(set(unique_hexes) - set(aggregated[cfg.hex_column]))
+        if missing_hexes:
+            zeros = pd.DataFrame({cfg.hex_column: missing_hexes, "score_component": 0.0})
+            aggregated = pd.concat([aggregated, zeros], ignore_index=True)
         max_score = aggregated["score_component"].max()
         if max_score <= 0:
             aggregated[cfg.output_column] = 0.0

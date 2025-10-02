@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+import numpy as np
+import pandas as pd
 import pytest
 
 from Urban_Amenities2.math.ces import ces_aggregate, compute_z
-from Urban_Amenities2.math.diversity import DiversityConfig, compute_diversity, diversity_bonus
+from Urban_Amenities2.math.diversity import DiversityConfig, compute_diversity, diversity_multiplier
 from Urban_Amenities2.math.gtc import GTCParameters, generalized_travel_cost
 from Urban_Amenities2.math.satiation import apply_satiation, compute_kappa_from_anchor
 from Urban_Amenities2.scores.penalties import shortfall_penalty
@@ -65,10 +67,11 @@ def test_satiation_asymptote() -> None:
     assert scores[-1] > 99
 
 
-def test_diversity_bonus_and_compute() -> None:
+def test_diversity_multiplier_and_compute() -> None:
     values = [10.0, 5.0, 5.0]
-    bonus = diversity_bonus(values, weight=1.0, cap=10.0)
-    assert bonus > 0
+    config = DiversityConfig(weight=0.3, min_multiplier=1.0, max_multiplier=1.2)
+    multiplier = diversity_multiplier(values, config)
+    assert 1.0 <= multiplier <= config.max_multiplier
     frame = pd.DataFrame(
         {
             "hex_id": ["hex1", "hex1", "hex1"],
@@ -77,9 +80,9 @@ def test_diversity_bonus_and_compute() -> None:
             "qw": values,
         }
     )
-    config = {"grocery": DiversityConfig(weight=1.0, cap=10.0)}
-    diversity = compute_diversity(frame, "qw", ["hex_id", "category"], "subtype", config)
-    assert pytest.approx(diversity.loc[0, "diversity_bonus"], rel=1e-6) == bonus
+    config_map = {"grocery": config}
+    diversity = compute_diversity(frame, "qw", ["hex_id", "category"], "subtype", config_map)
+    assert pytest.approx(diversity.loc[0, "diversity_multiplier"], rel=1e-6) == multiplier
 
 
 def test_shortfall_penalty_cap() -> None:

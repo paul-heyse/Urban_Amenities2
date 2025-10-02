@@ -120,9 +120,16 @@ class QualityConfig(_BaseConfig):
 class CategoryDiversityConfig(_BaseConfig):
     """Diversity configuration for leisure and essentials."""
 
-    ramp_start: float = Field(..., ge=0)
-    ramp_end: float = Field(..., ge=0)
-    weight: float = Field(..., ge=0)
+    weight: float = Field(0.2, ge=0)
+    min_multiplier: float = Field(1.0, gt=0)
+    max_multiplier: float = Field(1.2, gt=0)
+
+    @model_validator(mode="after")
+    def _check_range(self) -> CategoryDiversityConfig:
+        if self.max_multiplier < self.min_multiplier:
+            msg = "max_multiplier must be >= min_multiplier"
+            raise ValueError(msg)
+        return self
 
 
 class CategoryConfig(_BaseConfig):
@@ -130,7 +137,7 @@ class CategoryConfig(_BaseConfig):
 
     essentials: List[str]
     leisure: List[str]
-    ces_rho: float
+    ces_rho: Dict[str, float] | float
     satiation_mode: Literal["none", "anchor", "direct"] = "none"
     satiation_kappa: Dict[str, float] | float | None = None
     satiation_targets: Optional[Dict[str, Dict[str, float]]] = None
@@ -143,8 +150,16 @@ class CategoryConfig(_BaseConfig):
 
         if self.satiation_mode == "direct":
             if isinstance(self.satiation_kappa, dict):
-                return self.satiation_kappa
+                output: Dict[str, float] = {}
+                for category, value in self.satiation_kappa.items():
+                    if value <= 0:
+                        msg = f"Satiation kappa for {category} must be positive"
+                        raise ValueError(msg)
+                    output[category] = float(value)
+                return output
             if isinstance(self.satiation_kappa, (int, float)):
+                if self.satiation_kappa <= 0:
+                    raise ValueError("Satiation kappa must be positive")
                 return {name: float(self.satiation_kappa) for name in self.essentials + self.leisure}
             msg = "Direct satiation requires satiation_kappa values"
             raise ValueError(msg)
@@ -162,6 +177,33 @@ class CategoryConfig(_BaseConfig):
                 output[category] = -log(1 - score / 100.0) / value
             return output
         return {}
+
+    def derived_rho(self, categories: Iterable[str] | None = None) -> Dict[str, float]:
+        names = list(categories or (self.essentials + self.leisure))
+        if isinstance(self.ces_rho, dict):
+            mapping = {}
+            for name in names:
+                value = self.ces_rho.get(name)
+                if value is None:
+                    msg = f"Missing CES rho for category {name}"
+                    raise ValueError(msg)
+                mapping[name] = float(value)
+        else:
+            mapping = {name: float(self.ces_rho) for name in names}
+        for name, value in mapping.items():
+            if value >= 1:
+                msg = f"CES rho for {name} must be less than 1"
+                raise ValueError(msg)
+        return mapping
+
+    def get_diversity(self, category: str) -> Optional[CategoryDiversityConfig]:
+        if category in self.diversity:
+            return self.diversity[category]
+        if category in self.essentials and "essentials" in self.diversity:
+            return self.diversity["essentials"]
+        if category in self.leisure and "leisure" in self.diversity:
+            return self.diversity["leisure"]
+        return None
 
 
 class LeisureCrossCategoryConfig(_BaseConfig):
@@ -189,12 +231,31 @@ class MORRConfig(_BaseConfig):
     micromobility: float
 
 
+class HubDefinitionConfig(_BaseConfig):
+    id: str
+    name: str
+    lat: float
+    lon: float
+
+
 class CorridorConfig(_BaseConfig):
     max_paths: int = Field(..., gt=0)
     stop_buffer_m: float = Field(..., ge=0)
     detour_cap_min: float = Field(..., ge=0)
-    pair_categories: List[str] = Field(default_factory=list)
+    pair_categories: List[List[str]] = Field(default_factory=list)
     walk_decay_alpha: float = Field(..., ge=0)
+    major_hubs: Dict[str, List[HubDefinitionConfig]] = Field(default_factory=dict)
+    chain_weights: Dict[str, float] = Field(default_factory=dict)
+    min_stop_count: int = Field(5, ge=0)
+    cache_size: int = Field(1024, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_pairs(self) -> CorridorConfig:
+        for pair in self.pair_categories:
+            if len(pair) != 2:
+                msg = "pair_categories entries must have exactly two categories"
+                raise ValueError(msg)
+        return self
 
 
 class SeasonalityConfig(_BaseConfig):
@@ -260,6 +321,11 @@ class AUCSParams(_BaseConfig):
         """Expose derived satiation kappas from the category configuration."""
 
         return self.categories.derived_satiation()
+
+    def derived_ces_rho(self, categories: Iterable[str] | None = None) -> Dict[str, float]:
+        """Expose CES rho values per category."""
+
+        return self.categories.derived_rho(categories)
 
     def iter_time_slice_ids(self) -> Iterable[str]:
         """Yield all configured time slice identifiers."""

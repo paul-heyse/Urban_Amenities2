@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Dict, List, Sequence
 
 import numpy as np
 import pandas as pd
 
+from ..config.params import AUCSParams, CategoryDiversityConfig
 from ..logging_utils import get_logger
 from ..math.ces import compute_z
 from ..math.diversity import DiversityConfig, compute_diversity
@@ -21,6 +24,14 @@ class EssentialCategoryConfig:
     kappa: float
     diversity: DiversityConfig
 
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.rho):
+            raise ValueError("rho must be finite")
+        if self.rho > 1.0:
+            raise ValueError("rho must be less than or equal to 1")
+        if self.kappa <= 0:
+            raise ValueError("kappa must be positive")
+
 
 @dataclass
 class EssentialsAccessConfig:
@@ -31,6 +42,63 @@ class EssentialsAccessConfig:
     shortfall_cap: float = 8.0
     top_k: int = 5
     batch_size: int = 512
+
+    @classmethod
+    def from_params(
+        cls,
+        params: AUCSParams,
+        categories: Sequence[str] | None = None,
+        shortfall_threshold: float | None = None,
+        shortfall_penalty: float | None = None,
+        shortfall_cap: float | None = None,
+        top_k: int | None = None,
+        batch_size: int | None = None,
+    ) -> "EssentialsAccessConfig":
+        category_cfg = params.categories
+        category_list = list(categories or category_cfg.essentials)
+        if not category_list:
+            raise ValueError("At least one category is required for essentials access")
+
+        rho_map = category_cfg.derived_rho(category_list)
+        kappa_map = params.derived_satiation()
+
+        def _diversity_for(category: str) -> DiversityConfig:
+            config = category_cfg.get_diversity(category)
+            if isinstance(config, CategoryDiversityConfig):
+                return DiversityConfig(
+                    weight=config.weight,
+                    min_multiplier=config.min_multiplier,
+                    max_multiplier=config.max_multiplier,
+                )
+            return DiversityConfig()
+
+        category_params: Dict[str, EssentialCategoryConfig] = {}
+        for name in category_list:
+            rho = rho_map.get(name)
+            if rho is None:
+                raise ValueError(f"Missing CES rho for category {name}")
+            kappa = kappa_map.get(name)
+            if kappa is None:
+                raise ValueError(f"Missing satiation kappa for category {name}")
+            category_params[name] = EssentialCategoryConfig(
+                rho=rho,
+                kappa=kappa,
+                diversity=_diversity_for(name),
+            )
+
+        kwargs: Dict[str, float | int] = {}
+        if shortfall_threshold is not None:
+            kwargs["shortfall_threshold"] = shortfall_threshold
+        if shortfall_penalty is not None:
+            kwargs["shortfall_penalty"] = shortfall_penalty
+        if shortfall_cap is not None:
+            kwargs["shortfall_cap"] = shortfall_cap
+        if top_k is not None:
+            kwargs["top_k"] = top_k
+        if batch_size is not None:
+            kwargs["batch_size"] = batch_size
+
+        return cls(categories=category_list, category_params=category_params, **kwargs)
 
 
 class EssentialsAccessCalculator:
@@ -83,7 +151,16 @@ class EssentialsAccessCalculator:
                 params = self.config.category_params.get(category, EssentialCategoryConfig(1.0, 1.0, DiversityConfig()))
                 cat_data = batch_data[batch_data["category"] == category]
                 if cat_data.empty:
-                    empty = pd.DataFrame({"hex_id": batch_hexes, "category": category, "satiation": 0.0, "diversity_bonus": 0.0, "entropy": 0.0, "score": 0.0})
+                    empty = pd.DataFrame(
+                        {
+                            "hex_id": batch_hexes,
+                            "category": category,
+                            "satiation": 0.0,
+                            "diversity_multiplier": 1.0,
+                            "entropy": 0.0,
+                            "score": 0.0,
+                        }
+                    )
                     category_frames.append(empty)
                     for hex_id in batch_hexes:
                         explainability.setdefault(hex_id, {})[category] = []
@@ -91,14 +168,21 @@ class EssentialsAccessCalculator:
                 rho = params.rho
                 z_values = compute_z(cat_data["quality"].to_numpy(), cat_data["weight"].to_numpy(), rho)
                 cat_data = cat_data.assign(z=z_values)
-                aggregated = cat_data.groupby("hex_id")["z"].sum()
-                V = aggregated.pow(1.0 / rho)
+                aggregated = cat_data.groupby("hex_id", as_index=False)["z"].sum()
+                V = aggregated["z"].pow(1.0 / rho)
                 satiation_scores = apply_satiation(V.to_numpy(), params.kappa)
-                frame = pd.DataFrame({"hex_id": aggregated.index, "category": category, "V": V, "satiation": satiation_scores})
+                frame = pd.DataFrame(
+                    {
+                        "hex_id": aggregated["hex_id"],
+                        "category": category,
+                        "V": V,
+                        "satiation": satiation_scores,
+                    }
+                )
                 frame = frame.merge(diversity[diversity["category"] == category], on=["hex_id", "category"], how="left")
-                frame["diversity_bonus"] = frame["diversity_bonus"].fillna(0.0)
+                frame["diversity_multiplier"] = frame["diversity_multiplier"].fillna(1.0)
                 frame["entropy"] = frame["entropy"].fillna(0.0)
-                frame["score"] = np.clip(frame["satiation"] + frame["diversity_bonus"], 0, 100)
+                frame["score"] = np.clip(frame["satiation"] * frame["diversity_multiplier"], 0, 100)
                 category_frames.append(frame)
                 for hex_id in frame["hex_id"]:
                     explainability.setdefault(hex_id, {})[category] = self._extract_top(cat_data, hex_id, category)
