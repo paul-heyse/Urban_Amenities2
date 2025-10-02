@@ -5,15 +5,15 @@
 - [ ] 1.1 Load NOAA Climate Normals (monthly temp, precip, wind)
 - [ ] 1.2 Extract data for stations in/near CO/UT/ID
 - [ ] 1.3 Spatially interpolate climate data to hex grid
-- [ ] 1.4 Define comfortable temperature range (50-80°F)
-- [ ] 1.5 Compute temperature comfort score per month (0-1 scale)
-- [ ] 1.6 Define precipitation threshold (<0.5" per day comfortable)
-- [ ] 1.7 Compute precipitation comfort score per month
-- [ ] 1.8 Define wind threshold (<15 mph manageable)
-- [ ] 1.9 Compute wind comfort score per month
-- [ ] 1.10 Combine components: σ_month = temp_comfort · precip_comfort · wind_comfort
-- [ ] 1.11 Weight months by season (growing season > winter)
-- [ ] 1.12 Compute annual climate comfort: σ_out = Σ(w_month · σ_month)
+- [x] 1.4 Define comfortable temperature range (50-80°F)
+- [x] 1.5 Compute temperature comfort score per month (0-1 scale)
+- [x] 1.6 Define precipitation threshold (<0.5" per day comfortable)
+- [x] 1.7 Compute precipitation comfort score per month
+- [x] 1.8 Define wind threshold (<15 mph manageable)
+- [x] 1.9 Compute wind comfort score per month
+- [x] 1.10 Combine components: σ_month = temp_comfort · precip_comfort · wind_comfort
+- [x] 1.11 Weight months by season (growing season > winter)
+- [x] 1.12 Compute annual climate comfort: σ_out = Σ(w_month · σ_month)
 
 ## 2. Parks/Trails Accessibility (8 tasks)
 
@@ -28,9 +28,9 @@
 
 ## 3. SOU Computation (7 tasks)
 
-- [ ] 3.1 Multiply parks/trails score by climate comfort: SOU = Parks_score · σ_out
-- [ ] 3.2 Normalize SOU to 0-100 scale
-- [ ] 3.3 Handle hexes with no parks (SOU=0)
+- [x] 3.1 Multiply parks/trails score by climate comfort: SOU = Parks_score · σ_out
+- [x] 3.2 Normalize SOU to 0-100 scale
+- [x] 3.3 Handle hexes with no parks (SOU=0)
 - [ ] 3.4 Validate SOU distributions (mountain regions vs deserts)
 - [ ] 3.5 Integration test on pilot region
 - [ ] 3.6 Add SOU to total AUCS computation (5% weight)

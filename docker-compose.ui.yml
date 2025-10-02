@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m Urban_Amenities2.ui.run
+    environment:
+      - UI_HOST=0.0.0.0
+      - UI_PORT=8050
+      - UI_DEBUG=true
+      - UI_DATA_PATH=/data
+    ports:
+      - "8050:8050"
+    volumes:
+      - ./data:/data
+      - ./src/Urban_Amenities2/ui/assets:/app/src/Urban_Amenities2/ui/assets:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8050/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  nginx:
+    image: nginx:1.25
+    volumes:
+      - ./configs/nginx/ui.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - ui

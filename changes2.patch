@@ -1,0 +1,3471 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/configs/nginx/ui.conf b/configs/nginx/ui.conf
+new file mode 100644
+index 0000000000000000000000000000000000000000..b38dc481a0b886f0ba6395145f628e052e659fef
+--- /dev/null
++++ b/configs/nginx/ui.conf
+@@ -0,0 +1,21 @@
++server {
++    listen 80;
++    server_name _;
++
++    location / {
++        proxy_pass http://ui:8050/;
++        proxy_set_header Host $host;
++        proxy_set_header X-Real-IP $remote_addr;
++        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
++        proxy_set_header X-Forwarded-Proto $scheme;
++    }
++
++    location /health {
++        proxy_pass http://ui:8050/health;
++    }
++
++    location /assets/ {
++        proxy_pass http://ui:8050/assets/;
++        expires 1h;
++    }
++}
+diff --git a/docker-compose.ui.yml b/docker-compose.ui.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..eb5bc370a03f4dcac628ac8aa943fe403bde5994
+--- /dev/null
++++ b/docker-compose.ui.yml
+@@ -0,0 +1,32 @@
++version: "3.9"
++
++services:
++  ui:
++    build:
++      context: .
++      dockerfile: Dockerfile
++    command: python -m Urban_Amenities2.ui.run
++    environment:
++      - UI_HOST=0.0.0.0
++      - UI_PORT=8050
++      - UI_DEBUG=true
++      - UI_DATA_PATH=/data
++    ports:
++      - "8050:8050"
++    volumes:
++      - ./data:/data
++      - ./src/Urban_Amenities2/ui/assets:/app/src/Urban_Amenities2/ui/assets:ro
++    healthcheck:
++      test: ["CMD", "curl", "-f", "http://localhost:8050/health"]
++      interval: 30s
++      timeout: 5s
++      retries: 3
++
++  nginx:
++    image: nginx:1.25
++    volumes:
++      - ./configs/nginx/ui.conf:/etc/nginx/conf.d/default.conf:ro
++    ports:
++      - "8080:80"
++    depends_on:
++      - ui
+diff --git a/docs/UI_DEVELOPMENT.md b/docs/UI_DEVELOPMENT.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..124fe7981d65ef873ac172c28d39c05b110e51eb
+--- /dev/null
++++ b/docs/UI_DEVELOPMENT.md
+@@ -0,0 +1,75 @@
++# Urban Amenities UI Development Guide
++
++This document describes how to run and iterate on the Dash-based Urban Amenities Explorer.
++
++## Prerequisites
++
++- Python environment with the project dependencies installed (`pip install -r requirements-ui.txt`).
++- Access to AUCS model outputs in Parquet format (place files under `data/outputs`).
++- Optional: Mapbox API token for enhanced basemap styles (`export MAPBOX_TOKEN=...`).
++
++## Running Locally
++
++```bash
++# Activate the project environment
++micromamba activate ./
++
++# Install UI dependencies
++pip install -r requirements-ui.txt
++
++# Start the UI with hot reload
++python -m Urban_Amenities2.ui.run
++```
++
++The application listens on `http://localhost:8050` by default. Hot reload is enabled through Dash when `UI_DEBUG=true`.
++
++## Environment Variables
++
++| Variable | Description | Default |
++| -------- | ----------- | ------- |
++| `UI_HOST` | Interface to bind the Dash server | `0.0.0.0` |
++| `UI_PORT` | Port number for the UI | `8050` |
++| `UI_DEBUG` | Enables Dash debug mode with hot reload | `false` |
++| `UI_DATA_PATH` | Directory containing AUCS Parquet outputs | `data/outputs` |
++| `UI_RELOAD_INTERVAL` | Seconds between automatic dataset refresh checks | `30` |
++| `UI_CORS_ORIGINS` | Comma-separated list of allowed origins | `*` |
++| `MAPBOX_TOKEN` | Mapbox access token | none |
++
++## Data Workflow
++
++1. Place AUCS Parquet files (`*.parquet`) and optional `metadata.parquet` under `data/outputs`.
++2. The UI automatically loads the latest file based on modification time and caches hexagon geometries.
++3. Use the **Data** page to refresh, export CSV/GeoJSON, and inspect the active dataset version.
++4. The **Map Explorer** provides filters by state, metro, county, and score ranges; adjust subscore weights in the advanced panel to preview composite scenarios.
++
++## Docker & Reverse Proxy
++
++A ready-to-run Docker Compose configuration is available in `docker-compose.ui.yml` with a complementary Nginx reverse proxy under `configs/nginx/ui.conf`.
++
++```bash
++docker compose -f docker-compose.ui.yml up --build
++```
++
++This starts both the UI and proxy services. Health checks target `/health` and static assets are cached for an hour.
++
++## Development Seed Data
++
++Use the helper script `scripts/generate_ui_sample_data.py` to generate a synthetic dataset with 1,000 hexes suitable for UI prototyping.
++
++```bash
++python scripts/generate_ui_sample_data.py --output data/outputs
++```
++
++The script fabricates AUCS subscores, metadata (state/metro/county), and ensures geometries are resolvable via H3. This enables rapid UI iteration without full pipeline outputs.
++
++## Logging
++
++Logging is configured through the `UI_LOG_LEVEL` environment variable (INFO by default). Logs are emitted via the shared project logging utilities to keep structured JSON output when running behind Gunicorn.
++
++## Troubleshooting
++
++- **Missing H3 geometries** – ensure the `h3` Python package is installed and the hex IDs are valid at resolutions 6-9.
++- **Empty maps** – confirm the Parquet files include `hex_id` and `aucs` columns; use the Data page refresh button after updating data files.
++- **Mapbox token errors** – provide a valid token via `MAPBOX_TOKEN` or switch to open styles like `carto-positron`.
++
++Happy mapping!
+diff --git a/openspec/changes/add-corridor-enrichment/tasks.md b/openspec/changes/add-corridor-enrichment/tasks.md
+index 57eb1c3066f1d6b4c992e3df1ffdb19e9db31dee..adfc7d38b647b3c9d68e13bb978b145dd70c3936 100644
+--- a/openspec/changes/add-corridor-enrichment/tasks.md
++++ b/openspec/changes/add-corridor-enrichment/tasks.md
+@@ -7,42 +7,42 @@
+ - [ ] 1.3 Extract stop sequences from each path
+ - [ ] 1.4 Filter paths with <5 stops (too short for errand chains)
+ - [ ] 1.5 Rank paths by frequency and directness
+ - [ ] 1.6 Cache path computations (reuse across hexes)
+ - [ ] 1.7 Handle hexes with no transit paths (CTE=0)
+ - [ ] 1.8 Test path identification for sample hexes
+ - [ ] 1.9 Validate path coverage (% hexes with ≥1 path)
+ - [ ] 1.10 Document path identification logic
+
+ ## 2. Stop Buffering and POI Collection (8 tasks)
+
+ - [ ] 2.1 Buffer each stop by 350m walking distance
+ - [ ] 2.2 Query POIs within each stop buffer
+ - [ ] 2.3 Filter to errand-friendly categories (grocery, pharmacy, bank, post, childcare)
+ - [ ] 2.4 Deduplicate POIs appearing in multiple buffers
+ - [ ] 2.5 Store POI-to-stop mapping
+ - [ ] 2.6 Test with dense stops (downtown) vs sparse (suburban)
+ - [ ] 2.7 Optimize spatial queries (use rtree index)
+ - [ ] 2.8 Document buffering and POI collection
+
+ ## 3. Errand Chain Scoring (10 tasks)
+
+ - [ ] 3.1 Define common 2-stop chains (grocery+pharmacy, bank+post, grocery+childcare)
+ - [ ] 3.2 Identify feasible chains (both amenities present in different stop buffers)
+ - [ ] 3.3 Compute detour time for each chain (compared to direct trip)
+-- [ ] 3.4 Filter chains with detour >10 min (too inconvenient)
+-- [ ] 3.5 Score chains by quality (Q_a of both amenities)
+-- [ ] 3.6 Weight chains by likelihood (frequent vs rare combinations)
+-- [ ] 3.7 Aggregate chains to corridor-level score
+-- [ ] 3.8 Normalize to CTE subscore (0-100)
++- [x] 3.4 Filter chains with detour >10 min (too inconvenient)
++- [x] 3.5 Score chains by quality (Q_a of both amenities)
++- [x] 3.6 Weight chains by likelihood (frequent vs rare combinations)
++- [x] 3.7 Aggregate chains to corridor-level score
++- [x] 3.8 Normalize to CTE subscore (0-100)
+ - [ ] 3.9 Test with known trip-chaining corridors
+ - [ ] 3.10 Validate CTE correlates with transit-oriented development
+
+ ## 4. Integration and Testing (7 tasks)
+
+ - [ ] 4.1 Integrate CTE into total AUCS computation (5% weight)
+ - [ ] 4.2 Run CTE computation on pilot region
+ - [ ] 4.3 Validate CTE distributions (expect higher scores near transit)
+ - [ ] 4.4 Compare CTE with/without detour constraint
+ - [ ] 4.5 Generate CTE choropleth map for QA
+-- [ ] 4.6 Property test: CTE in [0, 100]
++- [x] 4.6 Property test: CTE in [0, 100]
+ - [ ] 4.7 Document CTE methodology and parameters
+diff --git a/openspec/changes/add-hub-airport-access/tasks.md b/openspec/changes/add-hub-airport-access/tasks.md
+index 11317fafc8d374c9e76d7f4392259984db391213..003576b4dfac82d3d0385f21c5ce2650ffad676f 100644
+--- a/openspec/changes/add-hub-airport-access/tasks.md
++++ b/openspec/changes/add-hub-airport-access/tasks.md
+@@ -1,53 +1,53 @@
+ # Major Urban Hub & Airport Access Implementation Tasks
+
+ ## 1. Hub Mass Calculation (12 tasks)
+
+ - [ ] 1.1 Load CBSA (Core-Based Statistical Area) boundaries
+ - [ ] 1.2 Load population data per CBSA (Census)
+ - [ ] 1.3 Load GDP data per CBSA (BEA Regional Economic Accounts)
+ - [ ] 1.4 Count POIs per CBSA from Overture data
+ - [ ] 1.5 Count cultural institutions per CBSA (museums, theaters, universities)
+ - [ ] 1.6 Normalize each mass component to 0-100 scale
+ - [ ] 1.7 Compute combined hub mass: M = w_pop·Pop + w_gdp·GDP + w_poi·POI + w_culture·Culture
+ - [ ] 1.8 Load component weights from params.yaml
+ - [ ] 1.9 Validate mass scores for known hubs (Denver > Pueblo)
+ - [ ] 1.10 Store hub mass in reference table
+ - [ ] 1.11 Test with all CBSAs in CO/UT/ID
+ - [ ] 1.12 Document hub mass methodology
+
+ ## 2. Hub Accessibility (10 tasks)
+
+ - [ ] 2.1 Compute travel times from each hex to each CBSA centroid
+ - [ ] 2.2 Use best mode (transit or car) per OD pair
+ - [ ] 2.3 Compute generalized travel cost (GTC) for each hub
+-- [ ] 2.4 Apply decay function: A_hub = Σ(M_hub · exp(-α · GTC_hub))
++- [x] 2.4 Apply decay function: A_hub = Σ(M_hub · exp(-α · GTC_hub))
+ - [ ] 2.5 Load decay parameter α from params.yaml
+-- [ ] 2.6 Normalize hub accessibility to 0-100 scale
++- [x] 2.6 Normalize hub accessibility to 0-100 scale
+ - [ ] 2.7 Test with central vs peripheral hexes
+ - [ ] 2.8 Validate hub accessibility correlates with regional connectivity
+-- [ ] 2.9 Handle hexes with no reachable hubs (score=0)
++- [x] 2.9 Handle hexes with no reachable hubs (score=0)
+ - [ ] 2.10 Document hub accessibility computation
+
+ ## 3. Airport Accessibility (10 tasks)
+
+ - [ ] 3.1 Load FAA airport enplanement data (annual passengers)
+ - [ ] 3.2 Filter to airports in/near CO/UT/ID (DEN, SLC, BOI, COS, etc.)
+ - [ ] 3.3 Compute travel times from each hex to each airport
+ - [ ] 3.4 Use best mode (car typically; transit if available)
+ - [ ] 3.5 Compute GTC for each airport
+-- [ ] 3.6 Apply decay with enplanement weighting: A_airport = Σ(Enplane · exp(-α · GTC))
+-- [ ] 3.7 Normalize airport accessibility to 0-100 scale
++- [x] 3.6 Apply decay with enplanement weighting: A_airport = Σ(Enplane · exp(-α · GTC))
++- [x] 3.7 Normalize airport accessibility to 0-100 scale
+ - [ ] 3.8 Test with airport-adjacent vs distant hexes
+ - [ ] 3.9 Validate DEN dominance (largest airport)
+ - [ ] 3.10 Document airport accessibility computation
+
+ ## 4. MUHAA Aggregation and Testing (8 tasks)
+
+-- [ ] 4.1 Combine hub and airport access: MUHAA = w_hub·A_hub + w_airport·A_airport
++- [x] 4.1 Combine hub and airport access: MUHAA = w_hub·A_hub + w_airport·A_airport
+ - [ ] 4.2 Load weights from params.yaml (e.g., 70% hub, 30% airport)
+-- [ ] 4.3 Normalize final MUHAA to 0-100 scale
++- [x] 4.3 Normalize final MUHAA to 0-100 scale
+ - [ ] 4.4 Integration test on pilot region
+ - [ ] 4.5 Validate MUHAA distributions (urban cores high, rural low)
+ - [ ] 4.6 Compare MUHAA with known regional connectivity patterns
+ - [ ] 4.7 Add MUHAA to total AUCS computation (16% weight)
+ - [ ] 4.8 Generate MUHAA choropleth for QA
+diff --git a/openspec/changes/add-interactive-visualization-ui/tasks.md b/openspec/changes/add-interactive-visualization-ui/tasks.md
+index 024b71a1750060a5b88afefd3513062af07cf84f..0fec642c6b259883377e2662bb8fd6ce6f4cfadd 100644
+--- a/openspec/changes/add-interactive-visualization-ui/tasks.md
++++ b/openspec/changes/add-interactive-visualization-ui/tasks.md
+@@ -1,185 +1,185 @@
+ # Interactive Visualization UI Implementation Tasks
+
+ ## 1. UI Framework Setup (20 tasks)
+
+ ### 1.1 Dash Application Scaffold
+
+-- [ ] 1.1.1 Install Dash and dependencies: `dash`, `plotly`, `dash-bootstrap-components`, `dash-leaflet`
+-- [ ] 1.1.2 Create `src/Urban_Amenities2/ui/app.py` with Dash app initialization
+-- [ ] 1.1.3 Configure Dash with Bootstrap theme (use `dbc.themes.BOOTSTRAP` or `FLATLY`)
+-- [ ] 1.1.4 Set up app layout structure: header, sidebar, main content, footer
+-- [ ] 1.1.5 Create `src/Urban_Amenities2/ui/layouts/` directory for page layouts
+-- [ ] 1.1.6 Implement multi-page routing (home, map view, data management, settings)
+-- [ ] 1.1.7 Create navigation sidebar with icons and links
+-- [ ] 1.1.8 Add application header with logo, title, and user info placeholder
+-- [ ] 1.1.9 Implement responsive layout (mobile, tablet, desktop breakpoints)
+-- [ ] 1.1.10 Set up custom CSS in `src/Urban_Amenities2/ui/assets/style.css`
++- [x] 1.1.1 Install Dash and dependencies: `dash`, `plotly`, `dash-bootstrap-components`, `dash-leaflet`
++- [x] 1.1.2 Create `src/Urban_Amenities2/ui/app.py` with Dash app initialization
++- [x] 1.1.3 Configure Dash with Bootstrap theme (use `dbc.themes.BOOTSTRAP` or `FLATLY`)
++- [x] 1.1.4 Set up app layout structure: header, sidebar, main content, footer
++- [x] 1.1.5 Create `src/Urban_Amenities2/ui/layouts/` directory for page layouts
++- [x] 1.1.6 Implement multi-page routing (home, map view, data management, settings)
++- [x] 1.1.7 Create navigation sidebar with icons and links
++- [x] 1.1.8 Add application header with logo, title, and user info placeholder
++- [x] 1.1.9 Implement responsive layout (mobile, tablet, desktop breakpoints)
++- [x] 1.1.10 Set up custom CSS in `src/Urban_Amenities2/ui/assets/style.css`
+
+ ### 1.2 Development Environment
+
+-- [ ] 1.2.1 Create `requirements-ui.txt` with all UI dependencies and versions
+-- [ ] 1.2.2 Set up hot-reload for development: `app.run_server(debug=True)`
+-- [ ] 1.2.3 Configure environment variables for UI (PORT, HOST, DEBUG, SECRET_KEY)
+-- [ ] 1.2.4 Create Docker Compose service for UI with volume mounting
+-- [ ] 1.2.5 Set up reverse proxy configuration (Nginx) for production
+-- [ ] 1.2.6 Implement health check endpoint: `/health` returns 200 OK
+-- [ ] 1.2.7 Configure CORS if API and UI on different domains
+-- [ ] 1.2.8 Set up logging for UI server (access logs, error logs)
+-- [ ] 1.2.9 Create development seed data (sample 1000 hexes for fast iteration)
+-- [ ] 1.2.10 Document local development setup in `docs/UI_DEVELOPMENT.md`
++- [x] 1.2.1 Create `requirements-ui.txt` with all UI dependencies and versions
++- [x] 1.2.2 Set up hot-reload for development: `app.run_server(debug=True)`
++- [x] 1.2.3 Configure environment variables for UI (PORT, HOST, DEBUG, SECRET_KEY)
++- [x] 1.2.4 Create Docker Compose service for UI with volume mounting
++- [x] 1.2.5 Set up reverse proxy configuration (Nginx) for production
++- [x] 1.2.6 Implement health check endpoint: `/health` returns 200 OK
++- [x] 1.2.7 Configure CORS if API and UI on different domains
++- [x] 1.2.8 Set up logging for UI server (access logs, error logs)
++- [x] 1.2.9 Create development seed data (sample 1000 hexes for fast iteration)
++- [x] 1.2.10 Document local development setup in `docs/UI_DEVELOPMENT.md`
+
+ ---
+
+ ## 2. Data Loading and Management (20 tasks)
+
+ ### 2.1 Parquet Data Loading
+
+-- [ ] 2.1.1 Create `src/Urban_Amenities2/ui/data_loader.py` module
+-- [ ] 2.1.2 Implement function to load AUCS Parquet files into pandas DataFrame
+-- [ ] 2.1.3 Add schema validation on load (verify required columns: hex_id, AUCS, EA, LCA, etc.)
+-- [ ] 2.1.4 Implement data versioning (track which run's outputs are currently loaded)
+-- [ ] 2.1.5 Add data refresh mechanism (reload files when new run completes)
+-- [ ] 2.1.6 Optimize loading with column selection (only load needed columns per view)
+-- [ ] 2.1.7 Implement data compression in memory (use categorical dtype for hex_id)
+-- [ ] 2.1.8 Add data filtering utilities (by state, metro, score range)
+-- [ ] 2.1.9 Create data summary statistics (min, max, mean, percentiles per subscore)
+-- [ ] 2.1.10 Implement data export functions (GeoJSON, CSV, Shapefile)
++- [x] 2.1.1 Create `src/Urban_Amenities2/ui/data_loader.py` module
++- [x] 2.1.2 Implement function to load AUCS Parquet files into pandas DataFrame
++- [x] 2.1.3 Add schema validation on load (verify required columns: hex_id, AUCS, EA, LCA, etc.)
++- [x] 2.1.4 Implement data versioning (track which run's outputs are currently loaded)
++- [x] 2.1.5 Add data refresh mechanism (reload files when new run completes)
++- [x] 2.1.6 Optimize loading with column selection (only load needed columns per view)
++- [x] 2.1.7 Implement data compression in memory (use categorical dtype for hex_id)
++- [x] 2.1.8 Add data filtering utilities (by state, metro, score range)
++- [x] 2.1.9 Create data summary statistics (min, max, mean, percentiles per subscore)
++- [x] 2.1.10 Implement data export functions (GeoJSON, CSV, Shapefile)
+
+ ### 2.2 H3 Hex Geometry
+
+-- [ ] 2.2.1 Install h3-py for hex boundary computation
+-- [ ] 2.2.2 Create utility function: `hex_to_geojson(hex_id)` returns GeoJSON polygon
+-- [ ] 2.2.3 Batch convert all hex IDs to geometries on data load
+-- [ ] 2.2.4 Cache hex geometries (they never change for a given hex ID)
+-- [ ] 2.2.5 Create multi-resolution hex datasets (aggregate to H3 res 6, 7, 8 for zoom levels)
+-- [ ] 2.2.6 Implement spatial indexing (rtree or shapely STRtree) for viewport queries
+-- [ ] 2.2.7 Add function to query hexes in bounding box (lat/lon bounds)
+-- [ ] 2.2.8 Implement hex neighbor queries (for spatial autocorrelation viz)
+-- [ ] 2.2.9 Create hex centroid lookup (for label placement)
+-- [ ] 2.2.10 Validate hex coverage (check for gaps, overlaps)
++- [x] 2.2.1 Install h3-py for hex boundary computation
++- [x] 2.2.2 Create utility function: `hex_to_geojson(hex_id)` returns GeoJSON polygon
++- [x] 2.2.3 Batch convert all hex IDs to geometries on data load
++- [x] 2.2.4 Cache hex geometries (they never change for a given hex ID)
++- [x] 2.2.5 Create multi-resolution hex datasets (aggregate to H3 res 6, 7, 8 for zoom levels)
++- [x] 2.2.6 Implement spatial indexing (rtree or shapely STRtree) for viewport queries
++- [x] 2.2.7 Add function to query hexes in bounding box (lat/lon bounds)
++- [x] 2.2.8 Implement hex neighbor queries (for spatial autocorrelation viz)
++- [x] 2.2.9 Create hex centroid lookup (for label placement)
++- [x] 2.2.10 Validate hex coverage (check for gaps, overlaps)
+
+ ---
+
+ ## 3. Heat Map Visualization (25 tasks)
+
+ ### 3.1 Choropleth Map Implementation
+
+-- [ ] 3.1.1 Create `src/Urban_Amenities2/ui/components/choropleth.py`
+-- [ ] 3.1.2 Implement `create_choropleth()` function using Plotly `go.Choroplethmapbox`
+-- [ ] 3.1.3 Configure mapbox access token (free tier sufficient for dev, paid for prod)
+-- [ ] 3.1.4 Set initial map center (center of CO/UT/ID region: ~39.5°N, -111°W)
+-- [ ] 3.1.5 Set initial zoom level (zoom=6 for 3-state view)
+-- [ ] 3.1.6 Define color scale for AUCS scores (0-100, sequential colormap: Viridis or RdYlGn)
+-- [ ] 3.1.7 Implement continuous color scale with legend
+-- [ ] 3.1.8 Add hover template showing: hex_id, score, lat/lon, metro area
+-- [ ] 3.1.9 Configure map style (streets, outdoors, satellite, or dark mode)
+-- [ ] 3.1.10 Enable zoom controls and fullscreen button
++- [x] 3.1.1 Create `src/Urban_Amenities2/ui/components/choropleth.py`
++- [x] 3.1.2 Implement `create_choropleth()` function using Plotly `go.Choroplethmapbox`
++- [x] 3.1.3 Configure mapbox access token (free tier sufficient for dev, paid for prod)
++- [x] 3.1.4 Set initial map center (center of CO/UT/ID region: ~39.5°N, -111°W)
++- [x] 3.1.5 Set initial zoom level (zoom=6 for 3-state view)
++- [x] 3.1.6 Define color scale for AUCS scores (0-100, sequential colormap: Viridis or RdYlGn)
++- [x] 3.1.7 Implement continuous color scale with legend
++- [x] 3.1.8 Add hover template showing: hex_id, score, lat/lon, metro area
++- [x] 3.1.9 Configure map style (streets, outdoors, satellite, or dark mode)
++- [x] 3.1.10 Enable zoom controls and fullscreen button
+
+ ### 3.2 Multi-Scale Heat Map
+
+-- [ ] 3.2.1 Implement zoom level detection callback (track current zoom state)
+-- [ ] 3.2.2 Define zoom thresholds for resolution switching:
++- [x] 3.2.1 Implement zoom level detection callback (track current zoom state)
++- [x] 3.2.2 Define zoom thresholds for resolution switching:
+   - Zoom 0-5: H3 res 6 (large hexes, state-level)
+   - Zoom 6-8: H3 res 7 (medium hexes, metro-level)
+   - Zoom 9-11: H3 res 8 (small hexes, neighborhood-level)
+   - Zoom 12+: H3 res 9 (finest hexes, block-level)
+-- [ ] 3.2.3 Pre-aggregate scores to coarser resolutions (mean or weighted average)
+-- [ ] 3.2.4 Implement automatic data switching based on zoom level
++- [x] 3.2.3 Pre-aggregate scores to coarser resolutions (mean or weighted average)
++- [x] 3.2.4 Implement automatic data switching based on zoom level
+ - [ ] 3.2.5 Add smooth transitions between zoom levels (fade in/out hexes)
+ - [ ] 3.2.6 Optimize by only rendering hexes in current viewport
+ - [ ] 3.2.7 Implement viewport-based data fetching (lazy load hexes as user pans)
+-- [ ] 3.2.8 Add loading spinner while fetching hex data for new viewport
++- [x] 3.2.8 Add loading spinner while fetching hex data for new viewport
+ - [ ] 3.2.9 Cache rendered layers per zoom level (avoid re-rendering)
+ - [ ] 3.2.10 Test performance with 10K, 100K, 1M hexes
+
+ ### 3.3 Subscore Selection
+
+-- [ ] 3.3.1 Create dropdown component for subscore selection (Total AUCS, EA, LCA, MUHAA, JEA, MORR, CTE, SOU)
+-- [ ] 3.3.2 Implement callback to update choropleth when subscore changes
+-- [ ] 3.3.3 Adjust color scale per subscore (different scales if needed)
+-- [ ] 3.3.4 Update legend title to reflect current subscore
+-- [ ] 3.3.5 Display subscore description/tooltip (explain what EA, LCA, etc. measure)
++- [x] 3.3.1 Create dropdown component for subscore selection (Total AUCS, EA, LCA, MUHAA, JEA, MORR, CTE, SOU)
++- [x] 3.3.2 Implement callback to update choropleth when subscore changes
++- [x] 3.3.3 Adjust color scale per subscore (different scales if needed)
++- [x] 3.3.4 Update legend title to reflect current subscore
++- [x] 3.3.5 Display subscore description/tooltip (explain what EA, LCA, etc. measure)
+
+ ---
+
+ ## 4. Base Map and Geographic Context (20 tasks)
+
+ ### 4.1 Base Map Layers
+
+ - [ ] 4.1.1 Integrate Mapbox base map styles (streets-v11, outdoors-v11, satellite-v9, dark-v10)
+ - [ ] 4.1.2 Create base map style selector (dropdown or radio buttons)
+ - [ ] 4.1.3 Ensure streets/roads visible at all zoom levels
+ - [ ] 4.1.4 Enable city labels (show major cities: Denver, Salt Lake City, Boise, etc.)
+ - [ ] 4.1.5 Add landmark labels (airports, universities, major parks)
+ - [ ] 4.1.6 Configure label collision detection (avoid overlapping labels)
+ - [ ] 4.1.7 Adjust label sizes based on zoom level (larger at higher zoom)
+ - [ ] 4.1.8 Test base map load times (ensure <2s initial load)
+ - [ ] 4.1.9 Implement fallback to OpenStreetMap if Mapbox unavailable
+ - [ ] 4.1.10 Add watermarks/attributions per map provider requirements
+
+ ### 4.2 Geographic Overlays
+
+ - [ ] 4.2.1 Add state boundaries layer (CO, UT, ID outlines)
+ - [ ] 4.2.2 Add county boundaries layer (optional, toggle on/off)
+ - [ ] 4.2.3 Add metro area boundaries (Denver, SLC, Boise CBSAs)
+ - [ ] 4.2.4 Add transit lines layer (show GTFS routes from data)
+ - [ ] 4.2.5 Add transit stops layer (show GTFS stops, cluster at low zoom)
+ - [ ] 4.2.6 Add parks/trails layer (show PAD-US protected areas)
+ - [ ] 4.2.7 Create layer toggle panel (checkboxes to show/hide each layer)
+ - [ ] 4.2.8 Implement layer opacity sliders (adjust transparency)
+ - [ ] 4.2.9 Add layer ordering (heat map above base, but below labels)
+ - [ ] 4.2.10 Test layer combinations (ensure all layers render correctly together)
+
+ ---
+
+ ## 5. Interactive Controls and Filters (25 tasks)
+
+ ### 5.1 Filter Panel
+
+-- [ ] 5.1.1 Create sidebar filter panel with collapsible sections
+-- [ ] 5.1.2 Add state filter (multi-select: CO, UT, ID)
+-- [ ] 5.1.3 Add metro area filter (multi-select: Denver, SLC, Boise, Colorado Springs, etc.)
+-- [ ] 5.1.4 Add county filter (searchable dropdown with all counties)
+-- [ ] 5.1.5 Add score range slider (min-max slider, 0-100)
++- [x] 5.1.1 Create sidebar filter panel with collapsible sections
++- [x] 5.1.2 Add state filter (multi-select: CO, UT, ID)
++- [x] 5.1.3 Add metro area filter (multi-select: Denver, SLC, Boise, Colorado Springs, etc.)
++- [x] 5.1.4 Add county filter (searchable dropdown with all counties)
++- [x] 5.1.5 Add score range slider (min-max slider, 0-100)
+ - [ ] 5.1.6 Add population density filter (if hex-level data available)
+ - [ ] 5.1.7 Add land use filter (urban, suburban, rural categories)
+-- [ ] 5.1.8 Implement "Apply Filters" button (batch filter application for performance)
+-- [ ] 5.1.9 Add "Clear Filters" button (reset to default view)
+-- [ ] 5.1.10 Show filtered hex count (e.g., "Showing 5,432 of 1,000,000 hexes")
++- [x] 5.1.8 Implement "Apply Filters" button (batch filter application for performance)
++- [x] 5.1.9 Add "Clear Filters" button (reset to default view)
++- [x] 5.1.10 Show filtered hex count (e.g., "Showing 5,432 of 1,000,000 hexes")
+
+ ### 5.2 Parameter Adjustment
+
+-- [ ] 5.2.1 Create "Advanced Settings" panel (expandable section)
+-- [ ] 5.2.2 Expose subscore weights (7 sliders, constrain sum to 100)
++- [x] 5.2.1 Create "Advanced Settings" panel (expandable section)
++- [x] 5.2.2 Expose subscore weights (7 sliders, constrain sum to 100)
+ - [ ] 5.2.3 Add decay parameter alpha sliders (per mode: walk, bike, transit, car)
+ - [ ] 5.2.4 Add value-of-time (VOT) inputs (weekday, weekend)
+ - [ ] 5.2.5 Add CES elasticity (rho) sliders per category
+ - [ ] 5.2.6 Add satiation kappa adjustments (per category)
+-- [ ] 5.2.7 Implement "Recalculate" button (trigger score recomputation with new params)
++- [x] 5.2.7 Implement "Recalculate" button (trigger score recomputation with new params)
+ - [ ] 5.2.8 Show parameter diff indicator (highlight changed params)
+-- [ ] 5.2.9 Add "Reset to Defaults" button (restore original parameter values)
++- [x] 5.2.9 Add "Reset to Defaults" button (restore original parameter values)
+ - [ ] 5.2.10 Display parameter validation errors (e.g., weights not summing to 100)
+
+ ### 5.3 Hex Details and Drill-Down
+
+ - [ ] 5.3.1 Implement hex click callback (select hex, show details)
+ - [ ] 5.3.2 Create hex detail panel (show full score breakdown)
+ - [ ] 5.3.3 Display total AUCS and all 7 subscores for selected hex
+ - [ ] 5.3.4 Show top 5 contributing amenities (from explainability output)
+ - [ ] 5.3.5 Show top modes (walk, bike, transit, car accessibility)
+ - [ ] 5.3.6 Display hex metadata (lat/lon, metro area, county, population)
+ - [ ] 5.3.7 Add "Compare Hex" button (select multiple hexes for side-by-side comparison)
+ - [ ] 5.3.8 Implement hex highlighting (outline selected hex on map)
+ - [ ] 5.3.9 Add "Nearby Hexes" view (show neighboring hexes with scores)
+ - [ ] 5.3.10 Implement "Export Hex Data" button (download hex details as JSON/CSV)
+
+ ---
+
+ ## 6. Caching Layer Implementation (25 tasks)
+
+ ### 6.1 Cache Architecture
+
+ - [ ] 6.1.1 Choose cache backend (DiskCache for simplicity, Redis for scalability)
+ - [ ] 6.1.2 Create `src/Urban_Amenities2/cache/manager.py` module
+ - [ ] 6.1.3 Implement `CacheManager` class with get/set/invalidate methods
+ - [ ] 6.1.4 Define cache key schema: `{source}:{entity_type}:{entity_id}:{timestamp}`
+diff --git a/openspec/changes/add-mobility-reliability/tasks.md b/openspec/changes/add-mobility-reliability/tasks.md
+index d2d2e8ceb0e3830a203a57fd4d047caaa96973f8..903f2d78c75b4cc62a67892f4cb99e91f0eb0733 100644
+--- a/openspec/changes/add-mobility-reliability/tasks.md
++++ b/openspec/changes/add-mobility-reliability/tasks.md
+@@ -1,64 +1,64 @@
+ # Mobility Options, Reliability & Resilience Implementation Tasks
+
+ ## 1. Component 1: Frequent Transit Exposure (8 tasks)
+
+ - [ ] 1.1 Load GTFS static data (routes, trips, stop_times)
+ - [ ] 1.2 Compute headways for each stop and route
+ - [ ] 1.3 Identify stops with <15 min peak headway
+-- [ ] 1.4 Compute % of transit stops within 500m of hex with frequent service
+-- [ ] 1.5 Normalize to 0-100 scale (C₁)
++- [x] 1.4 Compute % of transit stops within 500m of hex with frequent service
++- [x] 1.5 Normalize to 0-100 scale (C₁)
+ - [ ] 1.6 Handle hexes with no nearby transit (C₁=0)
+ - [ ] 1.7 Test with dense transit areas (downtown) vs sparse (suburban)
+ - [ ] 1.8 Document C₁ computation
+
+ ## 2. Component 2: Service Span (6 tasks)
+
+ - [ ] 2.1 Compute service hours per day for each nearby stop
+ - [ ] 2.2 Identify stops with early AM, late PM, and weekend service
+-- [ ] 2.3 Compute weighted service span score (24h=100, 12h=50, 6h=25)
+-- [ ] 2.4 Normalize to C₂ (0-100)
++- [x] 2.3 Compute weighted service span score (24h=100, 12h=50, 6h=25)
++- [x] 2.4 Normalize to C₂ (0-100)
+ - [ ] 2.5 Test with 24h service vs limited service
+ - [ ] 2.6 Document C₂ computation
+
+ ## 3. Component 3: On-Time Reliability (8 tasks)
+
+ - [ ] 3.1 Load GTFS-RT trip updates for reliability analysis
+ - [ ] 3.2 Compute mean delay per route (from trip update feed)
+ - [ ] 3.3 Compute on-time percentage (within ±5 min)
+-- [ ] 3.4 Weight routes by frequency (more frequent = more weight)
++- [x] 3.4 Weight routes by frequency (more frequent = more weight)
+ - [ ] 3.5 Aggregate to hex level (all nearby routes)
+-- [ ] 3.6 Normalize to C₃ (0-100, 100=100% on-time)
++- [x] 3.6 Normalize to C₃ (0-100, 100=100% on-time)
+ - [ ] 3.7 Handle missing GTFS-RT (use scheduled reliability proxy)
+ - [ ] 3.8 Document C₃ computation and data requirements
+
+ ## 4. Component 4: Network Redundancy (8 tasks)
+
+ - [ ] 4.1 Count number of unique transit routes within 800m
+ - [ ] 4.2 Count number of road route alternatives (using OSRM)
+-- [ ] 4.3 Compute redundancy score: R = 1 - 1/(1+routes)
+-- [ ] 4.4 Normalize to C₄ (0-100)
++- [x] 4.3 Compute redundancy score: R = 1 - 1/(1+routes)
++- [x] 4.4 Normalize to C₄ (0-100)
+ - [ ] 4.5 Test with grid networks (high redundancy) vs linear (low)
+ - [ ] 4.6 Validate C₄ correlates with resilience
+-- [ ] 4.7 Handle isolated areas (C₄=0)
++- [x] 4.7 Handle isolated areas (C₄=0)
+ - [ ] 4.8 Document C₄ computation
+
+ ## 5. Component 5: Micromobility Presence (7 tasks)
+
+ - [ ] 5.1 Load GBFS (General Bikeshare Feed Specification) data for bike/scooter systems
+ - [ ] 5.2 Identify GBFS-enabled systems in CO/UT/ID
+-- [ ] 5.3 Compute density of bikeshare/scooter stations within 500m
+-- [ ] 5.4 Normalize to C₅ (0-100, 100=high density)
+-- [ ] 5.5 Handle areas without micromobility (C₅=0)
++- [x] 5.3 Compute density of bikeshare/scooter stations within 500m
++- [x] 5.4 Normalize to C₅ (0-100, 100=high density)
++- [x] 5.5 Handle areas without micromobility (C₅=0)
+ - [ ] 5.6 Test with systems in Denver, SLC, Boise
+ - [ ] 5.7 Document C₅ computation and data sources
+
+ ## 6. MORR Aggregation and Testing (8 tasks)
+
+-- [ ] 6.1 Combine components: MORR = w₁·C₁ + w₂·C₂ + w₃·C₃ + w₄·C₄ + w₅·C₅
++- [x] 6.1 Combine components: MORR = w₁·C₁ + w₂·C₂ + w₃·C₃ + w₄·C₄ + w₅·C₅
+ - [ ] 6.2 Load component weights from params.yaml (default equal weights)
+-- [ ] 6.3 Normalize final MORR to 0-100 scale
++- [x] 6.3 Normalize final MORR to 0-100 scale
+ - [ ] 6.4 Validate MORR score distributions
+ - [ ] 6.5 Integration test on pilot region
+ - [ ] 6.6 Compare MORR with known transit-rich vs transit-poor areas
+ - [ ] 6.7 Add MORR to total AUCS computation (12% weight)
+ - [ ] 6.8 Generate MORR choropleth for QA
+diff --git a/openspec/changes/add-seasonal-outdoors/tasks.md b/openspec/changes/add-seasonal-outdoors/tasks.md
+index 44078d1308a1d2d832e48a446b322227584d6457..90612454c873955964f9e9906627a93d45bca77d 100644
+--- a/openspec/changes/add-seasonal-outdoors/tasks.md
++++ b/openspec/changes/add-seasonal-outdoors/tasks.md
+@@ -1,48 +1,48 @@
+ # Seasonal Outdoors Usability Implementation Tasks
+
+ ## 1. Climate Comfort Scoring (12 tasks)
+
+ - [ ] 1.1 Load NOAA Climate Normals (monthly temp, precip, wind)
+ - [ ] 1.2 Extract data for stations in/near CO/UT/ID
+ - [ ] 1.3 Spatially interpolate climate data to hex grid
+-- [ ] 1.4 Define comfortable temperature range (50-80°F)
+-- [ ] 1.5 Compute temperature comfort score per month (0-1 scale)
+-- [ ] 1.6 Define precipitation threshold (<0.5" per day comfortable)
+-- [ ] 1.7 Compute precipitation comfort score per month
+-- [ ] 1.8 Define wind threshold (<15 mph manageable)
+-- [ ] 1.9 Compute wind comfort score per month
+-- [ ] 1.10 Combine components: σ_month = temp_comfort · precip_comfort · wind_comfort
+-- [ ] 1.11 Weight months by season (growing season > winter)
+-- [ ] 1.12 Compute annual climate comfort: σ_out = Σ(w_month · σ_month)
++- [x] 1.4 Define comfortable temperature range (50-80°F)
++- [x] 1.5 Compute temperature comfort score per month (0-1 scale)
++- [x] 1.6 Define precipitation threshold (<0.5" per day comfortable)
++- [x] 1.7 Compute precipitation comfort score per month
++- [x] 1.8 Define wind threshold (<15 mph manageable)
++- [x] 1.9 Compute wind comfort score per month
++- [x] 1.10 Combine components: σ_month = temp_comfort · precip_comfort · wind_comfort
++- [x] 1.11 Weight months by season (growing season > winter)
++- [x] 1.12 Compute annual climate comfort: σ_out = Σ(w_month · σ_month)
+
+ ## 2. Parks/Trails Accessibility (8 tasks)
+
+ - [ ] 2.1 Load parks/trails POIs from data ingestion
+ - [ ] 2.2 Compute accessibility to parks/trails (w_ia from travel time)
+ - [ ] 2.3 Apply quality scores to parks (size, amenities, designation)
+ - [ ] 2.4 Aggregate parks/trails accessibility using CES + satiation
+ - [ ] 2.5 Obtain base parks/trails score (before climate adjustment)
+ - [ ] 2.6 Test base score with known park-rich vs park-poor areas
+ - [ ] 2.7 Validate base score in [0, 100]
+ - [ ] 2.8 Document parks/trails scoring
+
+ ## 3. SOU Computation (7 tasks)
+
+-- [ ] 3.1 Multiply parks/trails score by climate comfort: SOU = Parks_score · σ_out
+-- [ ] 3.2 Normalize SOU to 0-100 scale
+-- [ ] 3.3 Handle hexes with no parks (SOU=0)
++- [x] 3.1 Multiply parks/trails score by climate comfort: SOU = Parks_score · σ_out
++- [x] 3.2 Normalize SOU to 0-100 scale
++- [x] 3.3 Handle hexes with no parks (SOU=0)
+ - [ ] 3.4 Validate SOU distributions (mountain regions vs deserts)
+ - [ ] 3.5 Integration test on pilot region
+ - [ ] 3.6 Add SOU to total AUCS computation (5% weight)
+ - [ ] 3.7 Generate SOU choropleth for QA
+
+ ## 4. Testing and Validation (8 tasks)
+
+ - [ ] 4.1 Unit test climate comfort scoring (known temp/precip/wind)
+ - [ ] 4.2 Test with extreme climates (Colorado mountains, Utah deserts)
+ - [ ] 4.3 Validate σ_out in [0, 1] range
+ - [ ] 4.4 Compare SOU with known outdoor recreation areas
+ - [ ] 4.5 Validate SOU penalizes areas with harsh winters or hot summers
+ - [ ] 4.6 Property test: SOU in [0, 100]
+ - [ ] 4.7 Compare SOU with/without climate adjustment
+ - [ ] 4.8 Document SOU methodology and climate parameters
+diff --git a/requirements-ui.txt b/requirements-ui.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..67f6e3b2a583cee7d840ba74410f1fbf8f7fcd5b
+--- /dev/null
++++ b/requirements-ui.txt
+@@ -0,0 +1,9 @@
++dash==2.17.1
++plotly==5.22.0
++dash-bootstrap-components==1.5.0
++dash-leaflet==1.0.3
++flask-cors==4.0.0
++pandas>=2.0
++h3==3.7.7
++geopandas>=0.14
++shapely>=2.0
+diff --git a/scripts/generate_ui_sample_data.py b/scripts/generate_ui_sample_data.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6f6dc54c4bb6b6bd92089a06578139c1b9a29561
+--- /dev/null
++++ b/scripts/generate_ui_sample_data.py
+@@ -0,0 +1,56 @@
++"""Generate synthetic AUCS outputs for UI development."""
++
++from __future__ import annotations
++
++import argparse
++from pathlib import Path
++
++import numpy as np
++import pandas as pd
++
++from Urban_Amenities2.ui.hexes import HexGeometryCache
++
++SUBSCORES = ["EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
++STATES = ["CO", "UT", "ID"]
++METROS = ["Denver", "Salt Lake City", "Boise", "Fort Collins"]
++COUNTIES = ["Denver County", "Salt Lake County", "Ada County", "Larimer County"]
++
++
++def random_hex(resolution: int = 8) -> str:
++    import h3
++
++    base = h3.latlng_to_cell(np.random.uniform(37, 43), np.random.uniform(-114, -104), resolution)
++    return base
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--output", type=Path, default=Path("data/outputs"), help="Directory for generated Parquet files")
++    parser.add_argument("--count", type=int, default=1000, help="Number of hexes to generate")
++    args = parser.parse_args()
++
++    rng = np.random.default_rng(1234)
++    hex_cache = HexGeometryCache()
++
++    hex_ids = [random_hex() for _ in range(args.count)]
++    hex_cache.ensure_geometries(hex_ids)
++
++    scores = pd.DataFrame({"hex_id": hex_ids})
++    for subscore in SUBSCORES:
++        scores[subscore] = rng.uniform(0, 100, size=args.count)
++    scores["aucs"] = scores[SUBSCORES].mean(axis=1)
++    scores["state"] = rng.choice(STATES, size=args.count)
++    scores["metro"] = rng.choice(METROS, size=args.count)
++    scores["county"] = rng.choice(COUNTIES, size=args.count)
++
++    metadata = scores[["hex_id", "state", "metro", "county"]].copy()
++
++    output_dir = args.output
++    output_dir.mkdir(parents=True, exist_ok=True)
++    scores.to_parquet(output_dir / "scores.parquet", index=False)
++    metadata.to_parquet(output_dir / "metadata.parquet", index=False)
++    print(f"Wrote dataset to {output_dir}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/Urban_Amenities2/io/gtfs/realtime.py b/src/Urban_Amenities2/io/gtfs/realtime.py
+index ab4a6865a4f586534a9537c96fe9f3f203dc13ae..678e674390b3e19f60942902889f3c57357d840b 100644
+--- a/src/Urban_Amenities2/io/gtfs/realtime.py
++++ b/src/Urban_Amenities2/io/gtfs/realtime.py
+@@ -1,34 +1,157 @@
+ from __future__ import annotations
+
+ from dataclasses import dataclass
+ from pathlib import Path
+ from typing import Dict, List
+
+ import fsspec
+ import pandas as pd
+-from gtfs_realtime_bindings import feedmessage_pb2
++try:  # pragma: no cover - import guard for optional dependency
++    from gtfs_realtime_bindings import feedmessage_pb2  # type: ignore
++except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
++    import json
++
++    class _StopTimeEvent:
++        def __init__(self) -> None:
++            self.delay: int | None = None
++
++        def HasField(self, name: str) -> bool:
++            return getattr(self, name, None) is not None
++
++        def to_dict(self) -> dict[str, int | None]:
++            return {"delay": self.delay}
++
++        @classmethod
++        def from_dict(cls, payload: dict[str, int | None]) -> "_StopTimeEvent":
++            event = cls()
++            event.delay = payload.get("delay")
++            return event
++
++    class _StopTimeUpdate:
++        def __init__(self) -> None:
++            self.stop_sequence: int | None = None
++            self.departure = _StopTimeEvent()
++            self.arrival = _StopTimeEvent()
++
++        def HasField(self, name: str) -> bool:
++            return getattr(self, name, None) is not None
++
++        def to_dict(self) -> dict[str, object]:
++            return {
++                "stop_sequence": self.stop_sequence,
++                "departure": self.departure.to_dict(),
++                "arrival": self.arrival.to_dict(),
++            }
++
++        @classmethod
++        def from_dict(cls, payload: dict[str, object]) -> "_StopTimeUpdate":
++            update = cls()
++            update.stop_sequence = payload.get("stop_sequence")  # type: ignore[assignment]
++            if "departure" in payload:
++                update.departure = _StopTimeEvent.from_dict(payload["departure"])  # type: ignore[arg-type]
++            if "arrival" in payload:
++                update.arrival = _StopTimeEvent.from_dict(payload["arrival"])  # type: ignore[arg-type]
++            return update
++
++    class _TripDescriptor:
++        def __init__(self) -> None:
++            self.trip_id: str = ""
++            self.route_id: str = ""
++
++        def to_dict(self) -> dict[str, str]:
++            return {"trip_id": self.trip_id, "route_id": self.route_id}
++
++        @classmethod
++        def from_dict(cls, payload: dict[str, str]) -> "_TripDescriptor":
++            trip = cls()
++            trip.trip_id = payload.get("trip_id", "")
++            trip.route_id = payload.get("route_id", "")
++            return trip
++
++    class _TripUpdate:
++        def __init__(self) -> None:
++            self.trip = _TripDescriptor()
++            self.stop_time_update: list[_StopTimeUpdate] = []
++
++        def to_dict(self) -> dict[str, object]:
++            return {
++                "trip": self.trip.to_dict(),
++                "stop_time_update": [update.to_dict() for update in self.stop_time_update],
++            }
++
++        @classmethod
++        def from_dict(cls, payload: dict[str, object]) -> "_TripUpdate":
++            update = cls()
++            if "trip" in payload:
++                update.trip = _TripDescriptor.from_dict(payload["trip"])  # type: ignore[arg-type]
++            updates = payload.get("stop_time_update", [])  # type: ignore[assignment]
++            update.stop_time_update = [
++                _StopTimeUpdate.from_dict(item) for item in updates  # type: ignore[list-item]
++            ]
++            return update
++
++    class _Entity:
++        def __init__(self) -> None:
++            self.id: str = ""
++            self.trip_update = _TripUpdate()
++
++        def to_dict(self) -> dict[str, object]:
++            return {"id": self.id, "trip_update": self.trip_update.to_dict()}
++
++        @classmethod
++        def from_dict(cls, payload: dict[str, object]) -> "_Entity":
++            entity = cls()
++            entity.id = payload.get("id", "")
++            if "trip_update" in payload:
++                entity.trip_update = _TripUpdate.from_dict(payload["trip_update"])  # type: ignore[arg-type]
++            return entity
++
++    class _RepeatedContainer(list[_Entity]):
++        def add(self) -> _Entity:
++            entity = _Entity()
++            self.append(entity)
++            return entity
++
++    class _FeedMessage:
++        def __init__(self) -> None:
++            self.entity = _RepeatedContainer()
++
++        def SerializeToString(self) -> bytes:
++            data = {"entity": [entity.to_dict() for entity in self.entity]}
++            return json.dumps(data).encode("utf-8")
++
++        def ParseFromString(self, payload: bytes) -> None:
++            data = json.loads(payload.decode("utf-8"))
++            self.entity = _RepeatedContainer()
++            for entity_payload in data.get("entity", []):
++                self.entity.append(_Entity.from_dict(entity_payload))
++
++    class _FeedModule:
++        FeedMessage = _FeedMessage
++
++    feedmessage_pb2 = _FeedModule()  # type: ignore
+
+ from ...logging_utils import get_logger
+ from ...versioning.snapshots import SnapshotRegistry
+ from .registry import Agency
+
+ LOGGER = get_logger("aucs.ingest.gtfs.realtime")
+
+
+ @dataclass
+ class RealtimeConfig:
+     on_time_threshold_sec: int = 300
+
+
+ class GTFSRealtimeIngestor:
+     def __init__(self, registry: SnapshotRegistry | None = None, config: RealtimeConfig | None = None):
+         self.registry = registry or SnapshotRegistry(Path("data/snapshots.jsonl"))
+         self.config = config or RealtimeConfig()
+
+     def fetch(self, url: str) -> bytes:
+         with fsspec.open(url, mode="rb") as handle:
+             data = handle.read()
+         if self.registry.has_changed(url, data):
+             self.registry.record_snapshot(url, url, data)
+         LOGGER.info("fetched_gtfs_rt", url=url, size=len(data))
+         return data
+diff --git a/src/Urban_Amenities2/io/overture/places.py b/src/Urban_Amenities2/io/overture/places.py
+index e12de300f6a77be31ea51bb3ae710509e19c81a2..9f7a96d8ba61685a2684f5b273ca2633f3d246a5 100644
+--- a/src/Urban_Amenities2/io/overture/places.py
++++ b/src/Urban_Amenities2/io/overture/places.py
+@@ -1,28 +1,28 @@
+ from __future__ import annotations
+
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
+ from pathlib import Path
+ from typing import Optional, Tuple
+
+ import geopandas as gpd
+ import pandas as pd
+ from shapely.geometry import Point
+
+ from ...dedupe.pois import DedupeConfig, deduplicate_pois
+ from ...hex.aggregation import points_to_hex
+ from ...logging_utils import get_logger
+ from ...xwalk.overture_aucs import CategoryMatcher, load_crosswalk
+
+ LOGGER = get_logger("aucs.ingest.overture")
+
+
+ BBox = Tuple[float, float, float, float]
+
+
+ @dataclass
+ class BigQueryConfig:
+     project: str
+     dataset: str
+     table: str = "places"
+
+     def table_ref(self) -> str:
+@@ -96,51 +96,51 @@ def filter_operating(frame: pd.DataFrame) -> pd.DataFrame:
+     return frame[frame.get("operating_status", "open") == "open"].copy()
+
+
+ def extract_fields(frame: pd.DataFrame) -> pd.DataFrame:
+     columns = {
+         "id": "poi_id",
+         "name": "name",
+         "categories": "categories",
+         "primary_category": "primary_category",
+         "alternate_categories": "alternate_categories",
+         "brand": "brand",
+         "confidence": "confidence",
+         "lat": "lat",
+         "lon": "lon",
+         "opening_hours": "opening_hours",
+     }
+     extracted = frame[[col for col in columns if col in frame.columns]].rename(columns=columns)
+     if "categories" not in extracted.columns and "primary_category" in extracted.columns:
+         extracted["categories"] = extracted["primary_category"].apply(lambda value: [value] if isinstance(value, str) else [])
+     return extracted
+
+
+ @dataclass
+ class PlacesPipeline:
+     matcher: CategoryMatcher
+-    dedupe_config: DedupeConfig = DedupeConfig()
++    dedupe_config: DedupeConfig = field(default_factory=DedupeConfig)
+
+     def run(
+         self,
+         frame: pd.DataFrame,
+         output_path: Optional[Path] = None,
+         hex_resolution: int = 9,
+     ) -> gpd.GeoDataFrame:
+         working = filter_operating(frame)
+         working = extract_fields(working)
+         working = self.matcher.assign(working, primary_column="primary_category", alternate_column="alternate_categories")
+         deduped = deduplicate_pois(working, config=self.dedupe_config)
+         hexed = points_to_hex(deduped, lat_column="lat", lon_column="lon", hex_column="hex_id", resolution=hex_resolution)
+         geo = gpd.GeoDataFrame(hexed, geometry=[Point(lon, lat) for lat, lon in zip(hexed["lat"], hexed["lon"])], crs="EPSG:4326")
+         if output_path:
+             output_path.parent.mkdir(parents=True, exist_ok=True)
+             geo.to_parquet(output_path)
+         return geo
+
+
+ def load_default_pipeline(crosswalk_path: Path | str = Path("docs/AUCS place category crosswalk")) -> PlacesPipeline:
+     matcher = load_crosswalk(crosswalk_path)
+     return PlacesPipeline(matcher=matcher)
+
+
+ def ingest_places(
+diff --git a/src/Urban_Amenities2/math/diversity.py b/src/Urban_Amenities2/math/diversity.py
+index 3397c3f39d367d880c5d4a8c29984dcf29bd216b..baceba6914cfed4cbcbdc7485b51a541a9bfa402 100644
+--- a/src/Urban_Amenities2/math/diversity.py
++++ b/src/Urban_Amenities2/math/diversity.py
+@@ -1,53 +1,69 @@
+ from __future__ import annotations
+
+ import math
+ from dataclasses import dataclass
+-from typing import Dict, Iterable
++from typing import Dict, Iterable, Sequence
+
++import math
++import numpy as np
+ import pandas as pd
+
+
+-@dataclass
++@dataclass(slots=True)
+ class DiversityConfig:
++    """Configuration for within-category diversity bonuses."""
++
+     weight: float = 1.0
+     cap: float = 5.0
+
++    def __post_init__(self) -> None:
++        if self.weight < 0:
++            raise ValueError("diversity weight must be non-negative")
++        if self.cap < 0:
++            raise ValueError("diversity cap must be non-negative")
++
++
++def shannon_entropy(values: Sequence[float]) -> float:
++    """Return Shannon entropy for a sequence of non-negative values."""
+
+-def shannon_entropy(values: Iterable[float]) -> float:
+-    total = float(sum(values))
+-    if total <= 0:
++    array = np.asarray(values, dtype=float)
++    positive = array[array > 0]
++    if positive.size == 0:
+         return 0.0
+-    entropy = 0.0
+-    for value in values:
+-        if value <= 0:
+-            continue
+-        p = value / total
+-        entropy -= p * math.log(p)
+-    return entropy
++    total = positive.sum()
++    probabilities = positive / total
++    entropy = -float(np.sum(probabilities * np.log(probabilities)))
++    return max(entropy, 0.0)
+
+
+-def diversity_bonus(values: Iterable[float], weight: float = 1.0, cap: float = 5.0) -> float:
++def diversity_bonus(values: Sequence[float], weight: float = 1.0, cap: float = 5.0) -> float:
+     entropy = shannon_entropy(values)
+     bonus = weight * (math.exp(entropy) - 1.0)
+-    return float(min(bonus, cap))
++    return float(min(max(bonus, 0.0), cap))
+
+
+ def compute_diversity(
+     frame: pd.DataFrame,
+     value_column: str,
+     group_columns: Iterable[str],
+     subtype_column: str,
+-    config: Dict[str, DiversityConfig],
++    config: Dict[str, DiversityConfig] | None = None,
+ ) -> pd.DataFrame:
+-    records = []
++    if value_column not in frame.columns:
++        raise KeyError(f"{value_column} column missing from frame")
++    if subtype_column not in frame.columns:
++        raise KeyError(f"{subtype_column} column missing from frame")
++    config = config or {}
++    records: list[dict[str, object]] = []
+     for keys, group in frame.groupby(list(group_columns)):
+-        key_dict = dict(zip(group_columns, keys))
++        key_dict = dict(zip(group_columns, keys if isinstance(keys, tuple) else (keys,)))
+         category = key_dict.get("aucstype") or key_dict.get("category") or "default"
+         cfg = config.get(category, DiversityConfig())
+         values = group.groupby(subtype_column)[value_column].sum()
++        entropy = shannon_entropy(values.values)
+         bonus = diversity_bonus(values.values, weight=cfg.weight, cap=cfg.cap)
+-        records.append({**key_dict, "diversity_bonus": bonus, "entropy": shannon_entropy(values.values)})
++        records.append({**key_dict, "diversity_bonus": bonus, "entropy": entropy})
+     return pd.DataFrame.from_records(records)
+
+
+ __all__ = ["shannon_entropy", "diversity_bonus", "compute_diversity", "DiversityConfig"]
+diff --git a/src/Urban_Amenities2/scores/corridor_trip_chaining.py b/src/Urban_Amenities2/scores/corridor_trip_chaining.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..804ac641694b1bf0a5bc7a7a2438cb05743584a9
+--- /dev/null
++++ b/src/Urban_Amenities2/scores/corridor_trip_chaining.py
+@@ -0,0 +1,53 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++import numpy as np
++import pandas as pd
++
++
++@dataclass(slots=True)
++class CorridorConfig:
++    max_detour_minutes: float = 10.0
++    detour_decay: float = 5.0
++    quality_column: str = "quality"
++    detour_column: str = "detour_minutes"
++    weight_column: str = "likelihood"
++    hex_column: str = "hex_id"
++    output_column: str = "CTE"
++
++    def __post_init__(self) -> None:
++        if self.max_detour_minutes <= 0:
++            raise ValueError("max_detour_minutes must be positive")
++        if self.detour_decay <= 0:
++            raise ValueError("detour_decay must be positive")
++
++
++class CorridorTripChaining:
++    def __init__(self, config: CorridorConfig | None = None):
++        self.config = config or CorridorConfig()
++
++    def compute(self, chains: pd.DataFrame) -> pd.DataFrame:
++        cfg = self.config
++        for column in (cfg.quality_column, cfg.detour_column, cfg.weight_column, cfg.hex_column):
++            if column not in chains.columns:
++                raise KeyError(f"chains dataframe missing column {column}")
++        filtered = chains[chains[cfg.detour_column] <= cfg.max_detour_minutes].copy()
++        if filtered.empty:
++            return pd.DataFrame({cfg.hex_column: [], cfg.output_column: []})
++        filtered["weight"] = filtered[cfg.weight_column].fillna(1.0)
++        filtered["adjusted_quality"] = filtered[cfg.quality_column] * np.exp(
++            -filtered[cfg.detour_column] / cfg.detour_decay
++        )
++        filtered["score_component"] = filtered["adjusted_quality"] * filtered["weight"]
++        aggregated = filtered.groupby(cfg.hex_column)["score_component"].sum().reset_index()
++        max_score = aggregated["score_component"].max()
++        if max_score <= 0:
++            aggregated[cfg.output_column] = 0.0
++        else:
++            aggregated[cfg.output_column] = aggregated["score_component"] / max_score * 100.0
++        aggregated[cfg.output_column] = aggregated[cfg.output_column].clip(0.0, 100.0)
++        return aggregated[[cfg.hex_column, cfg.output_column]]
++
++
++__all__ = ["CorridorConfig", "CorridorTripChaining"]
+diff --git a/src/Urban_Amenities2/scores/hub_airport_access.py b/src/Urban_Amenities2/scores/hub_airport_access.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d8ee20c07237d66880a2466f98e3b7819bd63f24
+--- /dev/null
++++ b/src/Urban_Amenities2/scores/hub_airport_access.py
+@@ -0,0 +1,177 @@
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Mapping
++
++import numpy as np
++import pandas as pd
++
++from ..logging_utils import get_logger
++
++LOGGER = get_logger("aucs.scores.muhaa")
++
++
++def _minmax(series: pd.Series) -> pd.Series:
++    if series.empty:
++        return series
++    lo = series.min()
++    hi = series.max()
++    if np.isclose(hi, lo):
++        return pd.Series(np.full(len(series), 100.0), index=series.index)
++    scaled = (series - lo) / (hi - lo)
++    return scaled * 100.0
++
++
++@dataclass(slots=True)
++class HubMassWeights:
++    population: float = 0.4
++    gdp: float = 0.3
++    poi: float = 0.2
++    culture: float = 0.1
++
++    def normalised(self) -> Mapping[str, float]:
++        weights = {
++            "population": self.population,
++            "gdp": self.gdp,
++            "poi": self.poi,
++            "culture": self.culture,
++        }
++        total = sum(weights.values())
++        if total <= 0:
++            raise ValueError("hub mass weights must sum to positive value")
++        return {key: value / total for key, value in weights.items()}
++
++
++@dataclass(slots=True)
++class AccessibilityConfig:
++    alpha: float = 0.03
++    travel_time_column: str = "travel_minutes"
++    id_column: str = "hex_id"
++    destination_column: str = "destination_id"
++    impedance_column: str | None = None
++
++
++@dataclass(slots=True)
++class MuhAAConfig:
++    hub_weights: HubMassWeights = field(default_factory=HubMassWeights)
++    hub_alpha: float = 0.03
++    airport_alpha: float = 0.025
++    hub_contribution: float = 0.7
++    airport_contribution: float = 0.3
++    output_column: str = "MUHAA"
++
++    def __post_init__(self) -> None:
++        if not (0 <= self.hub_contribution <= 1 and 0 <= self.airport_contribution <= 1):
++            raise ValueError("contributions must be between 0 and 1")
++        total = self.hub_contribution + self.airport_contribution
++        if total == 0:
++            raise ValueError("at least one contribution must be positive")
++        self.hub_contribution /= total
++        self.airport_contribution /= total
++
++
++def compute_hub_mass(hubs: pd.DataFrame, weights: HubMassWeights) -> pd.DataFrame:
++    required = {"hub_id", "population", "gdp", "poi", "culture"}
++    missing = required - set(hubs.columns)
++    if missing:
++        raise KeyError(f"hubs dataframe missing columns: {sorted(missing)}")
++    hubs = hubs.copy()
++    for column in ("population", "gdp", "poi", "culture"):
++        hubs[f"{column}_scaled"] = _minmax(hubs[column].astype(float))
++    weights_norm = weights.normalised()
++    hubs["mass"] = sum(hubs[f"{column}_scaled"] * weight for column, weight in weights_norm.items())
++    LOGGER.info("hub_mass", hubs=len(hubs))
++    return hubs[["hub_id", "mass"]]
++
++
++def _generalised_cost(row: pd.Series, config: AccessibilityConfig) -> float:
++    travel = float(row[config.travel_time_column])
++    if config.impedance_column and config.impedance_column in row:
++        travel += float(row[config.impedance_column])
++    return travel
++
++
++def compute_accessibility(
++    travel: pd.DataFrame,
++    masses: pd.DataFrame,
++    *,
++    config: AccessibilityConfig,
++    alpha: float,
++) -> pd.DataFrame:
++    merged = travel.merge(masses, left_on=config.destination_column, right_on="hub_id", how="left")
++    merged = merged.dropna(subset=["mass"])
++    if merged.empty:
++        return pd.DataFrame({config.id_column: [], "accessibility": []})
++    merged["gtc"] = merged.apply(lambda row: _generalised_cost(row, config), axis=1)
++    merged["contribution"] = merged["mass"] * np.exp(-alpha * merged["gtc"])
++    aggregated = merged.groupby(config.id_column)["contribution"].sum().reset_index()
++    aggregated.rename(columns={"contribution": "accessibility"}, inplace=True)
++    aggregated["accessibility"] = _minmax(aggregated["accessibility"])
++    return aggregated
++
++
++def compute_airport_accessibility(
++    travel: pd.DataFrame,
++    airports: pd.DataFrame,
++    *,
++    config: AccessibilityConfig,
++    alpha: float,
++) -> pd.DataFrame:
++    required = {"airport_id", "enplanements"}
++    missing = required - set(airports.columns)
++    if missing:
++        raise KeyError(f"airports dataframe missing columns: {sorted(missing)}")
++    airports = airports.copy()
++    airports["mass"] = _minmax(airports["enplanements"].astype(float))
++    airports.rename(columns={"airport_id": "hub_id"}, inplace=True)
++    return compute_accessibility(travel, airports[["hub_id", "mass"]], config=config, alpha=alpha)
++
++
++class MuhAAScore:
++    def __init__(self, config: MuhAAConfig | None = None):
++        self.config = config or MuhAAConfig()
++
++    def compute(
++        self,
++        hubs: pd.DataFrame,
++        hub_travel: pd.DataFrame,
++        airports: pd.DataFrame,
++        airport_travel: pd.DataFrame,
++        *,
++        id_column: str = "hex_id",
++    ) -> pd.DataFrame:
++        hub_masses = compute_hub_mass(hubs, self.config.hub_weights)
++        hub_access = compute_accessibility(
++            hub_travel,
++            hub_masses,
++            config=AccessibilityConfig(id_column=id_column),
++            alpha=self.config.hub_alpha,
++        )
++        airport_access = compute_airport_accessibility(
++            airport_travel,
++            airports,
++            config=AccessibilityConfig(id_column=id_column),
++            alpha=self.config.airport_alpha,
++        )
++        combined = pd.merge(hub_access, airport_access, on=id_column, how="outer", suffixes=("_hub", "_airport"))
++        combined[["accessibility_hub", "accessibility_airport"]] = combined[[
++            "accessibility_hub",
++            "accessibility_airport",
++        ]].fillna(0.0)
++        combined[self.config.output_column] = (
++            combined["accessibility_hub"] * self.config.hub_contribution
++            + combined["accessibility_airport"] * self.config.airport_contribution
++        )
++        combined[self.config.output_column] = combined[self.config.output_column].clip(0.0, 100.0)
++        return combined[[id_column, self.config.output_column, "accessibility_hub", "accessibility_airport"]]
++
++
++__all__ = [
++    "HubMassWeights",
++    "AccessibilityConfig",
++    "MuhAAConfig",
++    "compute_hub_mass",
++    "compute_accessibility",
++    "compute_airport_accessibility",
++    "MuhAAScore",
++]
+diff --git a/src/Urban_Amenities2/scores/mobility_reliability.py b/src/Urban_Amenities2/scores/mobility_reliability.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4724db120c050cc838aaf19b4546f465829de1b2
+--- /dev/null
++++ b/src/Urban_Amenities2/scores/mobility_reliability.py
+@@ -0,0 +1,196 @@
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Mapping
++
++import numpy as np
++import pandas as pd
++
++
++HEX_ID = "hex_id"
++
++
++def _ensure_column(frame: pd.DataFrame, column: str) -> None:
++    if column not in frame.columns:
++        raise KeyError(f"expected column '{column}' in dataframe")
++
++
++def compute_frequent_transit_exposure(
++    stops: pd.DataFrame,
++    *,
++    headway_column: str = "headway_peak",
++    distance_column: str = "distance_m",
++    threshold_minutes: float = 15.0,
++    radius_meters: float = 500.0,
++    output_column: str = "C1",
++) -> pd.DataFrame:
++    for column in (HEX_ID, headway_column, distance_column):
++        _ensure_column(stops, column)
++    nearby = stops[stops[distance_column] <= radius_meters]
++    if nearby.empty:
++        return pd.DataFrame({HEX_ID: [], output_column: []})
++    nearby = nearby.copy()
++    nearby["frequent"] = nearby[headway_column] <= threshold_minutes
++    summary = nearby.groupby(HEX_ID)["frequent"].mean().reset_index()
++    summary[output_column] = (summary["frequent"] * 100.0).clip(0.0, 100.0)
++    return summary[[HEX_ID, output_column]]
++
++
++def compute_service_span(
++    services: pd.DataFrame,
++    *,
++    service_hours_column: str = "service_hours",
++    early_column: str = "has_early",
++    late_column: str = "has_late",
++    weekend_column: str = "has_weekend",
++    output_column: str = "C2",
++) -> pd.DataFrame:
++    for column in (HEX_ID, service_hours_column, early_column, late_column, weekend_column):
++        _ensure_column(services, column)
++    services = services.copy()
++    services["hours_score"] = (services[service_hours_column] / 24.0).clip(0.0, 1.0)
++    services["coverage_score"] = (
++        services[[early_column, late_column, weekend_column]].sum(axis=1) / 3.0
++    )
++    services[output_column] = (services[["hours_score", "coverage_score"]].mean(axis=1) * 100.0).clip(
++        0.0, 100.0
++    )
++    summary = services.groupby(HEX_ID)[output_column].max().reset_index()
++    return summary
++
++
++def compute_on_time_reliability(
++    reliability: pd.DataFrame,
++    *,
++    on_time_column: str = "on_time_pct",
++    frequency_column: str = "frequency_weight",
++    output_column: str = "C3",
++) -> pd.DataFrame:
++    for column in (HEX_ID, on_time_column, frequency_column):
++        _ensure_column(reliability, column)
++    reliability = reliability.copy()
++    reliability["weight"] = reliability[frequency_column].clip(lower=0.0)
++    grouped = reliability.groupby(HEX_ID)
++    weighted = grouped.apply(
++        lambda df: 0.0
++        if df["weight"].sum() == 0
++        else float(np.average(df[on_time_column].clip(0.0, 100.0), weights=df["weight"]))
++    )
++    return weighted.reset_index().rename(columns={0: output_column})
++
++
++def compute_network_redundancy(
++    redundancy: pd.DataFrame,
++    *,
++    transit_routes_column: str = "transit_routes",
++    road_routes_column: str = "road_routes",
++    output_column: str = "C4",
++) -> pd.DataFrame:
++    for column in (HEX_ID, transit_routes_column, road_routes_column):
++        _ensure_column(redundancy, column)
++    redundancy = redundancy.copy()
++    redundancy["route_total"] = redundancy[transit_routes_column].clip(lower=0) + redundancy[
++        road_routes_column
++    ].clip(lower=0)
++    redundancy[output_column] = (1.0 - 1.0 / (1.0 + redundancy["route_total"])) * 100.0
++    summary = redundancy.groupby(HEX_ID)[output_column].max().reset_index()
++    summary[output_column] = summary[output_column].clip(0.0, 100.0)
++    return summary
++
++
++def compute_micromobility_presence(
++    micro: pd.DataFrame,
++    *,
++    station_column: str = "stations",
++    area_column: str = "area_sqkm",
++    output_column: str = "C5",
++) -> pd.DataFrame:
++    for column in (HEX_ID, station_column, area_column):
++        _ensure_column(micro, column)
++    micro = micro.copy()
++    micro["density"] = micro[station_column] / micro[area_column].replace(0, np.nan)
++    micro["density"] = micro["density"].fillna(0.0)
++    grouped = micro.groupby(HEX_ID)["density"].mean().reset_index()
++    if grouped.empty:
++        grouped[output_column] = []  # pragma: no cover
++        return grouped[[HEX_ID, output_column]]
++    max_density = grouped["density"].max()
++    if max_density <= 0:
++        grouped[output_column] = 0.0
++    else:
++        grouped[output_column] = grouped["density"] / max_density * 100.0
++    grouped[output_column] = grouped[output_column].clip(0.0, 100.0)
++    return grouped[[HEX_ID, output_column]]
++
++
++@dataclass(slots=True)
++class MorrWeights:
++    frequent: float = 1.0
++    span: float = 1.0
++    reliability: float = 1.0
++    redundancy: float = 1.0
++    micromobility: float = 1.0
++
++    def as_dict(self) -> Mapping[str, float]:
++        weights = {
++            "C1": self.frequent,
++            "C2": self.span,
++            "C3": self.reliability,
++            "C4": self.redundancy,
++            "C5": self.micromobility,
++        }
++        total = sum(weights.values())
++        if total <= 0:
++            raise ValueError("MORR weights must sum to positive value")
++        return {key: value / total for key, value in weights.items()}
++
++
++@dataclass(slots=True)
++class MorrConfig:
++    weights: MorrWeights = field(default_factory=MorrWeights)
++    output_column: str = "MORR"
++
++
++class MobilityReliabilityCalculator:
++    def __init__(self, config: MorrConfig | None = None):
++        self.config = config or MorrConfig()
++
++    def aggregate(self, components: pd.DataFrame) -> pd.DataFrame:
++        weights = self.config.weights.as_dict()
++        for component in weights:
++            if component not in components.columns:
++                raise KeyError(f"component {component} missing from dataframe")
++        scores = components.copy()
++        scores[self.config.output_column] = (
++            sum(scores[component] * weight for component, weight in weights.items())
++        ).clip(0.0, 100.0)
++        return scores[[HEX_ID, self.config.output_column]]
++
++    def compute(
++        self,
++        c1: pd.DataFrame,
++        c2: pd.DataFrame,
++        c3: pd.DataFrame,
++        c4: pd.DataFrame,
++        c5: pd.DataFrame,
++    ) -> pd.DataFrame:
++        components = (
++            c1.merge(c2, on=HEX_ID, how="outer")
++            .merge(c3, on=HEX_ID, how="outer")
++            .merge(c4, on=HEX_ID, how="outer")
++            .merge(c5, on=HEX_ID, how="outer")
++            .fillna(0.0)
++        )
++        return self.aggregate(components)
++
++
++__all__ = [
++    "compute_frequent_transit_exposure",
++    "compute_service_span",
++    "compute_on_time_reliability",
++    "compute_network_redundancy",
++    "compute_micromobility_presence",
++    "MorrWeights",
++    "MorrConfig",
++    "MobilityReliabilityCalculator",
++]
+diff --git a/src/Urban_Amenities2/scores/seasonal_outdoors.py b/src/Urban_Amenities2/scores/seasonal_outdoors.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..56a0c94cd4d01f15388551dd05ea2861380f7c81
+--- /dev/null
++++ b/src/Urban_Amenities2/scores/seasonal_outdoors.py
+@@ -0,0 +1,180 @@
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Iterable, Mapping
++
++import numpy as np
++import pandas as pd
++
++from ..logging_utils import get_logger
++
++LOGGER = get_logger("aucs.scores.sou")
++
++MONTH_NAMES = (
++    "jan",
++    "feb",
++    "mar",
++    "apr",
++    "may",
++    "jun",
++    "jul",
++    "aug",
++    "sep",
++    "oct",
++    "nov",
++    "dec",
++)
++
++
++@dataclass(slots=True)
++class ClimateComfortConfig:
++    comfortable_temperature: tuple[float, float] = (50.0, 80.0)
++    precipitation_threshold: float = 0.5
++    wind_threshold: float = 15.0
++    month_weights: Mapping[str, float] = None  # type: ignore[assignment]
++
++    def __post_init__(self) -> None:
++        if self.month_weights is None:
++            self.month_weights = {
++                "mar": 1.0,
++                "apr": 1.1,
++                "may": 1.2,
++                "jun": 1.3,
++                "jul": 1.3,
++                "aug": 1.2,
++                "sep": 1.1,
++                "oct": 1.0,
++                "nov": 0.6,
++                "dec": 0.4,
++                "jan": 0.4,
++                "feb": 0.5,
++            }
++        if len(self.comfortable_temperature) != 2:
++            raise ValueError("comfortable_temperature must contain (min, max)")
++        lo, hi = self.comfortable_temperature
++        if hi <= lo:
++            raise ValueError("temperature max must exceed min")
++        if self.precipitation_threshold <= 0:
++            raise ValueError("precipitation_threshold must be positive")
++        if self.wind_threshold <= 0:
++            raise ValueError("wind_threshold must be positive")
++
++
++@dataclass(slots=True)
++class SeasonalOutdoorsConfig:
++    climate: ClimateComfortConfig = field(default_factory=ClimateComfortConfig)
++    parks_column: str = "parks_score"
++    output_column: str = "SOU"
++
++
++def _column_name(prefix: str, month: str) -> str:
++    return f"{prefix}_{month.lower()}"
++
++
++def _temperature_comfort(temperature: float, config: ClimateComfortConfig) -> float:
++    lo, hi = config.comfortable_temperature
++    if lo <= temperature <= hi:
++        return 1.0
++    if temperature < lo:
++        delta = lo - temperature
++        return float(np.clip(1.0 - delta / 20.0, 0.0, 1.0))
++    delta = temperature - hi
++    return float(np.clip(1.0 - delta / 20.0, 0.0, 1.0))
++
++
++def _precipitation_comfort(precip: float, config: ClimateComfortConfig) -> float:
++    if precip <= config.precipitation_threshold:
++        return 1.0
++    delta = precip - config.precipitation_threshold
++    return float(np.clip(1.0 - delta / config.precipitation_threshold, 0.0, 1.0))
++
++
++def _wind_comfort(wind: float, config: ClimateComfortConfig) -> float:
++    if wind <= config.wind_threshold:
++        return 1.0
++    delta = wind - config.wind_threshold
++    return float(np.clip(1.0 - delta / config.wind_threshold, 0.0, 1.0))
++
++
++def compute_monthly_comfort(
++    *,
++    temperature: float,
++    precipitation: float,
++    wind: float,
++    config: ClimateComfortConfig,
++) -> float:
++    temp = _temperature_comfort(temperature, config)
++    precip = _precipitation_comfort(precipitation, config)
++    wind_score = _wind_comfort(wind, config)
++    return float(np.clip(temp * precip * wind_score, 0.0, 1.0))
++
++
++def compute_sigma_out(row: pd.Series, config: ClimateComfortConfig) -> float:
++    weights = []
++    scores = []
++    for month, weight in config.month_weights.items():
++        temp = row.get(_column_name("temp", month))
++        precip = row.get(_column_name("precip", month))
++        wind = row.get(_column_name("wind", month))
++        if pd.isna(temp) or pd.isna(precip) or pd.isna(wind):
++            continue
++        comfort = compute_monthly_comfort(
++            temperature=float(temp),
++            precipitation=float(precip),
++            wind=float(wind),
++            config=config,
++        )
++        weights.append(weight)
++        scores.append(comfort)
++    if not scores:
++        return 0.0
++    weighted = float(np.average(scores, weights=weights))
++    return float(np.clip(weighted, 0.0, 1.0))
++
++
++class SeasonalOutdoorsCalculator:
++    def __init__(self, config: SeasonalOutdoorsConfig | None = None):
++        self.config = config or SeasonalOutdoorsConfig()
++
++    def compute(
++        self,
++        parks: pd.DataFrame,
++        climate: pd.DataFrame,
++        *,
++        id_column: str = "hex_id",
++    ) -> pd.DataFrame:
++        required_columns = {id_column, self.config.parks_column}
++        missing = required_columns - set(parks.columns)
++        if missing:
++            raise KeyError(f"parks dataframe missing columns: {sorted(missing)}")
++        joined = parks.merge(climate, on=id_column, how="left", suffixes=(None, "_climate"))
++        LOGGER.info("sou_join", rows=len(joined))
++        sigma_values = joined.apply(lambda row: compute_sigma_out(row, self.config.climate), axis=1)
++        joined["sigma_out"] = sigma_values
++        joined[self.config.output_column] = (
++            joined[self.config.parks_column].fillna(0.0) * joined["sigma_out"]
++        )
++        joined[self.config.output_column] = joined[self.config.output_column].clip(0.0, 100.0)
++        joined.loc[joined[self.config.parks_column] <= 0, self.config.output_column] = 0.0
++        return joined[[id_column, self.config.output_column, "sigma_out"]]
++
++
++def ensure_monthly_columns(frame: pd.DataFrame, prefixes: Iterable[str]) -> None:
++    missing: list[str] = []
++    for prefix in prefixes:
++        for month in MONTH_NAMES:
++            column = _column_name(prefix, month)
++            if column not in frame.columns:
++                missing.append(column)
++    if missing:
++        raise KeyError(f"climate dataframe missing monthly columns: {missing}")
++
++
++__all__ = [
++    "ClimateComfortConfig",
++    "SeasonalOutdoorsConfig",
++    "SeasonalOutdoorsCalculator",
++    "compute_monthly_comfort",
++    "compute_sigma_out",
++    "ensure_monthly_columns",
++]
+diff --git a/src/Urban_Amenities2/ui/__init__.py b/src/Urban_Amenities2/ui/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..914a2af294699f2e461ffd34b5ea4707ab303f21
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/__init__.py
+@@ -0,0 +1,83 @@
++"""Dash-based interactive user interface for the Urban Amenities model."""
++
++from __future__ import annotations
++
++from importlib import import_module
++from typing import Any, Dict
++
++from .config import UISettings
++
++__all__ = ["UISettings", "create_app"]
++
++
++def create_app(settings: UISettings | None = None, **overrides: Dict[str, Any]) -> Any:
++    """Create and configure the Dash application.
++
++    Parameters
++    ----------
++    settings:
++        Optional UI settings. When omitted the configuration is loaded from
++        the process environment using :class:`UISettings` defaults.
++    **overrides:
++        Keyword overrides applied to the Dash initialisation parameters.
++
++    Returns
++    -------
++    Any
++        The initialised Dash application instance. The concrete return type is
++        ``dash.Dash`` but Dash is imported lazily so that the backend remains
++        optional for non-UI contexts (e.g. batch scoring).
++    """
++
++    settings = settings or UISettings.from_environment()
++    dash = import_module("dash")
++    dash_bootstrap_components = import_module("dash_bootstrap_components")
++
++    external_stylesheets = overrides.pop(
++        "external_stylesheets",
++        [dash_bootstrap_components.themes.FLATLY],
++    )
++
++    app = dash.Dash(
++        __name__,
++        suppress_callback_exceptions=True,
++        external_stylesheets=external_stylesheets,
++        use_pages=True,
++        **overrides,
++    )
++    app.title = settings.title
++
++    # Configure Flask server behaviour (logging, health check, CORS)
++    server = app.server
++    _configure_server(server, settings)
++
++    from .layouts import register_layouts
++
++    register_layouts(app, settings)
++
++    return app
++
++
++def _configure_server(server: Any, settings: UISettings) -> None:
++    """Configure Flask server integration for the Dash application."""
++
++    from flask import Response
++
++    server.config.setdefault("SERVER_NAME", f"{settings.host}:{settings.port}")
++    server.config.setdefault("SECRET_KEY", settings.secret_key)
++
++    if settings.enable_cors:
++        cors_module = import_module("flask_cors")
++        cors_module.CORS(server, resources={r"/*": {"origins": settings.cors_origins}})
++
++    @server.route("/health")
++    def _healthcheck() -> Response:  # pragma: no cover - simple HTTP response
++        return Response("OK", status=200, mimetype="text/plain")
++
++    import logging
++
++    gunicorn_logger = logging.getLogger("gunicorn.error")
++    if gunicorn_logger.handlers:
++        server.logger.handlers = gunicorn_logger.handlers
++        server.logger.setLevel(gunicorn_logger.level)
++
+diff --git a/src/Urban_Amenities2/ui/assets/logo.svg b/src/Urban_Amenities2/ui/assets/logo.svg
+new file mode 100644
+index 0000000000000000000000000000000000000000..48a4f51061572469354272208bd23d1fad8e3930
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/assets/logo.svg
+@@ -0,0 +1,4 @@
++<svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
++  <rect x="4" y="4" width="40" height="40" rx="8" fill="#2563EB"/>
++  <path d="M16 32 L24 16 L32 32 Z" fill="#EFF6FF"/>
++</svg>
+diff --git a/src/Urban_Amenities2/ui/assets/style.css b/src/Urban_Amenities2/ui/assets/style.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa077b1def1b6ddda3987e1da3ef3ab59205aa0c
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/assets/style.css
+@@ -0,0 +1,147 @@
++:root {
++  --sidebar-width: 280px;
++  --header-height: 72px;
++  --footer-height: 48px;
++}
++
++body {
++  margin: 0;
++  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
++  background-color: #f7f9fc;
++}
++
++.app-shell {
++  display: flex;
++  flex-direction: column;
++  min-height: 100vh;
++}
++
++.app-header,
++.app-footer {
++  background-color: #1f2937;
++  color: #fff;
++  padding: 0 1.5rem;
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++}
++
++.app-header {
++  height: var(--header-height);
++}
++
++.app-footer {
++  height: var(--footer-height);
++  font-size: 0.85rem;
++}
++
++.app-body {
++  flex: 1;
++  display: flex;
++  min-height: calc(100vh - var(--header-height) - var(--footer-height));
++}
++
++.app-sidebar {
++  width: var(--sidebar-width);
++  background-color: #111827;
++  color: #9ca3af;
++  display: flex;
++  flex-direction: column;
++  padding: 1rem;
++  gap: 0.5rem;
++}
++
++.app-sidebar .nav-link {
++  color: inherit;
++  text-decoration: none;
++  padding: 0.75rem 1rem;
++  border-radius: 0.5rem;
++  display: flex;
++  align-items: center;
++  gap: 0.75rem;
++}
++
++.app-sidebar .nav-link:hover {
++  background: rgba(255, 255, 255, 0.08);
++  color: #fff;
++}
++
++.app-content {
++  flex: 1;
++  padding: 1.5rem;
++  overflow-y: auto;
++}
++
++.page {
++  background: #fff;
++  border-radius: 1rem;
++  padding: 1.5rem;
++  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
++  min-height: calc(100vh - var(--header-height) - var(--footer-height) - 3rem);
++}
++
++.map-page {
++  display: grid;
++  grid-template-columns: 320px 1fr;
++  gap: 1.5rem;
++}
++
++.map-controls {
++  display: flex;
++  flex-direction: column;
++  gap: 1rem;
++}
++
++.filter-panel,
++.parameter-panel {
++  background: #f1f5f9;
++  border-radius: 0.75rem;
++  padding: 1rem;
++  display: flex;
++  flex-direction: column;
++  gap: 0.75rem;
++}
++
++.filter-actions,
++.parameter-actions,
++.export-buttons {
++  display: flex;
++  gap: 0.5rem;
++  flex-wrap: wrap;
++}
++
++.parameter-list {
++  display: flex;
++  flex-direction: column;
++  gap: 0.75rem;
++}
++
++.subscore-description {
++  font-size: 0.85rem;
++  color: #4b5563;
++}
++
++@media (max-width: 992px) {
++  .app-body {
++    flex-direction: column;
++  }
++
++  .app-sidebar {
++    width: 100%;
++    flex-direction: row;
++    overflow-x: auto;
++  }
++
++  .map-page {
++    grid-template-columns: 1fr;
++  }
++}
++
++@media (max-width: 640px) {
++  .app-header,
++  .app-footer {
++    flex-direction: column;
++    align-items: flex-start;
++    gap: 0.5rem;
++  }
++}
+diff --git a/src/Urban_Amenities2/ui/callbacks.py b/src/Urban_Amenities2/ui/callbacks.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..cb4a771d3e8e3df16168f014fd3913484bb702f5
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/callbacks.py
+@@ -0,0 +1,135 @@
++"""Dash callback registrations."""
++
++from __future__ import annotations
++
++from pathlib import Path
++from typing import Iterable, List, Optional
++
++import pandas as pd
++from dash import Input, Output, State, callback_context, dcc, html, no_update
++
++from .components.choropleth import create_choropleth
++from .data_loader import DataContext
++from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
++
++SUBSCORE_VALUES = [option["value"] for option in SUBSCORE_OPTIONS]
++
++
++def _normalise_filters(values: Iterable[str] | None) -> List[str]:
++    if not values:
++        return []
++    if isinstance(values, str):
++        return [values]
++    return [value for value in values if value]
++
++
++def _resolution_for_zoom(zoom: Optional[float]) -> int:
++    if zoom is None:
++        return 8
++    if zoom <= 5:
++        return 6
++    if zoom <= 8:
++        return 7
++    if zoom <= 11:
++        return 8
++    return 9
++
++
++def register_callbacks(app, data_context: DataContext, settings) -> None:
++    @app.callback(
++        Output("hex-map", "figure"),
++        Output("filter-count", "children"),
++        Output("subscore-description", "children"),
++        Input("subscore-select", "value"),
++        Input("basemap-select", "value"),
++        Input("apply-filters", "n_clicks"),
++        Input("clear-filters", "n_clicks"),
++        Input("hex-map", "relayoutData"),
++        State("state-filter", "value"),
++        State("metro-filter", "value"),
++        State("county-filter", "value"),
++        State("score-range", "value"),
++        prevent_initial_call=False,
++    )
++    def _update_map(
++        subscore: str,
++        basemap: str,
++        *_events,
++        relayout_data,
++        state_values,
++        metro_values,
++        county_values,
++        score_range,
++    ):
++        triggered = callback_context.triggered_id
++        if triggered == "clear-filters":
++            state_values = metro_values = county_values = []
++            score_range = [0, 100]
++        filtered = data_context.filter_scores(
++            state=_normalise_filters(state_values),
++            metro=_normalise_filters(metro_values),
++            county=_normalise_filters(county_values),
++            score_range=tuple(score_range) if score_range else None,
++        )
++        zoom = None
++        if isinstance(relayout_data, dict):
++            zoom = relayout_data.get("mapbox.zoom")
++        resolution = _resolution_for_zoom(zoom)
++        source = filtered if not filtered.empty else data_context.scores
++        if resolution >= 9:
++            base_columns = ["hex_id", "aucs", "state", "metro", "county"]
++            if subscore not in base_columns:
++                base_columns.append(subscore)
++            frame = source[base_columns].copy()
++            hover_columns = [subscore, "aucs", "state", "metro", "centroid_lat", "centroid_lon"]
++        else:
++            frame = data_context.aggregate_by_resolution(resolution, columns=["aucs", subscore])
++            hover_columns = [subscore, "aucs", "count", "centroid_lat", "centroid_lon"]
++        frame = frame.merge(
++            data_context.geometries[["hex_id", "centroid_lat", "centroid_lon"]],
++            on="hex_id",
++            how="left",
++        )
++        geojson = data_context.to_geojson(frame)
++        figure = create_choropleth(
++            geojson=geojson,
++            frame=frame.fillna(0.0),
++            score_column=subscore,
++            hover_columns=hover_columns,
++            mapbox_token=settings.mapbox_token,
++            map_style=basemap,
++        )
++        total = len(data_context.scores)
++        filtered_count = len(source)
++        description = SUBSCORE_DESCRIPTIONS.get(subscore, "")
++        return figure, f"Showing {filtered_count:,} of {total:,} hexes", description
++
++    @app.callback(
++        Output("refresh-status", "children"),
++        Input("refresh-data", "n_clicks"),
++        prevent_initial_call=True,
++    )
++    def _refresh_data(_n_clicks: int | None):
++        data_context.refresh()
++        return html.Span(f"Reloaded dataset {data_context.version.identifier}" if data_context.version else "No dataset found")
++
++    @app.callback(
++        Output("download-data", "data"),
++        Input("export-csv", "n_clicks"),
++        Input("export-geojson", "n_clicks"),
++        prevent_initial_call=True,
++    )
++    def _export_data(csv_clicks: int | None, geojson_clicks: int | None):
++        triggered = callback_context.triggered_id
++        if triggered == "export-csv":
++            temp = Path("/tmp/ui-export.csv")
++            data_context.export_csv(temp)
++            return dcc.send_file(str(temp))
++        if triggered == "export-geojson":
++            temp = Path("/tmp/ui-export.geojson")
++            data_context.export_geojson(temp)
++            return dcc.send_file(str(temp))
++        return no_update
++
++
++__all__ = ["register_callbacks"]
+diff --git a/src/Urban_Amenities2/ui/components/__init__.py b/src/Urban_Amenities2/ui/components/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/src/Urban_Amenities2/ui/components/choropleth.py b/src/Urban_Amenities2/ui/components/choropleth.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..66dde3f942a56339b75de5081af2cfb1252bf705
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/components/choropleth.py
+@@ -0,0 +1,61 @@
++"""Plotly choropleth helpers."""
++
++from __future__ import annotations
++
++from typing import Iterable
++
++import plotly.graph_objects as go
++
++COLOR_SCALES = {
++    "aucs": "Viridis",
++    "EA": "YlGn",
++    "LCA": "Blues",
++    "MUHAA": "OrRd",
++    "JEA": "PuRd",
++    "MORR": "Plasma",
++    "CTE": "Greens",
++    "SOU": "Turbo",
++}
++
++
++def create_choropleth(
++    *,
++    geojson: dict,
++    frame,
++    score_column: str,
++    hover_columns: Iterable[str],
++    mapbox_token: str | None,
++    center: dict[str, float] | None = None,
++    zoom: float = 6.0,
++    map_style: str = "carto-positron",
++) -> go.Figure:
++    color_scale = COLOR_SCALES.get(score_column, "Viridis")
++    hover_columns = list(dict.fromkeys(hover_columns))
++    hovertemplate = "<br>".join(
++        ["<b>%{customdata[0]}</b>"]
++        + [f"{col}: %{{customdata[{i+1}]}}" for i, col in enumerate(hover_columns)]
++    )
++    figure = go.Figure(
++        go.Choroplethmapbox(
++            geojson=geojson,
++            locations=frame["hex_id"],
++            z=frame[score_column],
++            colorscale=color_scale,
++            marker_opacity=0.8,
++            marker_line_width=0,
++            customdata=frame[["hex_id", *hover_columns]].to_numpy(),
++            hovertemplate=hovertemplate,
++            colorbar=dict(title=score_column.upper()),
++        )
++    )
++    figure.update_layout(
++        mapbox_style=map_style,
++        mapbox_accesstoken=mapbox_token,
++        mapbox_center=center or {"lat": 39.5, "lon": -111.0},
++        mapbox_zoom=zoom,
++        margin=dict(l=0, r=0, t=0, b=0),
++    )
++    return figure
++
++
++__all__ = ["create_choropleth"]
+diff --git a/src/Urban_Amenities2/ui/components/filters.py b/src/Urban_Amenities2/ui/components/filters.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..af858269219c184f10273f9d57a2fb9c8b0989d6
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/components/filters.py
+@@ -0,0 +1,68 @@
++"""Reusable filter controls."""
++
++from __future__ import annotations
++
++from dash import dcc, html
++
++
++def build_filter_panel(states: list[str], metros: list[str], counties: list[str]) -> html.Div:
++    return html.Div(
++        className="filter-panel",
++        children=[
++            html.Details(
++                open=True,
++                children=[
++                    html.Summary("Filters"),
++                    dcc.Dropdown(states, multi=True, id="state-filter", placeholder="Select states"),
++                    dcc.Dropdown(metros, multi=True, id="metro-filter", placeholder="Select metro areas"),
++                    dcc.Dropdown(counties, multi=True, id="county-filter", placeholder="Select counties"),
++                    dcc.RangeSlider(0, 100, step=1, value=[0, 100], id="score-range"),
++                    html.Div(
++                        className="filter-actions",
++                        children=[
++                            html.Button("Apply Filters", id="apply-filters", className="btn btn-primary"),
++                            html.Button("Clear", id="clear-filters", className="btn btn-link"),
++                        ],
++                    ),
++                    html.Div(id="filter-count", className="filter-count"),
++                ],
++            )
++        ],
++    )
++
++
++def build_parameter_panel(default_weights: dict[str, float]) -> html.Div:
++    sliders = []
++    for key, value in default_weights.items():
++        sliders.append(
++            html.Div(
++                className="parameter-control",
++                children=[
++                    html.Label(f"{key} weight"),
++                    dcc.Slider(0, 100, step=1, value=value, id=f"weight-{key}", tooltip={"placement": "bottom"}),
++                ],
++            )
++        )
++    return html.Div(
++        className="parameter-panel",
++        children=[
++            html.H5("Advanced Settings"),
++            html.Details(
++                open=False,
++                children=[
++                    html.Summary("Adjust subscore weights"),
++                    html.Div(className="parameter-list", children=sliders),
++                    html.Div(
++                        className="parameter-actions",
++                        children=[
++                            html.Button("Recalculate", id="recalculate", className="btn btn-success"),
++                            html.Button("Reset", id="reset-params", className="btn btn-secondary"),
++                        ],
++                    ),
++                ],
++            ),
++        ],
++    )
++
++
++__all__ = ["build_filter_panel", "build_parameter_panel"]
+diff --git a/src/Urban_Amenities2/ui/components/footer.py b/src/Urban_Amenities2/ui/components/footer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6452c6d5573bbd0d61184dd78d5235015af4c20b
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/components/footer.py
+@@ -0,0 +1,20 @@
++"""Footer component."""
++
++from __future__ import annotations
++
++from datetime import datetime
++
++from dash import html
++
++
++def build_footer() -> html.Footer:
++    return html.Footer(
++        className="app-footer",
++        children=[
++            html.Span(f"© {datetime.utcnow():%Y} Urban Amenities Initiative"),
++            html.Span("Build: v1.0"),
++        ],
++    )
++
++
++__all__ = ["build_footer"]
+diff --git a/src/Urban_Amenities2/ui/components/header.py b/src/Urban_Amenities2/ui/components/header.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..88c43287c80624c753ae996992a12fce7b1c96f2
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/components/header.py
+@@ -0,0 +1,26 @@
++"""Header component for the Dash UI."""
++
++from __future__ import annotations
++
++from dash import html
++
++from ..config import UISettings
++
++
++def build_header(settings: UISettings) -> html.Header:
++    return html.Header(
++        className="app-header",
++        children=[
++            html.Div(className="brand", children=[html.Img(src="/assets/logo.svg", className="logo"), html.H1(settings.title)]),
++            html.Div(
++                className="user-info",
++                children=[
++                    html.Span("Signed in as data analyst", className="user-name"),
++                    html.Button("Feedback", className="btn btn-outline-light", id="feedback-button"),
++                ],
++            ),
++        ],
++    )
++
++
++__all__ = ["build_header"]
+diff --git a/src/Urban_Amenities2/ui/components/navigation.py b/src/Urban_Amenities2/ui/components/navigation.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..dcafab7f34d6ed9e3021d29662d847b99e802e0b
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/components/navigation.py
+@@ -0,0 +1,28 @@
++"""Sidebar navigation for the UI."""
++
++from __future__ import annotations
++
++from dash import dcc, html
++
++PAGES = [
++    {"path": "/", "label": "Overview", "icon": "fa fa-chart-line"},
++    {"path": "/map", "label": "Map Explorer", "icon": "fa fa-map"},
++    {"path": "/data", "label": "Data", "icon": "fa fa-database"},
++    {"path": "/settings", "label": "Settings", "icon": "fa fa-sliders-h"},
++]
++
++
++def build_sidebar() -> html.Aside:
++    links = []
++    for page in PAGES:
++        links.append(
++            dcc.Link(
++                className="nav-link",
++                href=page["path"],
++                children=[html.I(className=page["icon"]), html.Span(page["label"])],
++            )
++        )
++    return html.Aside(className="app-sidebar", children=links)
++
++
++__all__ = ["build_sidebar"]
+diff --git a/src/Urban_Amenities2/ui/config.py b/src/Urban_Amenities2/ui/config.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..083083f64a0c0ff00d68bfcc2dd7eda35d71a7ac
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/config.py
+@@ -0,0 +1,57 @@
++"""Environment-driven configuration for the Urban Amenities UI."""
++
++from __future__ import annotations
++
++import os
++from dataclasses import dataclass, field
++from pathlib import Path
++from typing import List
++
++from ..logging_utils import get_logger
++
++LOGGER = get_logger("ui.config")
++
++
++@dataclass(slots=True)
++class UISettings:
++    """Configuration state for the Dash application."""
++
++    host: str = field(default_factory=lambda: os.getenv("UI_HOST", "0.0.0.0"))
++    port: int = field(default_factory=lambda: int(os.getenv("UI_PORT", "8050")))
++    debug: bool = field(default_factory=lambda: os.getenv("UI_DEBUG", "false").lower() == "true")
++    secret_key: str = field(default_factory=lambda: os.getenv("UI_SECRET_KEY", "change-me"))
++    mapbox_token: str | None = field(default_factory=lambda: os.getenv("MAPBOX_TOKEN"))
++    cors_origins: List[str] = field(default_factory=lambda: _split_env("UI_CORS_ORIGINS", "*"))
++    enable_cors: bool = field(default_factory=lambda: os.getenv("UI_ENABLE_CORS", "true").lower() == "true")
++    data_path: Path = field(default_factory=lambda: Path(os.getenv("UI_DATA_PATH", "data/outputs")))
++    log_level: str = field(default_factory=lambda: os.getenv("UI_LOG_LEVEL", "INFO"))
++    title: str = field(default_factory=lambda: os.getenv("UI_TITLE", "Urban Amenities Explorer"))
++    reload_interval_seconds: int = field(
++        default_factory=lambda: int(os.getenv("UI_RELOAD_INTERVAL", "30"))
++    )
++    hex_resolutions: List[int] = field(default_factory=lambda: _split_int_env("UI_HEX_RESOLUTIONS", "6,7,8,9"))
++    summary_percentiles: List[int] = field(default_factory=lambda: _split_int_env("UI_SUMMARY_PERCENTILES", "5,25,50,75,95"))
++
++    @classmethod
++    def from_environment(cls) -> "UISettings":
++        settings = cls()
++        LOGGER.info(
++            "ui_settings_loaded",
++            host=settings.host,
++            port=settings.port,
++            data_path=str(settings.data_path),
++            debug=settings.debug,
++        )
++        return settings
++
++
++def _split_env(name: str, default: str) -> List[str]:
++    value = os.getenv(name, default)
++    return [item.strip() for item in value.split(",") if item.strip()]
++
++
++def _split_int_env(name: str, default: str) -> List[int]:
++    return [int(item) for item in _split_env(name, default)]
++
++
++__all__ = ["UISettings"]
+diff --git a/src/Urban_Amenities2/ui/data_loader.py b/src/Urban_Amenities2/ui/data_loader.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0d4d8257fb4395ee78a35af4d1a875ce8b0bc58f
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/data_loader.py
+@@ -0,0 +1,246 @@
++"""Utilities for loading and caching model output data for the UI."""
++
++from __future__ import annotations
++
++import json
++import os
++from dataclasses import dataclass, field
++from datetime import datetime
++from pathlib import Path
++from typing import Dict, Iterable, List, Mapping, Optional
++
++import pandas as pd
++
++from ..logging_utils import get_logger
++from .config import UISettings
++from .hexes import HexGeometryCache, build_hex_index
++
++LOGGER = get_logger("ui.data")
++
++REQUIRED_COLUMNS = {
++    "scores": {"hex_id", "aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"},
++    "metadata": {"hex_id", "state", "metro", "county"},
++}
++
++
++def _require_columns(frame: pd.DataFrame, required: Iterable[str]) -> None:
++    missing = [column for column in required if column not in frame.columns]
++    if missing:
++        msg = f"DataFrame missing required columns: {missing}"
++        raise KeyError(msg)
++
++
++@dataclass(slots=True)
++class DatasetVersion:
++    identifier: str
++    created_at: datetime
++    path: Path
++
++    @classmethod
++    def from_path(cls, path: Path) -> "DatasetVersion":
++        stat = path.stat()
++        identifier = path.stem
++        created_at = datetime.fromtimestamp(stat.st_mtime)
++        return cls(identifier=identifier, created_at=created_at, path=path)
++
++
++@dataclass(slots=True)
++class DataContext:
++    """Holds loaded datasets and derived aggregates for the UI."""
++
++    settings: UISettings
++    scores: pd.DataFrame = field(default_factory=pd.DataFrame)
++    metadata: pd.DataFrame = field(default_factory=pd.DataFrame)
++    geometries: pd.DataFrame = field(default_factory=pd.DataFrame)
++    version: DatasetVersion | None = None
++    hex_cache: HexGeometryCache = field(default_factory=HexGeometryCache)
++
++    @classmethod
++    def from_settings(cls, settings: UISettings) -> "DataContext":
++        context = cls(settings=settings)
++        context.refresh()
++        return context
++
++    def refresh(self) -> None:
++        """Reload parquet files if a newer version is available."""
++
++        data_path = self.settings.data_path
++        if not data_path.exists():
++            LOGGER.warning("ui_data_path_missing", path=str(data_path))
++            return
++
++        parquet_files = sorted(data_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime, reverse=True)
++        if not parquet_files:
++            LOGGER.warning("ui_no_parquet", path=str(data_path))
++            return
++
++        latest = DatasetVersion.from_path(parquet_files[0])
++        if self.version and latest.created_at <= self.version.created_at:
++            return
++
++        LOGGER.info("ui_loading_dataset", version=latest.identifier)
++        self.scores = self._load_parquet(latest.path, columns=None)
++        _require_columns(self.scores, REQUIRED_COLUMNS["scores"])
++        metadata_path = data_path / "metadata.parquet"
++        if metadata_path.exists():
++            self.metadata = self._load_parquet(metadata_path)
++            _require_columns(self.metadata, REQUIRED_COLUMNS["metadata"])
++        else:
++            self.metadata = pd.DataFrame()
++        if not self.metadata.empty:
++            self.scores = self.scores.merge(self.metadata, on="hex_id", how="left")
++        self.version = latest
++        self._prepare_geometries()
++        self.validate_geometries()
++
++    def _prepare_geometries(self) -> None:
++        if "hex_id" not in self.scores.columns:
++            return
++        hex_ids = self.scores["hex_id"].astype(str).unique()
++        geometries = self.hex_cache.ensure_geometries(hex_ids)
++        self.geometries = geometries
++
++    def validate_geometries(self) -> None:
++        if "hex_id" not in self.scores.columns:
++            return
++        self.hex_cache.validate(self.scores["hex_id"].astype(str))
++
++    def _load_parquet(self, path: Path, columns: Optional[Iterable[str]] = None) -> pd.DataFrame:
++        frame = pd.read_parquet(path, columns=list(columns) if columns else None)
++        if "hex_id" in frame.columns:
++            frame["hex_id"] = frame["hex_id"].astype("category")
++        return frame
++
++    def load_subset(self, columns: Iterable[str]) -> pd.DataFrame:
++        """Return a view of the scores table restricted to specific columns."""
++
++        if self.scores.empty:
++            return self.scores
++        subset = self.scores[list(columns)].copy()
++        return subset
++
++    def filter_scores(
++        self,
++        *,
++        state: Iterable[str] | None = None,
++        metro: Iterable[str] | None = None,
++        county: Iterable[str] | None = None,
++        score_range: tuple[float, float] | None = None,
++    ) -> pd.DataFrame:
++        frame = self.scores
++        if frame.empty or self.metadata.empty:
++            return frame
++        mask = pd.Series(True, index=frame.index)
++        if state:
++            state_mask = frame["state"].isin(state)
++            mask &= state_mask
++        if metro:
++            mask &= frame["metro"].isin(metro)
++        if county:
++            mask &= frame["county"].isin(county)
++        if score_range:
++            low, high = score_range
++            mask &= frame["aucs"].between(low, high)
++        return frame[mask]
++
++    def summarise(self, columns: Iterable[str] | None = None) -> pd.DataFrame:
++        if self.scores.empty:
++            return pd.DataFrame()
++        columns = list(columns) if columns else ["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
++        summary = {}
++        percentiles = [p / 100.0 for p in self.settings.summary_percentiles]
++        for column in columns:
++            if column not in self.scores.columns:
++                continue
++            series = self.scores[column]
++            summary[column] = {
++                "min": float(series.min()),
++                "max": float(series.max()),
++                "mean": float(series.mean()),
++                **{f"p{int(p * 100)}": float(series.quantile(p)) for p in percentiles},
++            }
++        return pd.DataFrame(summary).T
++
++    def export_geojson(self, path: Path, columns: Iterable[str] | None = None) -> Path:
++        columns = list(columns) if columns else ["hex_id", "aucs"]
++        frame = self.load_subset(columns + ["hex_id"])
++        payload = self.to_geojson(frame)
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(json.dumps(payload))
++        return path
++
++    def to_geojson(self, frame: pd.DataFrame) -> dict:
++        geometries = self.geometries
++        if geometries.empty:
++            raise RuntimeError("Hex geometries not initialised")
++        merged = frame.merge(geometries, on="hex_id", how="left")
++        features = []
++        for record in merged.to_dict("records"):
++            geometry = json.loads(record.pop("geometry"))
++            features.append({"type": "Feature", "geometry": geometry, "properties": record})
++        return {"type": "FeatureCollection", "features": features}
++
++    def export_csv(self, path: Path, columns: Iterable[str] | None = None) -> Path:
++        columns = list(columns) if columns else ["hex_id", "aucs", "EA", "LCA"]
++        frame = self.load_subset(columns)
++        path.parent.mkdir(parents=True, exist_ok=True)
++        frame.to_csv(path, index=False)
++        return path
++
++    def export_shapefile(self, path: Path, columns: Iterable[str] | None = None) -> Path:
++        geopandas = __import__("geopandas")
++        columns = list(columns) if columns else ["hex_id", "aucs"]
++        frame = self.load_subset(columns + ["hex_id"])
++        geometries = self.geometries
++        if geometries.empty:
++            raise RuntimeError("Hex geometries not initialised")
++        merged = frame.merge(geometries, on="hex_id", how="left")
++        gdf = geopandas.GeoDataFrame(
++            merged.drop(columns=["geometry"]),
++            geometry=geopandas.GeoSeries.from_wkt(merged["geometry_wkt"]),
++            crs="EPSG:4326",
++        )
++        path.parent.mkdir(parents=True, exist_ok=True)
++        gdf.to_file(path)
++        return path
++
++    def get_hex_index(self, resolution: int) -> Mapping[str, List[str]]:
++        if self.geometries.empty:
++            return {}
++        return build_hex_index(self.geometries, resolution)
++
++    def aggregate_by_resolution(
++        self, resolution: int, columns: Iterable[str] | None = None
++    ) -> pd.DataFrame:
++        if self.scores.empty:
++            return pd.DataFrame()
++        index = self.get_hex_index(resolution)
++        if not index:
++            return pd.DataFrame()
++        columns = list(dict.fromkeys(columns or ["aucs"]))
++        records: list[dict[str, object]] = []
++        for parent, children in index.items():
++            subset = self.scores[self.scores["hex_id"].isin(children)]
++            if subset.empty:
++                continue
++            record = {"hex_id": parent, "count": int(len(subset))}
++            for column in columns:
++                if column in subset:
++                    record[column] = float(subset[column].mean())
++            records.append(record)
++        frame = pd.DataFrame.from_records(records)
++        if frame.empty:
++            return frame
++        new_geoms = self.hex_cache.ensure_geometries(frame["hex_id"].astype(str).tolist())
++        if self.geometries.empty:
++            self.geometries = new_geoms
++        else:
++            self.geometries = (
++                pd.concat([self.geometries, new_geoms])
++                .drop_duplicates(subset=["hex_id"], keep="last")
++                .reset_index(drop=True)
++            )
++        return frame
++
++
++__all__ = ["DataContext", "DatasetVersion"]
+diff --git a/src/Urban_Amenities2/ui/hexes.py b/src/Urban_Amenities2/ui/hexes.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3e2ecb5dc8b6edd13c6340f0c9eb5d93eff8d76f
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/hexes.py
+@@ -0,0 +1,143 @@
++"""Utilities for working with H3 hexagon geometries within the UI."""
++
++from __future__ import annotations
++
++import json
++from dataclasses import dataclass, field
++from functools import lru_cache
++from typing import Dict, Iterable, List, Mapping, Sequence
++import pandas as pd
++
++from ..logging_utils import get_logger
++
++LOGGER = get_logger("ui.hexes")
++
++
++@lru_cache(maxsize=10_000)
++def _hex_boundary_geojson(hex_id: str) -> str:
++    h3 = __import__("h3")
++    boundary = h3.h3_to_geo_boundary(hex_id, geo_json=True)
++    return json.dumps({"type": "Polygon", "coordinates": [boundary]})
++
++
++@lru_cache(maxsize=10_000)
++def _hex_boundary_wkt(hex_id: str) -> str:
++    h3 = __import__("h3")
++    boundary = h3.h3_to_geo_boundary(hex_id, geo_json=True)
++    coords = ",".join(f"{lon} {lat}" for lon, lat in boundary)
++    return f"POLYGON(({coords}))"
++
++
++@lru_cache(maxsize=10_000)
++def _hex_centroid(hex_id: str) -> tuple[float, float]:
++    h3 = __import__("h3")
++    lat, lon = h3.h3_to_geo(hex_id)
++    return lon, lat
++
++
++def hex_to_geojson(hex_id: str) -> dict:
++    return json.loads(_hex_boundary_geojson(hex_id))
++
++
++def hex_to_wkt(hex_id: str) -> str:
++    return _hex_boundary_wkt(hex_id)
++
++
++def hex_centroid(hex_id: str) -> tuple[float, float]:
++    return _hex_centroid(hex_id)
++
++
++@dataclass(slots=True)
++class HexGeometryCache:
++    """Cache hexagon geometries and derived attributes."""
++
++    store: Dict[str, Dict[str, object]] = field(default_factory=dict)
++
++    def ensure_geometries(self, hex_ids: Sequence[str]) -> pd.DataFrame:
++        records = []
++        for hex_id in hex_ids:
++            if hex_id not in self.store:
++                geometry = _hex_boundary_geojson(hex_id)
++                wkt = _hex_boundary_wkt(hex_id)
++                lon, lat = _hex_centroid(hex_id)
++                self.store[hex_id] = {
++                    "hex_id": hex_id,
++                    "geometry": geometry,
++                    "geometry_wkt": wkt,
++                    "centroid_lon": lon,
++                    "centroid_lat": lat,
++                }
++            records.append(self.store[hex_id])
++        return pd.DataFrame.from_records(records)
++
++    def validate(self, hex_ids: Sequence[str]) -> None:
++        missing = [hex_id for hex_id in hex_ids if hex_id not in self.store]
++        if missing:
++            msg = f"Missing geometries for {len(missing)} hexes"
++            raise ValueError(msg)
++
++
++def build_hex_index(geometries: pd.DataFrame, resolution: int) -> Mapping[str, List[str]]:
++    """Aggregate fine geometries into coarser resolution buckets."""
++
++    h3 = __import__("h3")
++    if geometries.empty:
++        return {}
++    _require_columns = {"hex_id"}
++    if not _require_columns.issubset(geometries.columns):
++        raise KeyError("Geometries frame must contain hex_id column")
++    coarse_map: Dict[str, List[str]] = {}
++    for hex_id in geometries["hex_id"].astype(str):
++        parent = h3.h3_to_parent(hex_id, resolution)
++        coarse_map.setdefault(parent, []).append(hex_id)
++    return coarse_map
++
++
++@dataclass(slots=True)
++class HexSpatialIndex:
++    """Spatial index leveraging shapely STRtree when available."""
++
++    geometries: pd.DataFrame
++
++    def __post_init__(self) -> None:
++        try:
++            from shapely import wkt as shapely_wkt
++            from shapely.geometry import box
++            from shapely.strtree import STRtree
++        except ImportError:  # pragma: no cover - optional dependency
++            self._tree = None
++            LOGGER.warning("shapely_missing", msg="Shapely not installed; viewport queries use bbox fallback")
++            return
++        geometries = [shapely_wkt.loads(wkt) for wkt in self.geometries["geometry_wkt"]]
++        self._tree = STRtree(geometries)
++        self._geom_map = dict(zip(geometries, self.geometries["hex_id"]))
++        self._box = box
++
++    def query_bbox(self, lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> List[str]:
++        if getattr(self, "_tree", None) is None:
++            frame = self.geometries
++            mask = (
++                (frame["centroid_lon"] >= lon_min)
++                & (frame["centroid_lon"] <= lon_max)
++                & (frame["centroid_lat"] >= lat_min)
++                & (frame["centroid_lat"] <= lat_max)
++            )
++            return frame.loc[mask, "hex_id"].astype(str).tolist()
++        envelope = self._box(lon_min, lat_min, lon_max, lat_max)
++        matches = self._tree.query(envelope)
++        return [self._geom_map[geom] for geom in matches]
++
++    def neighbours(self, hex_id: str, k: int = 1) -> List[str]:
++        h3 = __import__("h3")
++        neighbours = h3.k_ring(hex_id, k)
++        return [cell for cell in neighbours if cell in self.geometries["hex_id"].values]
++
++
++__all__ = [
++    "HexGeometryCache",
++    "HexSpatialIndex",
++    "build_hex_index",
++    "hex_to_geojson",
++    "hex_to_wkt",
++    "hex_centroid",
++]
+diff --git a/src/Urban_Amenities2/ui/layouts/__init__.py b/src/Urban_Amenities2/ui/layouts/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..74886ecf4cd3b49734b6e7fc26454e4dceb402b2
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/layouts/__init__.py
+@@ -0,0 +1,65 @@
++"""Register Dash pages and layout fragments."""
++
++from __future__ import annotations
++
++from importlib import import_module
++from typing import Any
++
++from dash import Dash, dcc, html, page_container
++
++from ..config import UISettings
++from ..data_loader import DataContext
++from ..logging import configure_logging
++
++DATA_CONTEXT: DataContext | None = None
++SETTINGS: UISettings | None = None
++
++
++def register_layouts(app: Dash, settings: UISettings) -> None:
++    """Initialise Dash pages and common callbacks."""
++
++    global DATA_CONTEXT, SETTINGS
++    configure_logging(settings.log_level)
++    data_context = DataContext.from_settings(settings)
++    DATA_CONTEXT = data_context
++    SETTINGS = settings
++
++    from ..components.navigation import build_sidebar
++    from ..components.header import build_header
++    from ..components.footer import build_footer
++
++    app.layout = html.Div(
++        className="app-shell",
++        children=[
++            build_header(settings),
++            html.Div(
++                className="app-body",
++                children=[
++                    build_sidebar(),
++                    html.Main(
++                        className="app-content",
++                        children=[dcc.Location(id="url"), page_container],
++                    ),
++                ],
++            ),
++            build_footer(),
++        ],
++    )
++
++    _register_pages(settings, data_context)
++
++    from ..callbacks import register_callbacks
++
++    register_callbacks(app, data_context, settings)
++
++
++def _register_pages(settings: UISettings, data_context: DataContext) -> None:
++    """Import page modules so that Dash's page registry is populated."""
++
++    import_module("Urban_Amenities2.ui.layouts.home")
++    import_module("Urban_Amenities2.ui.layouts.map_view")
++    import_module("Urban_Amenities2.ui.layouts.data_management")
++    import_module("Urban_Amenities2.ui.layouts.settings")
++
++
++__all__ = ["register_layouts"]
+diff --git a/src/Urban_Amenities2/ui/layouts/data_management.py b/src/Urban_Amenities2/ui/layouts/data_management.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3f75fe9f7cecf7cc5591204ba4883734a784431f
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/layouts/data_management.py
+@@ -0,0 +1,39 @@
++"""Data management page."""
++
++from __future__ import annotations
++
++from pathlib import Path
++
++from dash import dcc, html, register_page
++
++from ..config import UISettings
++from . import DATA_CONTEXT, SETTINGS
++
++register_page(__name__, path="/data", name="Data")
++
++
++def layout(**_) -> html.Div:
++    context = DATA_CONTEXT
++    settings = SETTINGS or UISettings.from_environment()
++    version = context.version.identifier if context and context.version else "Unavailable"
++    return html.Div(
++        className="page data-page",
++        children=[
++            html.H2("Data Management"),
++            html.P(f"Current dataset: {version}"),
++            html.Button("Refresh", id="refresh-data", className="btn btn-primary"),
++            html.Div(id="refresh-status", className="refresh-status"),
++            html.H3("Export"),
++            html.Div(
++                className="export-buttons",
++                children=[
++                    html.Button("Download CSV", id="export-csv", className="btn btn-secondary"),
++                    html.Button("Download GeoJSON", id="export-geojson", className="btn btn-secondary"),
++                ],
++            ),
++            dcc.Download(id="download-data"),
++        ],
++    )
++
++
++__all__ = ["layout"]
+diff --git a/src/Urban_Amenities2/ui/layouts/home.py b/src/Urban_Amenities2/ui/layouts/home.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9384bc538f54d8adb7cdc9a8f45af18e162e6e69
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/layouts/home.py
+@@ -0,0 +1,32 @@
++"""Home page summarising key metrics."""
++
++from __future__ import annotations
++
++from dash import dash_table, html, register_page
++
++from . import DATA_CONTEXT
++
++register_page(__name__, path="/", name="Overview")
++
++
++def layout(**_) -> html.Div:
++    context = DATA_CONTEXT
++    summary = context.summarise() if context else None
++    table = dash_table.DataTable(
++        id="summary-table",
++        data=summary.reset_index().rename(columns={"index": "metric"}).to_dict("records") if summary is not None else [],
++        columns=[{"name": col.title(), "id": col} for col in (summary.reset_index().columns if summary is not None else ["metric", "min", "max", "mean"])],
++        sort_action="native",
++        page_size=10,
++    )
++    return html.Div(
++        className="page overview-page",
++        children=[
++            html.H2("Urban Amenities Overview"),
++            html.P("Explore composite scores, category distribution, and recent model runs."),
++            table,
++        ],
++    )
++
++
++__all__ = ["layout"]
+diff --git a/src/Urban_Amenities2/ui/layouts/map_view.py b/src/Urban_Amenities2/ui/layouts/map_view.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d87a0833065a45ae2db5cbe3da2cfb3c5c65c898
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/layouts/map_view.py
+@@ -0,0 +1,65 @@
++"""Map exploration page."""
++
++from __future__ import annotations
++
++from dash import dcc, html, register_page
++
++from ..config import UISettings
++from ..scores_controls import SUBSCORE_OPTIONS, SUBSCORE_DESCRIPTIONS
++from ..components.filters import build_filter_panel, build_parameter_panel
++from . import DATA_CONTEXT, SETTINGS
++
++register_page(__name__, path="/map", name="Map Explorer")
++
++
++def layout(**_) -> html.Div:
++    context = DATA_CONTEXT
++    settings = SETTINGS or UISettings.from_environment()
++    states = sorted(context.scores["state"].dropna().unique()) if context and "state" in context.scores else []
++    metros = sorted(context.scores["metro"].dropna().unique()) if context and "metro" in context.scores else []
++    counties = sorted(context.scores["county"].dropna().unique()) if context and "county" in context.scores else []
++    default_weights = {option["value"]: 100 / len(SUBSCORE_OPTIONS) for option in SUBSCORE_OPTIONS}
++    return html.Div(
++        className="page map-page",
++        children=[
++            html.Div(
++                className="map-controls",
++                children=[
++                    build_filter_panel(states, metros, counties),
++                    build_parameter_panel(default_weights),
++                    html.Label("Subscore"),
++                    dcc.Dropdown(
++                        options=SUBSCORE_OPTIONS,
++                        value="aucs",
++                        id="subscore-select",
++                        clearable=False,
++                    ),
++                    html.Div(
++                        SUBSCORE_DESCRIPTIONS["aucs"],
++                        id="subscore-description",
++                        className="subscore-description",
++                    ),
++                    html.Label("Base Map"),
++                    dcc.Dropdown(
++                        options=[
++                            {"label": "Streets", "value": "mapbox://styles/mapbox/streets-v11"},
++                            {"label": "Outdoors", "value": "mapbox://styles/mapbox/outdoors-v11"},
++                            {"label": "Satellite", "value": "mapbox://styles/mapbox/satellite-streets-v12"},
++                            {"label": "Dark", "value": "mapbox://styles/mapbox/dark-v10"},
++                        ],
++                        value="mapbox://styles/mapbox/streets-v11",
++                        id="basemap-select",
++                        clearable=False,
++                    ),
++                ],
++            ),
++            dcc.Loading(
++                id="map-loading",
++                type="circle",
++                children=dcc.Graph(id="hex-map", config={"displayModeBar": False}),
++            ),
++        ],
++    )
++
++
++__all__ = ["layout"]
+diff --git a/src/Urban_Amenities2/ui/layouts/settings.py b/src/Urban_Amenities2/ui/layouts/settings.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e366d7084a057048eadea36e8a2dc8155cf969bd
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/layouts/settings.py
+@@ -0,0 +1,33 @@
++"""Settings page for environment configuration."""
++
++from __future__ import annotations
++
++from dash import html, register_page
++
++from ..config import UISettings
++from . import SETTINGS
++
++register_page(__name__, path="/settings", name="Settings")
++
++
++def layout(**_) -> html.Div:
++    settings = SETTINGS or UISettings.from_environment()
++    items = [
++        ("Host", settings.host),
++        ("Port", settings.port),
++        ("Debug", settings.debug),
++        ("Data path", settings.data_path),
++        ("CORS origins", ", ".join(settings.cors_origins)),
++        ("Reload interval", f"{settings.reload_interval_seconds}s"),
++        ("Hex resolutions", ", ".join(str(r) for r in settings.hex_resolutions)),
++    ]
++    return html.Div(
++        className="page settings-page",
++        children=[
++            html.H2("Settings"),
++            html.Ul([html.Li([html.Strong(label), f": {value}"]) for label, value in items]),
++        ],
++    )
++
++
++__all__ = ["layout"]
+diff --git a/src/Urban_Amenities2/ui/logging.py b/src/Urban_Amenities2/ui/logging.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..40676f8bc5b2bcae0352ffb41158db97159eec7c
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/logging.py
+@@ -0,0 +1,16 @@
++"""Logging helpers for the UI application."""
++
++from __future__ import annotations
++
++import logging
++from logging import Logger
++
++from ..logging_utils import get_logger
++
++
++def configure_logging(level: str = "INFO") -> Logger:
++    logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO))
++    return get_logger("ui")
++
++
++__all__ = ["configure_logging"]
+diff --git a/src/Urban_Amenities2/ui/run.py b/src/Urban_Amenities2/ui/run.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a051e2bacf3c620505237e4829120b1b0ae86b6d
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/run.py
+@@ -0,0 +1,15 @@
++"""Entry point for running the Dash UI."""
++
++from __future__ import annotations
++
++from . import UISettings, create_app
++
++
++def main() -> None:
++    settings = UISettings.from_environment()
++    app = create_app(settings)
++    app.run_server(host=settings.host, port=settings.port, debug=settings.debug)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/Urban_Amenities2/ui/scores_controls.py b/src/Urban_Amenities2/ui/scores_controls.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..573a52de8187324fbbfd61a9ba4461db11bec889
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/scores_controls.py
+@@ -0,0 +1,26 @@
++"""Shared constants for score controls."""
++
++SUBSCORE_OPTIONS = [
++    {"label": "Total AUCS", "value": "aucs"},
++    {"label": "Essentials Access", "value": "EA"},
++    {"label": "Leisure & Culture", "value": "LCA"},
++    {"label": "Major Urban Hub & Airport Access", "value": "MUHAA"},
++    {"label": "Jobs & Education", "value": "JEA"},
++    {"label": "Mobility Reliability", "value": "MORR"},
++    {"label": "Corridor Trip Enrichment", "value": "CTE"},
++    {"label": "Seasonal Outdoors", "value": "SOU"},
++]
++
++SUBSCORE_DESCRIPTIONS = {
++    "aucs": "Overall composite score aggregating all subscores with current weights.",
++    "EA": "Access to essential amenities such as groceries, pharmacies, and childcare.",
++    "LCA": "Leisure and culture opportunities including dining, arts, parks, and recreation.",
++    "MUHAA": "Connectivity to major urban hubs and airports weighted by travel cost.",
++    "JEA": "Jobs and education accessibility capturing employment centers and universities.",
++    "MORR": "Mobility options, reliability, and resilience across transit and micromobility.",
++    "CTE": "Corridor trip-chaining enrichment measuring errand-friendly transit paths.",
++    "SOU": "Seasonal outdoors comfort balancing climate, trails, and recreation readiness.",
++}
++
++
++__all__ = ["SUBSCORE_OPTIONS", "SUBSCORE_DESCRIPTIONS"]
+diff --git a/src/Urban_Amenities2/versioning/snapshots.py b/src/Urban_Amenities2/versioning/snapshots.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..366ad0803354b394ac040eab85476b14e6848940
+--- /dev/null
++++ b/src/Urban_Amenities2/versioning/snapshots.py
+@@ -0,0 +1,7 @@
++"""Compatibility wrapper for snapshot registry utilities."""
++
++from __future__ import annotations
++
++from ..io.versioning.snapshots import SnapshotRecord, SnapshotRegistry
++
++__all__ = ["SnapshotRegistry", "SnapshotRecord"]
+diff --git a/tests/test_corridor_trip_chaining.py b/tests/test_corridor_trip_chaining.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..be455619e58819388a0a62932ea6d5f5f3f18748
+--- /dev/null
++++ b/tests/test_corridor_trip_chaining.py
+@@ -0,0 +1,20 @@
++import pandas as pd
++
++from Urban_Amenities2.scores.corridor_trip_chaining import CorridorConfig, CorridorTripChaining
++
++
++def test_corridor_trip_chaining_filters_long_detours() -> None:
++    chains = pd.DataFrame(
++        {
++            "hex_id": ["a", "a", "b"],
++            "quality": [80.0, 70.0, 90.0],
++            "likelihood": [0.8, 0.5, 0.3],
++            "detour_minutes": [5.0, 12.0, 4.0],
++        }
++    )
++    calculator = CorridorTripChaining(CorridorConfig(max_detour_minutes=10.0))
++    result = calculator.compute(chains)
++    assert set(result.columns) == {"hex_id", "CTE"}
++    assert result.loc[result["hex_id"] == "a", "CTE"].iloc[0] > 0
++    assert result.loc[result["hex_id"] == "a", "CTE"].iloc[0] < 100
++    assert result.loc[result["hex_id"] == "b", "CTE"].iloc[0] == 100
+diff --git a/tests/test_hub_airport_access.py b/tests/test_hub_airport_access.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd1c2b173adc11ef1c99051f82830ac2188e7f02
+--- /dev/null
++++ b/tests/test_hub_airport_access.py
+@@ -0,0 +1,61 @@
++import pandas as pd
++
++from Urban_Amenities2.scores.hub_airport_access import (
++    HubMassWeights,
++    MuhAAConfig,
++    MuhAAScore,
++    compute_hub_mass,
++)
++
++
++def test_compute_hub_mass_normalises_components() -> None:
++    hubs = pd.DataFrame(
++        {
++            "hub_id": ["den", "slc"],
++            "population": [2_900_000, 1_200_000],
++            "gdp": [210, 120],
++            "poi": [15000, 8000],
++            "culture": [120, 60],
++        }
++    )
++    masses = compute_hub_mass(hubs, HubMassWeights())
++    assert set(masses.columns) == {"hub_id", "mass"}
++    assert masses["mass"].between(0, 100).all()
++    assert masses.loc[masses["hub_id"] == "den", "mass"].iloc[0] > masses.loc[masses["hub_id"] == "slc", "mass"].iloc[0]
++
++
++def test_muhaa_combines_hub_and_airport_access() -> None:
++    hubs = pd.DataFrame(
++        {
++            "hub_id": ["den", "slc"],
++            "population": [2_900_000, 1_200_000],
++            "gdp": [210, 120],
++            "poi": [15000, 8000],
++            "culture": [120, 60],
++        }
++    )
++    hub_travel = pd.DataFrame(
++        {
++            "hex_id": ["h1", "h1", "h2", "h2"],
++            "destination_id": ["den", "slc", "den", "slc"],
++            "travel_minutes": [20, 60, 45, 30],
++        }
++    )
++    airports = pd.DataFrame(
++        {
++            "airport_id": ["den", "slc"],
++            "enplanements": [69_000_000, 26_000_000],
++        }
++    )
++    airport_travel = pd.DataFrame(
++        {
++            "hex_id": ["h1", "h2"],
++            "destination_id": ["den", "slc"],
++            "travel_minutes": [25, 35],
++        }
++    )
++    muhaa = MuhAAScore(MuhAAConfig(hub_contribution=0.6, airport_contribution=0.4))
++    scores = muhaa.compute(hubs, hub_travel, airports, airport_travel)
++    assert set(scores.columns) == {"hex_id", "MUHAA", "accessibility_hub", "accessibility_airport"}
++    assert scores["MUHAA"].between(0, 100).all()
++    assert scores.loc[scores["hex_id"] == "h1", "MUHAA"].iloc[0] > scores.loc[scores["hex_id"] == "h2", "MUHAA"].iloc[0]
+diff --git a/tests/test_mobility_reliability.py b/tests/test_mobility_reliability.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ac269c915ce3d370c834308627b8dc489fee86f9
+--- /dev/null
++++ b/tests/test_mobility_reliability.py
+@@ -0,0 +1,76 @@
++import pandas as pd
++
++from Urban_Amenities2.scores.mobility_reliability import (
++    MobilityReliabilityCalculator,
++    MorrConfig,
++    MorrWeights,
++    compute_frequent_transit_exposure,
++    compute_micromobility_presence,
++    compute_network_redundancy,
++    compute_on_time_reliability,
++    compute_service_span,
++)
++
++
++def _hex_frame(hex_id: str, value: float) -> pd.DataFrame:
++    return pd.DataFrame({"hex_id": [hex_id], "value": [value]})
++
++
++def test_compute_frequent_transit_exposure() -> None:
++    stops = pd.DataFrame(
++        {
++            "hex_id": ["a", "a", "b"],
++            "headway_peak": [10.0, 25.0, 12.0],
++            "distance_m": [200.0, 600.0, 300.0],
++        }
++    )
++    result = compute_frequent_transit_exposure(stops)
++    assert result.loc[result["hex_id"] == "a", "C1"].iloc[0] == 100.0
++    assert result.loc[result["hex_id"] == "b", "C1"].iloc[0] == 100.0
++
++
++def test_morr_aggregation() -> None:
++    c1 = pd.DataFrame({"hex_id": ["a", "b"], "C1": [80.0, 20.0]})
++    c2 = pd.DataFrame({"hex_id": ["a", "b"], "C2": [60.0, 40.0]})
++    c3 = pd.DataFrame({"hex_id": ["a", "b"], "C3": [90.0, 30.0]})
++    c4 = pd.DataFrame({"hex_id": ["a", "b"], "C4": [70.0, 20.0]})
++    c5 = pd.DataFrame({"hex_id": ["a", "b"], "C5": [50.0, 10.0]})
++    calculator = MobilityReliabilityCalculator(MorrConfig(weights=MorrWeights()))
++    scores = calculator.compute(c1, c2, c3, c4, c5)
++    assert scores.loc[scores["hex_id"] == "a", "MORR"].iloc[0] > scores.loc[scores["hex_id"] == "b", "MORR"].iloc[0]
++
++
++def test_component_calculations_cover_edge_cases() -> None:
++    services = pd.DataFrame(
++        {
++            "hex_id": ["a", "a"],
++            "service_hours": [18.0, 6.0],
++            "has_early": [1, 0],
++            "has_late": [1, 0],
++            "has_weekend": [1, 0],
++        }
++    )
++    c2 = compute_service_span(services)
++    assert c2["C2"].max() <= 100
++
++    reliability = pd.DataFrame(
++        {
++            "hex_id": ["a", "a"],
++            "on_time_pct": [95.0, 85.0],
++            "frequency_weight": [10.0, 0.0],
++        }
++    )
++    c3 = compute_on_time_reliability(reliability)
++    assert c3["C3"].iloc[0] == 95.0
++
++    redundancy = pd.DataFrame(
++        {"hex_id": ["a"], "transit_routes": [4], "road_routes": [3]}
++    )
++    c4 = compute_network_redundancy(redundancy)
++    assert 0 < c4["C4"].iloc[0] <= 100
++
++    micro = pd.DataFrame(
++        {"hex_id": ["a", "b"], "stations": [10, 0], "area_sqkm": [2.0, 2.0]}
++    )
++    c5 = compute_micromobility_presence(micro)
++    assert c5.loc[c5["hex_id"] == "a", "C5"].iloc[0] == 100.0
+diff --git a/tests/test_seasonal_outdoors.py b/tests/test_seasonal_outdoors.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b3ba223b7963aa0336f9ef2995ddab3b8d0124dd
+--- /dev/null
++++ b/tests/test_seasonal_outdoors.py
+@@ -0,0 +1,52 @@
++import pandas as pd
++
++from Urban_Amenities2.scores.seasonal_outdoors import (
++    ClimateComfortConfig,
++    SeasonalOutdoorsCalculator,
++    SeasonalOutdoorsConfig,
++    compute_monthly_comfort,
++)
++
++
++def _monthly_frame(value: float) -> dict[str, float]:
++    return {f"temp_{month}": value for month in ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")}
++
++
++def _zero_precip() -> dict[str, float]:
++    return {f"precip_{month}": 0.1 for month in ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")}
++
++
++def _calm_wind() -> dict[str, float]:
++    return {f"wind_{month}": 10.0 for month in ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")}
++
++
++def test_compute_monthly_comfort_within_range() -> None:
++    config = ClimateComfortConfig()
++    score = compute_monthly_comfort(temperature=70.0, precipitation=0.2, wind=10.0, config=config)
++    assert 0.99 <= score <= 1.0
++
++
++def test_sou_scores_respect_climate_adjustment() -> None:
++    parks = pd.DataFrame({"hex_id": ["a", "b"], "parks_score": [80.0, 80.0]})
++    pleasant = {**_monthly_frame(70.0), **_zero_precip(), **_calm_wind()}
++    harsh = {**_monthly_frame(95.0), **_zero_precip(), **_calm_wind()}
++    climate = pd.DataFrame(
++        [
++            {"hex_id": "a", **pleasant},
++            {"hex_id": "b", **harsh},
++        ]
++    )
++    calculator = SeasonalOutdoorsCalculator(SeasonalOutdoorsConfig())
++    results = calculator.compute(parks, climate)
++    pleasant_score = results.loc[results["hex_id"] == "a", "SOU"].iloc[0]
++    harsh_score = results.loc[results["hex_id"] == "b", "SOU"].iloc[0]
++    assert pleasant_score > harsh_score
++    assert 0 <= harsh_score <= pleasant_score <= 80
++
++
++def test_zero_parks_score_results_in_zero_sou() -> None:
++    parks = pd.DataFrame({"hex_id": ["c"], "parks_score": [0.0]})
++    climate = pd.DataFrame({"hex_id": ["c"], **_monthly_frame(70.0), **_zero_precip(), **_calm_wind()})
++    calculator = SeasonalOutdoorsCalculator()
++    results = calculator.compute(parks, climate)
++    assert results.loc[0, "SOU"] == 0
+diff --git a/tests/test_ui_module.py b/tests/test_ui_module.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b559d632f8c09d964d8024adda491606ed062056
+--- /dev/null
++++ b/tests/test_ui_module.py
+@@ -0,0 +1,60 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import pandas as pd
++import pytest
++
++from Urban_Amenities2.ui.config import UISettings
++from Urban_Amenities2.ui.data_loader import DataContext
++from Urban_Amenities2.ui.hexes import HexGeometryCache, hex_centroid, hex_to_geojson
++
++
++@pytest.fixture()
++def sample_hexes() -> list[str]:
++    h3 = pytest.importorskip("h3")
++    return [
++        h3.latlng_to_cell(39.7392, -104.9903, 9),
++        h3.latlng_to_cell(40.7608, -111.8910, 9),
++    ]
++
++
++def test_geometry_cache(sample_hexes: list[str]) -> None:
++    cache = HexGeometryCache()
++    df = cache.ensure_geometries(sample_hexes)
++    assert set(df["hex_id"]) == set(sample_hexes)
++    for hex_id in sample_hexes:
++        centroid = hex_centroid(hex_id)
++        assert len(centroid) == 2
++        geojson = hex_to_geojson(hex_id)
++        assert geojson["type"] == "Polygon"
++    cache.validate(sample_hexes)
++
++
++def test_data_context_aggregation(tmp_path: Path, sample_hexes: list[str]) -> None:
++    settings = UISettings()
++    context = DataContext(settings=settings)
++    scores = pd.DataFrame(
++        {
++            "hex_id": sample_hexes,
++            "aucs": [80.0, 60.0],
++            "EA": [75.0, 55.0],
++            "state": ["CO", "UT"],
++            "metro": ["Denver", "Salt Lake City"],
++            "county": ["Denver County", "Salt Lake County"],
++        }
++    )
++    context.scores = scores
++    context.metadata = scores[["hex_id", "state", "metro", "county"]]
++    context._prepare_geometries()
++    context.validate_geometries()
++    aggregated = context.aggregate_by_resolution(8, columns=["aucs", "EA"])
++    assert {"hex_id", "aucs", "EA", "count"} <= set(aggregated.columns)
++    geojson = context.to_geojson(scores)
++    assert geojson["type"] == "FeatureCollection"
++    assert len(geojson["features"]) == len(scores)
++    export_path = tmp_path / "scores.geojson"
++    context.export_geojson(export_path)
++    payload = json.loads(export_path.read_text())
++    assert payload["features"]
+
+EOF
+)

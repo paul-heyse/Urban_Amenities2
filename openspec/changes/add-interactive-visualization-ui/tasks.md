@@ -4,29 +4,29 @@
 
 ### 1.1 Dash Application Scaffold
 
-- [ ] 1.1.1 Install Dash and dependencies: `dash`, `plotly`, `dash-bootstrap-components`, `dash-leaflet`
-- [ ] 1.1.2 Create `src/Urban_Amenities2/ui/app.py` with Dash app initialization
-- [ ] 1.1.3 Configure Dash with Bootstrap theme (use `dbc.themes.BOOTSTRAP` or `FLATLY`)
-- [ ] 1.1.4 Set up app layout structure: header, sidebar, main content, footer
-- [ ] 1.1.5 Create `src/Urban_Amenities2/ui/layouts/` directory for page layouts
-- [ ] 1.1.6 Implement multi-page routing (home, map view, data management, settings)
-- [ ] 1.1.7 Create navigation sidebar with icons and links
-- [ ] 1.1.8 Add application header with logo, title, and user info placeholder
-- [ ] 1.1.9 Implement responsive layout (mobile, tablet, desktop breakpoints)
-- [ ] 1.1.10 Set up custom CSS in `src/Urban_Amenities2/ui/assets/style.css`
+- [x] 1.1.1 Install Dash and dependencies: `dash`, `plotly`, `dash-bootstrap-components`, `dash-leaflet`
+- [x] 1.1.2 Create `src/Urban_Amenities2/ui/app.py` with Dash app initialization
+- [x] 1.1.3 Configure Dash with Bootstrap theme (use `dbc.themes.BOOTSTRAP` or `FLATLY`)
+- [x] 1.1.4 Set up app layout structure: header, sidebar, main content, footer
+- [x] 1.1.5 Create `src/Urban_Amenities2/ui/layouts/` directory for page layouts
+- [x] 1.1.6 Implement multi-page routing (home, map view, data management, settings)
+- [x] 1.1.7 Create navigation sidebar with icons and links
+- [x] 1.1.8 Add application header with logo, title, and user info placeholder
+- [x] 1.1.9 Implement responsive layout (mobile, tablet, desktop breakpoints)
+- [x] 1.1.10 Set up custom CSS in `src/Urban_Amenities2/ui/assets/style.css`
 
 ### 1.2 Development Environment
 
-- [ ] 1.2.1 Create `requirements-ui.txt` with all UI dependencies and versions
-- [ ] 1.2.2 Set up hot-reload for development: `app.run_server(debug=True)`
-- [ ] 1.2.3 Configure environment variables for UI (PORT, HOST, DEBUG, SECRET_KEY)
-- [ ] 1.2.4 Create Docker Compose service for UI with volume mounting
-- [ ] 1.2.5 Set up reverse proxy configuration (Nginx) for production
-- [ ] 1.2.6 Implement health check endpoint: `/health` returns 200 OK
-- [ ] 1.2.7 Configure CORS if API and UI on different domains
-- [ ] 1.2.8 Set up logging for UI server (access logs, error logs)
-- [ ] 1.2.9 Create development seed data (sample 1000 hexes for fast iteration)
-- [ ] 1.2.10 Document local development setup in `docs/UI_DEVELOPMENT.md`
+- [x] 1.2.1 Create `requirements-ui.txt` with all UI dependencies and versions
+- [x] 1.2.2 Set up hot-reload for development: `app.run_server(debug=True)`
+- [x] 1.2.3 Configure environment variables for UI (PORT, HOST, DEBUG, SECRET_KEY)
+- [x] 1.2.4 Create Docker Compose service for UI with volume mounting
+- [x] 1.2.5 Set up reverse proxy configuration (Nginx) for production
+- [x] 1.2.6 Implement health check endpoint: `/health` returns 200 OK
+- [x] 1.2.7 Configure CORS if API and UI on different domains
+- [x] 1.2.8 Set up logging for UI server (access logs, error logs)
+- [x] 1.2.9 Create development seed data (sample 1000 hexes for fast iteration)
+- [x] 1.2.10 Document local development setup in `docs/UI_DEVELOPMENT.md`
 
 ---
 
@@ -34,29 +34,29 @@
 
 ### 2.1 Parquet Data Loading
 
-- [ ] 2.1.1 Create `src/Urban_Amenities2/ui/data_loader.py` module
-- [ ] 2.1.2 Implement function to load AUCS Parquet files into pandas DataFrame
-- [ ] 2.1.3 Add schema validation on load (verify required columns: hex_id, AUCS, EA, LCA, etc.)
-- [ ] 2.1.4 Implement data versioning (track which run's outputs are currently loaded)
-- [ ] 2.1.5 Add data refresh mechanism (reload files when new run completes)
-- [ ] 2.1.6 Optimize loading with column selection (only load needed columns per view)
-- [ ] 2.1.7 Implement data compression in memory (use categorical dtype for hex_id)
-- [ ] 2.1.8 Add data filtering utilities (by state, metro, score range)
-- [ ] 2.1.9 Create data summary statistics (min, max, mean, percentiles per subscore)
-- [ ] 2.1.10 Implement data export functions (GeoJSON, CSV, Shapefile)
+- [x] 2.1.1 Create `src/Urban_Amenities2/ui/data_loader.py` module
+- [x] 2.1.2 Implement function to load AUCS Parquet files into pandas DataFrame
+- [x] 2.1.3 Add schema validation on load (verify required columns: hex_id, AUCS, EA, LCA, etc.)
+- [x] 2.1.4 Implement data versioning (track which run's outputs are currently loaded)
+- [x] 2.1.5 Add data refresh mechanism (reload files when new run completes)
+- [x] 2.1.6 Optimize loading with column selection (only load needed columns per view)
+- [x] 2.1.7 Implement data compression in memory (use categorical dtype for hex_id)
+- [x] 2.1.8 Add data filtering utilities (by state, metro, score range)
+- [x] 2.1.9 Create data summary statistics (min, max, mean, percentiles per subscore)
+- [x] 2.1.10 Implement data export functions (GeoJSON, CSV, Shapefile)
 
 ### 2.2 H3 Hex Geometry
 
-- [ ] 2.2.1 Install h3-py for hex boundary computation
-- [ ] 2.2.2 Create utility function: `hex_to_geojson(hex_id)` returns GeoJSON polygon
-- [ ] 2.2.3 Batch convert all hex IDs to geometries on data load
-- [ ] 2.2.4 Cache hex geometries (they never change for a given hex ID)
-- [ ] 2.2.5 Create multi-resolution hex datasets (aggregate to H3 res 6, 7, 8 for zoom levels)
-- [ ] 2.2.6 Implement spatial indexing (rtree or shapely STRtree) for viewport queries
-- [ ] 2.2.7 Add function to query hexes in bounding box (lat/lon bounds)
-- [ ] 2.2.8 Implement hex neighbor queries (for spatial autocorrelation viz)
-- [ ] 2.2.9 Create hex centroid lookup (for label placement)
-- [ ] 2.2.10 Validate hex coverage (check for gaps, overlaps)
+- [x] 2.2.1 Install h3-py for hex boundary computation
+- [x] 2.2.2 Create utility function: `hex_to_geojson(hex_id)` returns GeoJSON polygon
+- [x] 2.2.3 Batch convert all hex IDs to geometries on data load
+- [x] 2.2.4 Cache hex geometries (they never change for a given hex ID)
+- [x] 2.2.5 Create multi-resolution hex datasets (aggregate to H3 res 6, 7, 8 for zoom levels)
+- [x] 2.2.6 Implement spatial indexing (rtree or shapely STRtree) for viewport queries
+- [x] 2.2.7 Add function to query hexes in bounding box (lat/lon bounds)
+- [x] 2.2.8 Implement hex neighbor queries (for spatial autocorrelation viz)
+- [x] 2.2.9 Create hex centroid lookup (for label placement)
+- [x] 2.2.10 Validate hex coverage (check for gaps, overlaps)
 
 ---
 
@@ -64,41 +64,41 @@
 
 ### 3.1 Choropleth Map Implementation
 
-- [ ] 3.1.1 Create `src/Urban_Amenities2/ui/components/choropleth.py`
-- [ ] 3.1.2 Implement `create_choropleth()` function using Plotly `go.Choroplethmapbox`
-- [ ] 3.1.3 Configure mapbox access token (free tier sufficient for dev, paid for prod)
-- [ ] 3.1.4 Set initial map center (center of CO/UT/ID region: ~39.5°N, -111°W)
-- [ ] 3.1.5 Set initial zoom level (zoom=6 for 3-state view)
-- [ ] 3.1.6 Define color scale for AUCS scores (0-100, sequential colormap: Viridis or RdYlGn)
-- [ ] 3.1.7 Implement continuous color scale with legend
-- [ ] 3.1.8 Add hover template showing: hex_id, score, lat/lon, metro area
-- [ ] 3.1.9 Configure map style (streets, outdoors, satellite, or dark mode)
-- [ ] 3.1.10 Enable zoom controls and fullscreen button
+- [x] 3.1.1 Create `src/Urban_Amenities2/ui/components/choropleth.py`
+- [x] 3.1.2 Implement `create_choropleth()` function using Plotly `go.Choroplethmapbox`
+- [x] 3.1.3 Configure mapbox access token (free tier sufficient for dev, paid for prod)
+- [x] 3.1.4 Set initial map center (center of CO/UT/ID region: ~39.5°N, -111°W)
+- [x] 3.1.5 Set initial zoom level (zoom=6 for 3-state view)
+- [x] 3.1.6 Define color scale for AUCS scores (0-100, sequential colormap: Viridis or RdYlGn)
+- [x] 3.1.7 Implement continuous color scale with legend
+- [x] 3.1.8 Add hover template showing: hex_id, score, lat/lon, metro area
+- [x] 3.1.9 Configure map style (streets, outdoors, satellite, or dark mode)
+- [x] 3.1.10 Enable zoom controls and fullscreen button
 
 ### 3.2 Multi-Scale Heat Map
 
-- [ ] 3.2.1 Implement zoom level detection callback (track current zoom state)
-- [ ] 3.2.2 Define zoom thresholds for resolution switching:
+- [x] 3.2.1 Implement zoom level detection callback (track current zoom state)
+- [x] 3.2.2 Define zoom thresholds for resolution switching:
   - Zoom 0-5: H3 res 6 (large hexes, state-level)
   - Zoom 6-8: H3 res 7 (medium hexes, metro-level)
   - Zoom 9-11: H3 res 8 (small hexes, neighborhood-level)
   - Zoom 12+: H3 res 9 (finest hexes, block-level)
-- [ ] 3.2.3 Pre-aggregate scores to coarser resolutions (mean or weighted average)
-- [ ] 3.2.4 Implement automatic data switching based on zoom level
+- [x] 3.2.3 Pre-aggregate scores to coarser resolutions (mean or weighted average)
+- [x] 3.2.4 Implement automatic data switching based on zoom level
 - [ ] 3.2.5 Add smooth transitions between zoom levels (fade in/out hexes)
 - [ ] 3.2.6 Optimize by only rendering hexes in current viewport
 - [ ] 3.2.7 Implement viewport-based data fetching (lazy load hexes as user pans)
-- [ ] 3.2.8 Add loading spinner while fetching hex data for new viewport
+- [x] 3.2.8 Add loading spinner while fetching hex data for new viewport
 - [ ] 3.2.9 Cache rendered layers per zoom level (avoid re-rendering)
 - [ ] 3.2.10 Test performance with 10K, 100K, 1M hexes
 
 ### 3.3 Subscore Selection
 
-- [ ] 3.3.1 Create dropdown component for subscore selection (Total AUCS, EA, LCA, MUHAA, JEA, MORR, CTE, SOU)
-- [ ] 3.3.2 Implement callback to update choropleth when subscore changes
-- [ ] 3.3.3 Adjust color scale per subscore (different scales if needed)
-- [ ] 3.3.4 Update legend title to reflect current subscore
-- [ ] 3.3.5 Display subscore description/tooltip (explain what EA, LCA, etc. measure)
+- [x] 3.3.1 Create dropdown component for subscore selection (Total AUCS, EA, LCA, MUHAA, JEA, MORR, CTE, SOU)
+- [x] 3.3.2 Implement callback to update choropleth when subscore changes
+- [x] 3.3.3 Adjust color scale per subscore (different scales if needed)
+- [x] 3.3.4 Update legend title to reflect current subscore
+- [x] 3.3.5 Display subscore description/tooltip (explain what EA, LCA, etc. measure)
 
 ---
 
@@ -136,28 +136,28 @@
 
 ### 5.1 Filter Panel
 
-- [ ] 5.1.1 Create sidebar filter panel with collapsible sections
-- [ ] 5.1.2 Add state filter (multi-select: CO, UT, ID)
-- [ ] 5.1.3 Add metro area filter (multi-select: Denver, SLC, Boise, Colorado Springs, etc.)
-- [ ] 5.1.4 Add county filter (searchable dropdown with all counties)
-- [ ] 5.1.5 Add score range slider (min-max slider, 0-100)
+- [x] 5.1.1 Create sidebar filter panel with collapsible sections
+- [x] 5.1.2 Add state filter (multi-select: CO, UT, ID)
+- [x] 5.1.3 Add metro area filter (multi-select: Denver, SLC, Boise, Colorado Springs, etc.)
+- [x] 5.1.4 Add county filter (searchable dropdown with all counties)
+- [x] 5.1.5 Add score range slider (min-max slider, 0-100)
 - [ ] 5.1.6 Add population density filter (if hex-level data available)
 - [ ] 5.1.7 Add land use filter (urban, suburban, rural categories)
-- [ ] 5.1.8 Implement "Apply Filters" button (batch filter application for performance)
-- [ ] 5.1.9 Add "Clear Filters" button (reset to default view)
-- [ ] 5.1.10 Show filtered hex count (e.g., "Showing 5,432 of 1,000,000 hexes")
+- [x] 5.1.8 Implement "Apply Filters" button (batch filter application for performance)
+- [x] 5.1.9 Add "Clear Filters" button (reset to default view)
+- [x] 5.1.10 Show filtered hex count (e.g., "Showing 5,432 of 1,000,000 hexes")
 
 ### 5.2 Parameter Adjustment
 
-- [ ] 5.2.1 Create "Advanced Settings" panel (expandable section)
-- [ ] 5.2.2 Expose subscore weights (7 sliders, constrain sum to 100)
+- [x] 5.2.1 Create "Advanced Settings" panel (expandable section)
+- [x] 5.2.2 Expose subscore weights (7 sliders, constrain sum to 100)
 - [ ] 5.2.3 Add decay parameter alpha sliders (per mode: walk, bike, transit, car)
 - [ ] 5.2.4 Add value-of-time (VOT) inputs (weekday, weekend)
 - [ ] 5.2.5 Add CES elasticity (rho) sliders per category
 - [ ] 5.2.6 Add satiation kappa adjustments (per category)
-- [ ] 5.2.7 Implement "Recalculate" button (trigger score recomputation with new params)
+- [x] 5.2.7 Implement "Recalculate" button (trigger score recomputation with new params)
 - [ ] 5.2.8 Show parameter diff indicator (highlight changed params)
-- [ ] 5.2.9 Add "Reset to Defaults" button (restore original parameter values)
+- [x] 5.2.9 Add "Reset to Defaults" button (restore original parameter values)
 - [ ] 5.2.10 Display parameter validation errors (e.g., weights not summing to 100)
 
 ### 5.3 Hex Details and Drill-Down

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -118,7 +118,7 @@ def extract_fields(frame: pd.DataFrame) -> pd.DataFrame:
 @dataclass
 class PlacesPipeline:
     matcher: CategoryMatcher
-    dedupe_config: DedupeConfig = DedupeConfig()
+    dedupe_config: DedupeConfig = field(default_factory=DedupeConfig)
 
     def run(
         self,

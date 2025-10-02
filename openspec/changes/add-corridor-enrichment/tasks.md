@@ -29,11 +29,11 @@
 - [ ] 3.1 Define common 2-stop chains (grocery+pharmacy, bank+post, grocery+childcare)
 - [ ] 3.2 Identify feasible chains (both amenities present in different stop buffers)
 - [ ] 3.3 Compute detour time for each chain (compared to direct trip)
-- [ ] 3.4 Filter chains with detour >10 min (too inconvenient)
-- [ ] 3.5 Score chains by quality (Q_a of both amenities)
-- [ ] 3.6 Weight chains by likelihood (frequent vs rare combinations)
-- [ ] 3.7 Aggregate chains to corridor-level score
-- [ ] 3.8 Normalize to CTE subscore (0-100)
+- [x] 3.4 Filter chains with detour >10 min (too inconvenient)
+- [x] 3.5 Score chains by quality (Q_a of both amenities)
+- [x] 3.6 Weight chains by likelihood (frequent vs rare combinations)
+- [x] 3.7 Aggregate chains to corridor-level score
+- [x] 3.8 Normalize to CTE subscore (0-100)
 - [ ] 3.9 Test with known trip-chaining corridors
 - [ ] 3.10 Validate CTE correlates with transit-oriented development
 
@@ -44,5 +44,5 @@
 - [ ] 4.3 Validate CTE distributions (expect higher scores near transit)
 - [ ] 4.4 Compare CTE with/without detour constraint
 - [ ] 4.5 Generate CTE choropleth map for QA
-- [ ] 4.6 Property test: CTE in [0, 100]
+- [x] 4.6 Property test: CTE in [0, 100]
 - [ ] 4.7 Document CTE methodology and parameters
