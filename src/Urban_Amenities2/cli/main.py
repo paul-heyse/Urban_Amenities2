@@ -28,7 +28,7 @@ from ..math.diversity import DiversityConfig
 from ..monitoring.health import HealthStatus, format_report, overall_status, run_health_checks
 from ..router.api import OSRMClientProtocol, RoutingAPI
 from ..router.batch import BatchConfig, SkimBuilder
-from ..router.osrm import OSRMClient, OSRMConfig, OSRMLeg, OSRMRoute, OSRMTable
+from ..router.osrm import OSRMClient, OSRMConfig, OSRMRoute, OSRMTable
 from ..schemas.scores import EAOutputSchema
 from ..scores.aggregation import WeightConfig, aggregate_scores
 from ..scores.essentials_access import (

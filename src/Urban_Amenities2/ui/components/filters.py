@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence, cast
+from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 from dash import dcc, html
 
 from ..types import SliderTooltip
+
 
 def build_filter_panel(states: Sequence[str], metros: Sequence[str], counties: Sequence[str]) -> html.Div:
     return html.Div(

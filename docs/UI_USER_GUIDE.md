@@ -268,7 +268,8 @@ Enable in Settings → Accessibility → High Contrast Mode
 - Shared UI data shapes now live in `Urban_Amenities2.ui.types`. TypedDicts cover score rows, geometry cache records, and GeoJSON overlays so mypy can validate inter-module usage.
 - `HexGeometryCache` stores `GeometryCacheEntry` dataclasses and always returns DataFrames with `geometry`, `geometry_wkt`, centroid, and resolution columns. Call `ensure_geometries()` before relying on viewport math.
 - `DataContext` enforces typed overlays. `get_overlay()` always returns a `FeatureCollection`, and `_load_external_overlays()` drops malformed files instead of propagating raw dictionaries.
-- Run `mypy src/Urban_Amenities2/ui --warn-unused-ignores` after modifying UI data loaders to confirm TypedDict updates remain in sync.
+- Dash components and callbacks use the contracts in `Urban_Amenities2.ui.contracts`. Wrap new callbacks with `Urban_Amenities2.ui.dash_wrappers.register_callback` so handler signatures remain typed, and prefer `Urban_Amenities2.ui.downloads.build_file_download` over `dcc.send_file` to emit typed download payloads.
+- Run `mypy src/Urban_Amenities2/ui --warn-unused-ignores` after modifying UI data loaders or components to confirm TypedDict updates remain in sync.
 
 ## Support
 

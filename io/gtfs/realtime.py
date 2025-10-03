@@ -1,11 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence, TYPE_CHECKING
-
-import fsspec
-import pandas as pd
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.transit import gtfs_realtime_pb2
@@ -20,7 +16,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
         delay: int | None = None
 
         @classmethod
-        def from_dict(cls, payload: Dict[str, Any]) -> _StopTimeEvent:
+        def from_dict(cls, payload: dict[str, Any]) -> _StopTimeEvent:
             value = payload.get("delay")
             delay = int(value) if isinstance(value, (int, float)) else None
             return cls(delay=delay)
@@ -32,7 +28,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
         arrival: _StopTimeEvent | None = None
 
         @classmethod
-        def from_dict(cls, payload: Dict[str, Any]) -> _StopTimeUpdate:
+        def from_dict(cls, payload: dict[str, Any]) -> _StopTimeUpdate:
             stop = payload.get("stop_sequence")
             departure_payload = payload.get("departure")
             arrival_payload = payload.get("arrival")
@@ -51,7 +47,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
         trip_id: str = ""
 
         @classmethod
-        def from_dict(cls, payload: Dict[str, Any]) -> _TripDescriptor:
+        def from_dict(cls, payload: dict[str, Any]) -> _TripDescriptor:
             trip_id = payload.get("trip_id")
             return cls(trip_id=str(trip_id) if trip_id is not None else "")
 
@@ -61,7 +57,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
         stop_time_update: list[_StopTimeUpdate] | None = None
 
         @classmethod
-        def from_dict(cls, payload: Dict[str, Any]) -> _TripUpdate:
+        def from_dict(cls, payload: dict[str, Any]) -> _TripUpdate:
             trip_payload = payload.get("trip")
             updates_payload = payload.get("stop_time_update")
             updates: list[_StopTimeUpdate] | None = None
@@ -84,7 +80,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
         trip_update: _TripUpdate | None = None
 
         @classmethod
-        def from_dict(cls, payload: Dict[str, Any]) -> _Entity:
+        def from_dict(cls, payload: dict[str, Any]) -> _Entity:
             identifier = payload.get("id")
             trip_update_payload = payload.get("trip_update")
             return cls(

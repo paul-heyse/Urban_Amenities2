@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Literal, TypedDict, TypeAlias
-
+from typing import Final, Literal, TypeAlias, TypedDict
 
 Bounds: TypeAlias = tuple[float, float, float, float]
 AggregationCacheKey: TypeAlias = tuple[int, tuple[str, ...]]
@@ -79,7 +78,7 @@ class GeoJSONGeometry(TypedDict, total=False):
 
     type: str
     coordinates: object
-    geometries: list["GeoJSONGeometry"]
+    geometries: list[GeoJSONGeometry]
 
 
 class GeoJSONFeature(TypedDict):

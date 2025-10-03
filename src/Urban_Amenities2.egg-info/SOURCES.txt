@@ -112,6 +112,9 @@ src/Urban_Amenities2/ui/components/footer.py
 src/Urban_Amenities2/ui/components/header.py
 src/Urban_Amenities2/ui/components/navigation.py
 src/Urban_Amenities2/ui/components/overlay_controls.py
+src/Urban_Amenities2/ui/contracts.py
+src/Urban_Amenities2/ui/dash_wrappers.py
+src/Urban_Amenities2/ui/downloads.py
 src/Urban_Amenities2/ui/layouts/__init__.py
 src/Urban_Amenities2/ui/layouts/data_management.py
 src/Urban_Amenities2/ui/layouts/home.py

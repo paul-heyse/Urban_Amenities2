@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, List, Sequence
 
 import numpy as np
 import pandas as pd
@@ -16,18 +16,18 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from Urban_Amenities2.ui.components.choropleth import create_choropleth
 from Urban_Amenities2.ui.config import UISettings
 from Urban_Amenities2.ui.data_loader import DataContext
 from Urban_Amenities2.ui.layers import basemap_options
-from Urban_Amenities2.ui.components.choropleth import create_choropleth
 
 
-def _generate_hexes(count: int, resolution: int = 9) -> List[str]:
+def _generate_hexes(count: int, resolution: int = 9) -> list[str]:
     h3 = __import__("h3")
     origin = h3.latlng_to_cell(39.5, -111.0, resolution)
     if count <= 1:
         return [origin]
-    approximate_k = int(((-3 + (12 * count - 3) ** 0.5) / 6)) + 1
+    approximate_k = int((-3 + (12 * count - 3) ** 0.5) / 6) + 1
     cells = h3.grid_disk(origin, approximate_k)
     if len(cells) < count:
         cells = h3.grid_disk(origin, approximate_k + 1)

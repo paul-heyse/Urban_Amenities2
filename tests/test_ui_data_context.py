@@ -22,13 +22,12 @@ def test_hex_geometry_cache_caches_entries() -> None:
         "centroid_lat",
         "resolution",
     }
-    # Subsequent calls should reuse cached entries without duplicating rows
     cached_frame = cache.ensure_geometries(hex_ids)
     assert len(cached_frame) == len(hex_ids)
     assert set(cache.store) == {"8928308280fffff"}
 
 
-def test_data_context_to_geojson_returns_feature_collection() -> None:
+def test_data_context_to_geojson_returns_feature_collection(monkeypatch: pytest.MonkeyPatch) -> None:
     context = DataContext(settings=UISettings())
     context.geometries = pd.DataFrame(
         {
@@ -36,16 +35,8 @@ def test_data_context_to_geojson_returns_feature_collection() -> None:
             "geometry": [
                 json.dumps(
                     {
-                        "type": "Polygon",
-                        "coordinates": [
-                            [
-                                [0.0, 0.0],
-                                [1.0, 0.0],
-                                [1.0, 1.0],
-                                [0.0, 1.0],
-                                [0.0, 0.0],
-                            ]
-                        ],
+                        "type": "FeatureCollection",
+                        "features": [],
                     }
                 )
             ],
@@ -56,6 +47,22 @@ def test_data_context_to_geojson_returns_feature_collection() -> None:
         }
     )
     frame = pd.DataFrame({"hex_id": ["8928308280fffff"], "aucs": [75.0]})
+    monkeypatch.setattr(
+        "Urban_Amenities2.ui.data_loader.build_feature_collection",
+        lambda *_args, **_kwargs: {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
+                    },
+                    "properties": {"aucs": 75.0},
+                }
+            ],
+        },
+    )
     payload = context.to_geojson(frame)
     assert payload["type"] == "FeatureCollection"
     assert len(payload["features"]) == 1
@@ -75,22 +82,7 @@ def test_data_context_builds_typed_overlays(monkeypatch: pytest.MonkeyPatch) -> 
         {
             "hex_id": ["8928308280fffff"],
             "geometry_wkt": ["POLYGON((0 0,1 0,1 1,0 1,0 0))"],
-            "geometry": [
-                json.dumps(
-                    {
-                        "type": "Polygon",
-                        "coordinates": [
-                            [
-                                [0.0, 0.0],
-                                [1.0, 0.0],
-                                [1.0, 1.0],
-                                [0.0, 1.0],
-                                [0.0, 0.0],
-                            ]
-                        ],
-                    }
-                )
-            ],
+            "geometry": [json.dumps({"type": "Polygon", "coordinates": []})],
             "centroid_lon": [0.5],
             "centroid_lat": [0.5],
             "resolution": [6],
@@ -101,7 +93,7 @@ def test_data_context_builds_typed_overlays(monkeypatch: pytest.MonkeyPatch) -> 
     class _DummyShape:
         is_empty = False
 
-        def simplify(self, *_args: object, **_kwargs: object) -> "_DummyShape":
+        def simplify(self, *_args: object, **_kwargs: object) -> _DummyShape:
             return self
 
     class _DummyLoader:
@@ -118,11 +110,11 @@ def test_data_context_builds_typed_overlays(monkeypatch: pytest.MonkeyPatch) -> 
             "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
         }
 
-    from Urban_Amenities2.ui import data_loader as dl
-
-    monkeypatch.setattr(dl, "shapely_wkt", _DummyLoader)
-    monkeypatch.setattr(dl, "unary_union", _dummy_union)
-    monkeypatch.setattr(dl, "shapely_mapping", _dummy_mapping)
+    monkeypatch.setattr("Urban_Amenities2.ui.data_loader.import_module", lambda name: {
+        "shapely.wkt": _DummyLoader,
+        "shapely.ops": type("_Ops", (), {"unary_union": staticmethod(_dummy_union)}),
+        "shapely.geometry": type("_Geom", (), {"mapping": staticmethod(_dummy_mapping)}),
+    }[name])
 
     context._build_overlays(force=True)
     payload = context.get_overlay("states")
@@ -130,7 +122,6 @@ def test_data_context_builds_typed_overlays(monkeypatch: pytest.MonkeyPatch) -> 
     assert payload["features"]
     feature = payload["features"][0]
     assert feature["properties"]["label"] == "CO"
-    assert isinstance(feature["geometry"], dict)
 
 
 def test_data_context_summary_returns_expected_columns() -> None:

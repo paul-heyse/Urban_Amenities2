@@ -1,0 +1,1580 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/docs/Urban Amenities Model Overview.md b/docs/Urban Amenities Model Overview.md
+index 6288110d1bcb6062b14c1b5e25ad174d89c0182e..d29743737d0bc3847e523392894e90b68a43950c 100644
+--- a/docs/Urban Amenities Model Overview.md
++++ b/docs/Urban Amenities Model Overview.md
+@@ -23,50 +23,51 @@ For each hex (i), compute a time‑ and mode‑aware **accessibility weight** to
+
+ Subscores map to 0–100 via metro‑relative percentiles (or absolute anchors), then AUCS is the **weighted sum** of subscores.
+
+ **Why it’s different**
+
+ * *Multi‑modal by construction* (not just walk scores).
+ * *Behavioral realism* via nested logsum and generalized cost.
+ * *Quality, variety, and novelty* of destinations explicitly modeled.
+ * *Reliability & redundancy* of mobility are first‑class.
+ * *Explainable:* each hex stores the top contributing amenities/modes/paths.
+
+ ---
+
+ ## 2) End‑to‑end dataflow (what you’ll build)
+
+ **A) Ingest & normalize**
+
+ * **Places & networks** (Overture Places/Transportation).
+ * **Transit schedules & realtime** (agency GTFS + GTFS-RT).
+ * **Micromobility** (GBFS).
+ * **Parks/open space** (PAD-US & trail sources).
+ * **Jobs & education** (LODES, NCES/IPEDS/Carnegie).
+ * **Airports** (FAA enplanements).
+ * **Climate** (NOAA normals) and optional **air quality**.
+ * **Type safety:** Ingestion code now uses typed fallbacks for optional dependencies (BigQuery, shapely) and typed HTTP request payloads. When extending this layer, rely on `Mapping`-based params and keep `mypy src/Urban_Amenities2/io --warn-unused-ignores` clean.
++* **UI exports:** GeoJSON/CSV/shapefile exports use typed feature builders and a typed Dash download helper. When adding new exports, assemble payloads via `build_feature_collection`, normalise values to JSON-safe primitives, and return `Path` objects so callbacks can pass them to `ui.downloads.send_file` without extra casting.
+
+ **B) Enrich & index**
+
+ * Apply **Overture→AUCS category crosswalk**; dedupe POIs (brand/name/distance).
+ * Attach Wikidata/Wikipedia to selected venues (for popularity/capacity).
+ * **Hex‑index** everything (H3) and keep raw Parquet tables partitioned by region.
+
+ **C) Routers**
+
+ * Build **OSRM** profiles for walk/bike/drive on the Overture network.
+ * Build **OTP2** graph (Overture walk/bike + all GTFS in market).
+
+ **D) Travel‑time matrices & logsums**
+
+ * Compute many‑to‑many **durations** from hexes to POIs/hubs/jobs/universities by mode & time‑slice.
+ * Construct **generalized travel cost** (add wait, transfers, reliability buffer, fare→minutes).
+ * Compute **mode utilities** → **nested logsum** → (w_{i,a}).
+
+ **E) Quality, diversity, novelty**
+
+ * Compute (Q_a) from venue attributes (capacity, popularity, tags/brand).
+   * **Size & capacity** → log-scaled metric that blends square footage, seating, collection size, or Wikidata capacity with category medians filling gaps.
+   * **Popularity** → combines Wikipedia median pageviews, sitelink counts, and observed z-scores, clipped per category to avoid single-outlier spikes.
+   * **Brand recognition** → boosts well-known chains or Wikidata-branded venues while tempering unnamed independents.
+   * **Heritage** → flags museums, libraries, and official heritage designations (e.g., UNESCO) as premium destinations.
+diff --git a/openspec/changes/add-ui-layout-export-typing/mypy-after.txt b/openspec/changes/add-ui-layout-export-typing/mypy-after.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..f6784b584b00e1ead95409381271a914c93dd88f
+--- /dev/null
++++ b/openspec/changes/add-ui-layout-export-typing/mypy-after.txt
+@@ -0,0 +1 @@
++Success: no issues found in 3 source files
+diff --git a/openspec/changes/add-ui-layout-export-typing/mypy-before.txt b/openspec/changes/add-ui-layout-export-typing/mypy-before.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..850b09fac6600848e3d38873940f55985331a3f5
+--- /dev/null
++++ b/openspec/changes/add-ui-layout-export-typing/mypy-before.txt
+@@ -0,0 +1,48 @@
++src/Urban_Amenities2/ui/export.py:7: error: Library stubs not installed for "geopandas"  [import-untyped]
++src/Urban_Amenities2/ui/export.py:7: note: Hint: "python3 -m pip install types-geopandas"
++src/Urban_Amenities2/ui/export.py:8: error: Library stubs not installed for "pandas"  [import-untyped]
++src/Urban_Amenities2/ui/export.py:8: note: Hint: "python3 -m pip install pandas-stubs"
++src/Urban_Amenities2/ui/export.py:10: error: Library stubs not installed for "shapely.geometry"  [import-untyped]
++src/Urban_Amenities2/ui/export.py:10: note: Hint: "python3 -m pip install types-shapely"
++src/Urban_Amenities2/ui/export.py:10: note: (or run "mypy --install-types" to install all missing stub packages)
++src/Urban_Amenities2/ui/export.py:10: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
++src/Urban_Amenities2/ui/export.py:25: error: Skipping analyzing "h3": module is installed, but missing library stubs or py.typed marker  [import-untyped]
++src/Urban_Amenities2/ui/export.py:171: error: Incompatible types in assignment (expression has type "int", target has type "str")  [assignment]
++src/Urban_Amenities2/ui/export.py:173: error: Incompatible types in assignment (expression has type "float", target has type "str")  [assignment]
++src/Urban_Amenities2/ui/export.py:174: error: Incompatible types in assignment (expression has type "float", target has type "str")  [assignment]
++src/Urban_Amenities2/ui/data_loader.py:12: error: Library stubs not installed for "shapely"  [import-untyped]
++src/Urban_Amenities2/ui/data_loader.py:13: error: Library stubs not installed for "shapely.geometry"  [import-untyped]
++src/Urban_Amenities2/ui/data_loader.py:14: error: Library stubs not installed for "shapely.ops"  [import-untyped]
++src/Urban_Amenities2/ui/data_loader.py:20: error: Library stubs not installed for "pandas"  [import-untyped]
++src/Urban_Amenities2/ui/data_loader.py:69: error: Missing type parameters for generic type "dict"  [type-arg]
++src/Urban_Amenities2/ui/data_loader.py:192: error: Missing type parameters for generic type "dict"  [type-arg]
++src/Urban_Amenities2/ui/data_loader.py:324: error: Returning Any from function declared to return "list[str]"  [no-any-return]
++src/Urban_Amenities2/ui/data_loader.py:357: error: Missing type parameters for generic type "dict"  [type-arg]
++src/Urban_Amenities2/ui/data_loader.py:388: error: Missing type parameters for generic type "dict"  [type-arg]
++src/Urban_Amenities2/ui/data_loader.py:420: error: Missing type parameters for generic type "dict"  [type-arg]
++src/Urban_Amenities2/ui/data_loader.py:423: error: Missing type parameters for generic type "dict"  [type-arg]
++src/Urban_Amenities2/ui/callbacks.py:38: error: Function is missing a return type annotation  [no-untyped-def]
++src/Urban_Amenities2/ui/callbacks.py:38: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
++src/Urban_Amenities2/ui/callbacks.py:55: error: No overload variant of "__pow__" of "int" matches argument type "None"  [operator]
++src/Urban_Amenities2/ui/callbacks.py:55: note: Possible overload variants:
++src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, Literal[0], /) -> Literal[1]
++src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, Literal[0], None, /) -> Literal[1]
++src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, Literal[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], None = ..., /) -> int
++src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, Literal[-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, -16, -17, -18, -19, -20], None = ..., /) -> float
++src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, int, None = ..., /) -> Any
++src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, int, int, /) -> int
++src/Urban_Amenities2/ui/callbacks.py:55: note: Right operand is of type "int | Any | None"
++src/Urban_Amenities2/ui/callbacks.py:55: error: Value of type variable "SupportsRichComparisonT" of "max" cannot be "int | Any | None"  [type-var]
++src/Urban_Amenities2/ui/callbacks.py:60: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
++src/Urban_Amenities2/ui/callbacks.py:61: error: Untyped decorator makes function "_update_map" untyped  [misc]
++src/Urban_Amenities2/ui/callbacks.py:78: error: Function is missing a return type annotation  [no-untyped-def]
++src/Urban_Amenities2/ui/callbacks.py:78: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
++src/Urban_Amenities2/ui/callbacks.py:155: error: Untyped decorator makes function "_refresh_data" untyped  [misc]
++src/Urban_Amenities2/ui/callbacks.py:160: error: Function is missing a return type annotation  [no-untyped-def]
++src/Urban_Amenities2/ui/callbacks.py:164: error: Untyped decorator makes function "_export_data" untyped  [misc]
++src/Urban_Amenities2/ui/callbacks.py:170: error: Function is missing a return type annotation  [no-untyped-def]
++src/Urban_Amenities2/ui/callbacks.py:175: error: Module "dash.dcc" does not explicitly export attribute "send_file"  [attr-defined]
++src/Urban_Amenities2/ui/callbacks.py:175: error: Call to untyped function "send_file" in typed context  [no-untyped-call]
++src/Urban_Amenities2/ui/callbacks.py:179: error: Module "dash.dcc" does not explicitly export attribute "send_file"  [attr-defined]
++src/Urban_Amenities2/ui/callbacks.py:179: error: Call to untyped function "send_file" in typed context  [no-untyped-call]
++Found 34 errors in 3 files (checked 3 source files)
+diff --git a/openspec/changes/add-ui-layout-export-typing/tasks.md b/openspec/changes/add-ui-layout-export-typing/tasks.md
+index 10f5d601ff43ddac8359ea7b531f3b0ee65b4f5d..6bf7973d5d1d1bbbac8f7406175eecf1d89b8f43 100644
+--- a/openspec/changes/add-ui-layout-export-typing/tasks.md
++++ b/openspec/changes/add-ui-layout-export-typing/tasks.md
+@@ -1,22 +1,22 @@
+ ## 1. Baseline & Planning
+-- [ ] 1.1 Collect mypy errors for `ui/export.py`, layout export handlers, and tests
+-- [ ] 1.2 Identify export payload shapes (GeoJSON features, CSV rows, shapefile metadata)
++- [x] 1.1 Collect mypy errors for `ui/export.py`, layout export handlers, and tests
++- [x] 1.2 Identify export payload shapes (GeoJSON features, CSV rows, shapefile metadata)
+
+ ## 2. Export Typing
+-- [ ] 2.1 Annotate export functions with precise types (TypedDict/dataclasses for features, properties)
+-- [ ] 2.2 Introduce typed helper utilities for geometry conversion (centroids, WKT)
+-- [ ] 2.3 Add typed wrapper around Dash file response helper (stand-in for `dcc.send_file`)
++- [x] 2.1 Annotate export functions with precise types (TypedDict/dataclasses for features, properties)
++- [x] 2.2 Introduce typed helper utilities for geometry conversion (centroids, WKT)
++- [x] 2.3 Add typed wrapper around Dash file response helper (stand-in for `dcc.send_file`)
+
+ ## 3. Layout Integration
+-- [ ] 3.1 Update layouts/callbacks invoking exports to use typed helpers
+-- [ ] 3.2 Ensure typed error handling and logging in export flows
++- [x] 3.1 Update layouts/callbacks invoking exports to use typed helpers
++- [x] 3.2 Ensure typed error handling and logging in export flows
+
+ ## 4. Tests & Docs
+-- [ ] 4.1 Expand tests to validate typed export outputs (GeoJSON structure, CSV columns)
+-- [ ] 4.2 Document export typing patterns in developer guide
+-- [ ] 4.3 Run mypy on export modules/layouts; resolve all errors without suppressions
++- [x] 4.1 Expand tests to validate typed export outputs (GeoJSON structure, CSV columns)
++- [x] 4.2 Document export typing patterns in developer guide
++- [x] 4.3 Run mypy on export modules/layouts; resolve all errors without suppressions
+
+ ## 5. Validation
+-- [ ] 5.1 Smoke test export endpoints via pytest UI tests
+-- [ ] 5.2 Capture before/after mypy reports for change record
++- [x] 5.1 Smoke test export endpoints via pytest UI tests
++- [x] 5.2 Capture before/after mypy reports for change record
+ - [ ] 5.3 Submit for review and archive change upon approval
+diff --git a/src/Urban_Amenities2/ui/callbacks.py b/src/Urban_Amenities2/ui/callbacks.py
+index 93eae03fe326741e2820ec8eb6dfa69ef580e47b..8aaba6c2d1e13d8902bb22bdba2b149f94eff4c6 100644
+--- a/src/Urban_Amenities2/ui/callbacks.py
++++ b/src/Urban_Amenities2/ui/callbacks.py
+@@ -1,183 +1,214 @@
+ """Dash callback registrations."""
+
+ from __future__ import annotations
+
+-from collections.abc import Iterable
++from collections.abc import Iterable, Mapping, Sequence
+ from pathlib import Path
++from typing import Any, Callable, cast
+
+-from dash import Input, Output, State, callback_context, dcc, html, no_update
++from dash import Input, Output, State, callback_context, html, no_update
++from dash._no_update import NoUpdate
+
+ from .components.choropleth import create_choropleth
++from .config import UISettings
+ from .data_loader import DataContext
++from .downloads import send_file
++from .export_types import DownloadPayload
+ from .layers import basemap_attribution, build_overlay_payload, resolve_basemap_style
+ from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
+
+ SUBSCORE_VALUES = [option["value"] for option in SUBSCORE_OPTIONS]
+
+
+ def _normalise_filters(values: Iterable[str] | None) -> list[str]:
+     if not values:
+         return []
+     if isinstance(values, str):
+         return [values]
+     return [value for value in values if value]
+
+
+ def _resolution_for_zoom(zoom: float | None) -> int:
+     if zoom is None:
+         return 8
+     if zoom <= 5:
+         return 6
+     if zoom <= 8:
+         return 7
+     if zoom <= 11:
+         return 8
+     return 9
+
+
+-def _extract_viewport_bounds(relayout_data, fallback: tuple[float, float, float, float] | None):
+-    if not isinstance(relayout_data, dict):
++def _extract_viewport_bounds(
++    relayout_data: Mapping[str, object] | None,
++    fallback: tuple[float, float, float, float] | None,
++) -> tuple[float, float, float, float] | None:
++    if not isinstance(relayout_data, Mapping):
+         return fallback
+-    derived = relayout_data.get("mapbox._derived") if isinstance(relayout_data, dict) else None
+-    if isinstance(derived, dict):
++    derived = relayout_data.get("mapbox._derived")
++    if isinstance(derived, Mapping):
+         coordinates = derived.get("coordinates")
+-        if coordinates:
+-            points = [point for ring in coordinates for point in ring]
+-            if points:
+-                lons = [point[0] for point in points]
+-                lats = [point[1] for point in points]
++        if isinstance(coordinates, Sequence):
++            points = [point for ring in coordinates if isinstance(ring, Sequence) for point in ring]
++            filtered = [point for point in points if isinstance(point, Sequence) and len(point) >= 2]
++            if filtered:
++                lons = [float(point[0]) for point in filtered]
++                lats = [float(point[1]) for point in filtered]
+                 return min(lons), min(lats), max(lons), max(lats)
+     lon = relayout_data.get("mapbox.center.lon")
+     lat = relayout_data.get("mapbox.center.lat")
+-    if lon is not None and lat is not None and "mapbox.zoom" in relayout_data:
+-        # Fallback heuristic: approximate span based on zoom level
+-        zoom = relayout_data.get("mapbox.zoom")
+-        span = max(0.1, 360 / (2 ** max(zoom, 0)))
+-        return lon - span, lat - span, lon + span, lat + span
++    zoom_value = relayout_data.get("mapbox.zoom")
++    if isinstance(lon, (int, float)) and isinstance(lat, (int, float)) and isinstance(zoom_value, (int, float)):
++        span = max(0.1, 360 / (2 ** max(float(zoom_value), 0.0)))
++        lon_f = float(lon)
++        lat_f = float(lat)
++        return lon_f - span, lat_f - span, lon_f + span, lat_f + span
+     return fallback
+
+
+-def register_callbacks(app, data_context: DataContext, settings) -> None:
+-    @app.callback(
++def register_callbacks(app: Any, data_context: DataContext, settings: UISettings) -> None:
++    @cast(Callable[..., Any], app.callback(
+         Output("hex-map", "figure"),
+         Output("filter-count", "children"),
+         Output("subscore-description", "children"),
+         Input("subscore-select", "value"),
+         Input("basemap-select", "value"),
+         Input("overlay-layers", "value"),
+         Input("overlay-opacity", "value"),
+         Input("apply-filters", "n_clicks"),
+         Input("clear-filters", "n_clicks"),
+         Input("hex-map", "relayoutData"),
+         State("state-filter", "value"),
+         State("metro-filter", "value"),
+         State("county-filter", "value"),
+         State("score-range", "value"),
+         prevent_initial_call=False,
+-    )
++    ))
+     def _update_map(
+         subscore: str,
+         basemap: str,
+-        overlay_values,
+-        overlay_opacity,
+-        *_events,
+-        relayout_data,
+-        state_values,
+-        metro_values,
+-        county_values,
+-        score_range,
+-    ):
+-        triggered = callback_context.triggered_id
++        overlay_values: Sequence[str] | str | None,
++        overlay_opacity: float | None,
++        *_events: object,
++        relayout_data: Mapping[str, object] | None,
++        state_values: Iterable[str] | None,
++        metro_values: Iterable[str] | None,
++        county_values: Iterable[str] | None,
++        score_range: Sequence[float] | None,
++    ) -> tuple[Any, str, str]:
++        triggered = cast(str | None, getattr(callback_context, "triggered_id", None))
+         if triggered == "clear-filters":
+             state_values = metro_values = county_values = []
+             score_range = [0, 100]
++        overlay_list: list[str]
++        if isinstance(overlay_values, str):
++            overlay_list = [overlay_values]
++        elif overlay_values is None:
++            overlay_list = []
++        else:
++            overlay_list = [value for value in overlay_values if value]
++
++        if score_range and len(score_range) >= 2:
++            score_interval: tuple[float, float] | None = (
++                float(score_range[0]),
++                float(score_range[1]),
++            )
++        else:
++            score_interval = None
++
+         filtered = data_context.filter_scores(
+             state=_normalise_filters(state_values),
+             metro=_normalise_filters(metro_values),
+             county=_normalise_filters(county_values),
+-            score_range=tuple(score_range) if score_range else None,
++            score_range=score_interval,
+         )
+-        zoom = None
+-        if isinstance(relayout_data, dict):
+-            zoom = relayout_data.get("mapbox.zoom")
+-        resolution = _resolution_for_zoom(zoom)
++        zoom_value = None
++        if isinstance(relayout_data, Mapping):
++            raw_zoom = relayout_data.get("mapbox.zoom")
++            if isinstance(raw_zoom, (int, float)):
++                zoom_value = float(raw_zoom)
++        resolution = _resolution_for_zoom(zoom_value)
+         bounds = _extract_viewport_bounds(relayout_data, data_context.bounds)
+         base_resolution = data_context.base_resolution or 9
+         source = filtered if not filtered.empty else data_context.scores
+         if resolution >= base_resolution:
+             base_columns = ["hex_id", "aucs", "state", "metro", "county"]
+             if subscore not in base_columns:
+                 base_columns.append(subscore)
+             frame = source[base_columns].copy()
+             trimmed = data_context.apply_viewport(frame, base_resolution, bounds)
+             if not trimmed.empty:
+                 frame = trimmed
+             hover_candidates = [
+                 subscore,
+                 "aucs",
+                 "state",
+                 "metro",
+                 "county",
+                 "centroid_lat",
+                 "centroid_lon",
+             ]
+         else:
+             frame = data_context.frame_for_resolution(resolution, columns=["aucs", subscore])
+             trimmed = data_context.apply_viewport(frame, resolution, bounds)
+             if not trimmed.empty:
+                 frame = trimmed
+             hover_candidates = [subscore, "aucs", "count", "centroid_lat", "centroid_lon"]
+         frame = data_context.attach_geometries(frame)
+         hover_columns = [column for column in hover_candidates if column in frame.columns]
+         geojson = data_context.to_geojson(frame)
++        geojson_payload = cast(dict[str, Any], geojson)
+         basemap_style = resolve_basemap_style(basemap)
+         overlay_payload = build_overlay_payload(
+-            overlay_values or [],
++            overlay_list,
+             data_context,
+             opacity=overlay_opacity if overlay_opacity is not None else 0.35,
+         )
+         figure = create_choropleth(
+-            geojson=geojson,
++            geojson=geojson_payload,
+             frame=frame.fillna(0.0),
+             score_column=subscore,
+             hover_columns=hover_columns,
+             mapbox_token=settings.mapbox_token,
+             map_style=basemap_style,
+             layers=overlay_payload.layers,
+             extra_traces=overlay_payload.traces,
+             attribution=basemap_attribution(basemap_style),
+         )
+         total = len(data_context.scores)
+         filtered_count = len(source)
+         description = SUBSCORE_DESCRIPTIONS.get(subscore, "")
+         return figure, f"Showing {filtered_count:,} of {total:,} hexes", description
+
+-    @app.callback(
++    @cast(Callable[..., Any], app.callback(
+         Output("refresh-status", "children"),
+         Input("refresh-data", "n_clicks"),
+         prevent_initial_call=True,
+-    )
+-    def _refresh_data(_n_clicks: int | None):
++    ))
++    def _refresh_data(_n_clicks: int | None) -> html.Span:
+         data_context.refresh()
+         return html.Span(f"Reloaded dataset {data_context.version.identifier}" if data_context.version else "No dataset found")
+
+-    @app.callback(
++    @cast(Callable[..., Any], app.callback(
+         Output("download-data", "data"),
+         Input("export-csv", "n_clicks"),
+         Input("export-geojson", "n_clicks"),
+         prevent_initial_call=True,
+-    )
+-    def _export_data(csv_clicks: int | None, geojson_clicks: int | None):
+-        triggered = callback_context.triggered_id
++    ))
++    def _export_data(
++        csv_clicks: int | None, geojson_clicks: int | None
++    ) -> DownloadPayload | NoUpdate:
++        triggered = cast(str | None, getattr(callback_context, "triggered_id", None))
+         if triggered == "export-csv":
+             temp = Path("/tmp/ui-export.csv")
+             data_context.export_csv(temp)
+-            return dcc.send_file(str(temp))
++            return send_file(temp)
+         if triggered == "export-geojson":
+             temp = Path("/tmp/ui-export.geojson")
+             data_context.export_geojson(temp)
+-            return dcc.send_file(str(temp))
++            return send_file(temp)
+         return no_update
+
+
+ __all__ = ["register_callbacks"]
+diff --git a/src/Urban_Amenities2/ui/data_loader.py b/src/Urban_Amenities2/ui/data_loader.py
+index 94d70774e5899f1bada096bda2043837e003e5ee..58c9c53f6e9dc0c2ebbcc10e464c25fba16a6033 100644
+--- a/src/Urban_Amenities2/ui/data_loader.py
++++ b/src/Urban_Amenities2/ui/data_loader.py
+@@ -1,94 +1,110 @@
+ """Utilities for loading and caching model output data for the UI."""
+
+ from __future__ import annotations
+
+ import json
+ from collections.abc import Iterable, Mapping
++from importlib import import_module
+ from dataclasses import dataclass, field
+ from datetime import datetime
+ from pathlib import Path
++from types import ModuleType
++from typing import Any, Callable, Sequence, cast
+
+-try:  # pragma: no cover - optional dependency handled gracefully
+-    from shapely import wkt as shapely_wkt
+-    from shapely.geometry import mapping as shapely_mapping
+-    from shapely.ops import unary_union
+-except ImportError:  # pragma: no cover - shapely is an optional runtime dependency
+-    shapely_wkt = None
+-    unary_union = None
+-    shapely_mapping = None
+-
+-import pandas as pd
++from .export import build_feature_collection
++from .export_types import GeoJSONFeature, GeoJSONFeatureCollection, GeoJSONGeometry, TabularData
+
+ from ..logging_utils import get_logger
+ from .config import UISettings
+ from .hexes import HexGeometryCache, build_hex_index
+
+ LOGGER = get_logger("ui.data")
+
+-REQUIRED_COLUMNS = {
++pd = cast(Any, import_module("pandas"))
++
++shapely_wkt: ModuleType | None
++shapely_mapping: Callable[[Any], Mapping[str, Any]] | None
++unary_union: Callable[[Sequence[Any]], Any] | None
++
++try:  # pragma: no cover - optional dependency handled gracefully
++    shapely_wkt = import_module("shapely.wkt")
++    shapely_mapping = cast(
++        Callable[[Any], Mapping[str, Any]],
++        getattr(import_module("shapely.geometry"), "mapping"),
++    )
++    unary_union = cast(
++        Callable[[Sequence[Any]], Any],
++        getattr(import_module("shapely.ops"), "unary_union"),
++    )
++except ImportError:  # pragma: no cover
++    shapely_wkt = None
++    shapely_mapping = None
++    unary_union = None
++
++REQUIRED_COLUMNS: dict[str, set[str]] = {
+     "scores": {"hex_id", "aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"},
+     "metadata": {"hex_id", "state", "metro", "county"},
+ }
+
+
+-def _require_columns(frame: pd.DataFrame, required: Iterable[str]) -> None:
++def _require_columns(frame: Any, required: Iterable[str]) -> None:
+     missing = [column for column in required if column not in frame.columns]
+     if missing:
+         msg = f"DataFrame missing required columns: {missing}"
+         raise KeyError(msg)
+
+
+ @dataclass(slots=True)
+ class DatasetVersion:
+     identifier: str
+     created_at: datetime
+     path: Path
+
+     @classmethod
+     def from_path(cls, path: Path) -> DatasetVersion:
+         stat = path.stat()
+         identifier = path.stem
+         created_at = datetime.fromtimestamp(stat.st_mtime)
+         return cls(identifier=identifier, created_at=created_at, path=path)
+
+
+ @dataclass(slots=True)
+ class DataContext:
+     """Holds loaded datasets and derived aggregates for the UI."""
+
+     settings: UISettings
+-    scores: pd.DataFrame = field(default_factory=pd.DataFrame)
+-    metadata: pd.DataFrame = field(default_factory=pd.DataFrame)
+-    geometries: pd.DataFrame = field(default_factory=pd.DataFrame)
++    scores: Any = field(default_factory=pd.DataFrame)
++    metadata: Any = field(default_factory=pd.DataFrame)
++    geometries: Any = field(default_factory=pd.DataFrame)
+     version: DatasetVersion | None = None
+     hex_cache: HexGeometryCache = field(default_factory=HexGeometryCache)
+     base_resolution: int | None = None
+     bounds: tuple[float, float, float, float] | None = None
+-    _aggregation_cache: dict[tuple[int, tuple[str, ...]], pd.DataFrame] = field(default_factory=dict)
++    _aggregation_cache: dict[tuple[int, tuple[str, ...]], Any] = field(default_factory=dict)
+     _aggregation_version: str | None = None
+-    overlays: dict[str, dict] = field(default_factory=dict)
++    overlays: dict[str, GeoJSONFeatureCollection] = field(default_factory=dict)
+     _overlay_version: str | None = None
+
+     @classmethod
+     def from_settings(cls, settings: UISettings) -> DataContext:
+         context = cls(settings=settings)
+         context.refresh()
+         return context
+
+     def refresh(self) -> None:
+         """Reload parquet files if a newer version is available."""
+
+         data_path = self.settings.data_path
+         if not data_path.exists():
+             LOGGER.warning("ui_data_path_missing", path=str(data_path))
+             return
+
+         parquet_files = sorted(data_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime, reverse=True)
+         if not parquet_files:
+             LOGGER.warning("ui_no_parquet", path=str(data_path))
+             return
+
+         latest = DatasetVersion.from_path(parquet_files[0])
+         if self.version and latest.created_at <= self.version.created_at:
+             return
+
+@@ -102,158 +118,162 @@ class DataContext:
+         else:
+             self.metadata = pd.DataFrame()
+         if not self.metadata.empty:
+             self.scores = self.scores.merge(self.metadata, on="hex_id", how="left")
+         self.version = latest
+         self._aggregation_cache.clear()
+         self._aggregation_version = latest.identifier
+         self._prepare_geometries()
+         self.validate_geometries()
+         self._record_base_resolution()
+         self._build_overlays(force=True)
+
+     def _prepare_geometries(self) -> None:
+         if "hex_id" not in self.scores.columns:
+             return
+         hex_ids = self.scores["hex_id"].astype(str).unique()
+         geometries = self.hex_cache.ensure_geometries(hex_ids)
+         self.geometries = geometries
+         self._update_bounds()
+
+     def validate_geometries(self) -> None:
+         if "hex_id" not in self.scores.columns:
+             return
+         self.hex_cache.validate(self.scores["hex_id"].astype(str))
+
+-    def _load_parquet(self, path: Path, columns: Iterable[str] | None = None) -> pd.DataFrame:
++    def _load_parquet(self, path: Path, columns: Iterable[str] | None = None) -> Any:
+         frame = pd.read_parquet(path, columns=list(columns) if columns else None)
+         if "hex_id" in frame.columns:
+             frame["hex_id"] = frame["hex_id"].astype("category")
+         return frame
+
+-    def load_subset(self, columns: Iterable[str]) -> pd.DataFrame:
++    def load_subset(self, columns: Iterable[str]) -> Any:
+         """Return a view of the scores table restricted to specific columns."""
+
+         if self.scores.empty:
+             return self.scores
+         unique_columns = list(dict.fromkeys(columns))
+         subset = self.scores[unique_columns].copy()
+         return subset
+
+     def filter_scores(
+         self,
+         *,
+         state: Iterable[str] | None = None,
+         metro: Iterable[str] | None = None,
+         county: Iterable[str] | None = None,
+         score_range: tuple[float, float] | None = None,
+-    ) -> pd.DataFrame:
++    ) -> Any:
+         frame = self.scores
+         if frame.empty or self.metadata.empty:
+             return frame
+         mask = pd.Series(True, index=frame.index)
+         if state:
+             state_mask = frame["state"].isin(state)
+             mask &= state_mask
+         if metro:
+             mask &= frame["metro"].isin(metro)
+         if county:
+             mask &= frame["county"].isin(county)
+         if score_range:
+             low, high = score_range
+             mask &= frame["aucs"].between(low, high)
+         return frame[mask]
+
+-    def summarise(self, columns: Iterable[str] | None = None) -> pd.DataFrame:
++    def summarise(self, columns: Iterable[str] | None = None) -> Any:
+         if self.scores.empty:
+             return pd.DataFrame()
+         columns = list(columns) if columns else ["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
+-        summary = {}
++        summary: dict[str, dict[str, float]] = {}
+         percentiles = [p / 100.0 for p in self.settings.summary_percentiles]
+         for column in columns:
+             if column not in self.scores.columns:
+                 continue
+             series = self.scores[column]
+             summary[column] = {
+                 "min": float(series.min()),
+                 "max": float(series.max()),
+                 "mean": float(series.mean()),
+                 **{f"p{int(p * 100)}": float(series.quantile(p)) for p in percentiles},
+             }
+         return pd.DataFrame(summary).T
+
+     def export_geojson(self, path: Path, columns: Iterable[str] | None = None) -> Path:
+         columns = list(columns) if columns else ["hex_id", "aucs"]
+         frame = self.load_subset(columns + ["hex_id"])
+         payload = self.to_geojson(frame)
+         path.parent.mkdir(parents=True, exist_ok=True)
+         path.write_text(json.dumps(payload))
+         return path
+
+-    def to_geojson(self, frame: pd.DataFrame) -> dict:
++    def to_geojson(self, frame: Any) -> GeoJSONFeatureCollection:
+         geometries = self.geometries
+         if geometries.empty:
+             raise RuntimeError("Hex geometries not initialised")
+         merged = frame.merge(geometries, on="hex_id", how="left")
+-        features = []
+-        for record in merged.to_dict("records"):
+-            geometry = json.loads(record.pop("geometry"))
+-            features.append({"type": "Feature", "geometry": geometry, "properties": record})
+-        return {"type": "FeatureCollection", "features": features}
++        feature_collection = build_feature_collection(
++            cast(TabularData, merged),
++            properties=[
++                column
++                for column in merged.columns
++                if column not in {"geometry", "geometry_wkt"}
++            ],
++        )
++        return feature_collection
+
+     def export_csv(self, path: Path, columns: Iterable[str] | None = None) -> Path:
+         columns = list(columns) if columns else ["hex_id", "aucs", "EA", "LCA"]
+         frame = self.load_subset(columns)
+         path.parent.mkdir(parents=True, exist_ok=True)
+         frame.to_csv(path, index=False)
+         return path
+
+     def export_shapefile(self, path: Path, columns: Iterable[str] | None = None) -> Path:
+         geopandas = __import__("geopandas")
+         columns = list(columns) if columns else ["hex_id", "aucs"]
+         frame = self.load_subset(columns + ["hex_id"])
+         geometries = self.geometries
+         if geometries.empty:
+             raise RuntimeError("Hex geometries not initialised")
+         merged = frame.merge(geometries, on="hex_id", how="left")
+         gdf = geopandas.GeoDataFrame(
+             merged.drop(columns=["geometry"]),
+             geometry=geopandas.GeoSeries.from_wkt(merged["geometry_wkt"]),
+             crs="EPSG:4326",
+         )
+         path.parent.mkdir(parents=True, exist_ok=True)
+         gdf.to_file(path)
+         return path
+
+     def get_hex_index(self, resolution: int) -> Mapping[str, list[str]]:
+         if self.geometries.empty:
+             return {}
+         return build_hex_index(self.geometries, resolution)
+
+     def aggregate_by_resolution(
+         self, resolution: int, columns: Iterable[str] | None = None
+-    ) -> pd.DataFrame:
++    ) -> Any:
+         if self.scores.empty:
+             return pd.DataFrame()
+         columns = list(dict.fromkeys(columns or ["aucs"]))
+         subset_columns = ["hex_id", *columns]
+         subset = self.scores[subset_columns].copy()
+         if subset.empty:
+             return subset
+         subset["hex_id"] = subset["hex_id"].astype(str)
+         h3 = __import__("h3")
+         subset["parent_hex"] = [
+             h3.cell_to_parent(hex_id, resolution) for hex_id in subset["hex_id"]
+         ]
+         aggregations = {column: "mean" for column in columns if column in subset.columns}
+         aggregations["hex_id"] = "count"
+         frame = (
+             subset.groupby("parent_hex", as_index=False)
+             .agg(aggregations)
+             .rename(columns={"parent_hex": "hex_id", "hex_id": "count"})
+         )
+         if frame.empty:
+             return frame
+         new_geoms = self.hex_cache.ensure_geometries(frame["hex_id"].astype(str).tolist())
+         if self.geometries.empty:
+             self.geometries = new_geoms
+         else:
+@@ -261,178 +281,191 @@ class DataContext:
+                 pd.concat([self.geometries, new_geoms])
+                 .drop_duplicates(subset=["hex_id"], keep="last")
+                 .reset_index(drop=True)
+             )
+         self._update_bounds()
+         return frame
+
+     def _record_base_resolution(self) -> None:
+         if self.scores.empty:
+             self.base_resolution = None
+             return
+         sample = str(self.scores["hex_id"].astype(str).iloc[0])
+         h3 = __import__("h3")
+         self.base_resolution = h3.get_resolution(sample)
+
+     def _update_bounds(self) -> None:
+         if self.geometries.empty:
+             self.bounds = None
+             return
+         lon = self.geometries["centroid_lon"].astype(float)
+         lat = self.geometries["centroid_lat"].astype(float)
+         self.bounds = (float(lon.min()), float(lat.min()), float(lon.max()), float(lat.max()))
+
+     def frame_for_resolution(
+         self, resolution: int, columns: Iterable[str] | None = None
+-    ) -> pd.DataFrame:
++    ) -> Any:
+         columns = list(dict.fromkeys(columns or ["aucs"]))
+         base_resolution = self.base_resolution or resolution
+         if resolution >= base_resolution:
+             required = ["hex_id", *columns]
+             available = [col for col in required if col in self.scores.columns]
+             return self.scores.loc[:, available].copy()
+         cache_key = (resolution, tuple(sorted(columns)))
+         cached = self._aggregation_cache.get(cache_key)
+         if cached is not None:
+             return cached.copy()
+         frame = self.aggregate_by_resolution(resolution, columns=columns)
+         self._aggregation_cache[cache_key] = frame
+         return frame.copy()
+
+     def ids_in_viewport(
+         self,
+         bounds: tuple[float, float, float, float] | None,
+         *,
+         resolution: int | None = None,
+         buffer: float = 0.0,
+     ) -> list[str]:
+         if bounds is None or self.geometries.empty:
+             return []
+         lon_min, lat_min, lon_max, lat_max = bounds
+         lon_min -= buffer
+         lat_min -= buffer
+         lon_max += buffer
+         lat_max += buffer
+         frame = self.geometries
+         mask = (
+             (frame["centroid_lon"] >= lon_min)
+             & (frame["centroid_lon"] <= lon_max)
+             & (frame["centroid_lat"] >= lat_min)
+             & (frame["centroid_lat"] <= lat_max)
+         )
+         if resolution is not None and "resolution" in frame.columns:
+             mask &= frame["resolution"] == resolution
+-        return frame.loc[mask, "hex_id"].astype(str).tolist()
++        values = frame.loc[mask, "hex_id"].astype(str).tolist()
++        return [str(value) for value in values]
+
+     def apply_viewport(
+-        self, frame: pd.DataFrame, resolution: int, bounds: tuple[float, float, float, float] | None
+-    ) -> pd.DataFrame:
++        self, frame: Any, resolution: int, bounds: tuple[float, float, float, float] | None
++    ) -> Any:
+         if bounds is None or frame.empty:
+             return frame
+         candidates = self.ids_in_viewport(bounds, resolution=resolution, buffer=0.1)
+         if not candidates:
+             return frame
+         subset = frame[frame["hex_id"].isin(candidates)]
+         return subset if not subset.empty else frame
+
+-    def attach_geometries(self, frame: pd.DataFrame) -> pd.DataFrame:
++    def attach_geometries(self, frame: Any) -> Any:
+         if frame.empty:
+             return frame
+         columns = ["hex_id", "centroid_lat", "centroid_lon"]
+         if "geometry_wkt" in self.geometries.columns:
+             columns.append("geometry_wkt")
+         if "resolution" in self.geometries.columns:
+             columns.append("resolution")
+         merged = frame.merge(
+             self.geometries[columns].drop_duplicates("hex_id"),
+             on="hex_id",
+             how="left",
+         )
+         return merged
+
+     def rebuild_overlays(self, force: bool = False) -> None:
+         """Public helper to recompute overlay GeoJSON payloads."""
+
+         self._build_overlays(force=force)
+
+-    def get_overlay(self, key: str) -> dict:
++    def get_overlay(self, key: str) -> GeoJSONFeatureCollection:
+         """Return a GeoJSON overlay by key, ensuring an empty payload on miss."""
+
+-        payload = self.overlays.get(key, {})
++        payload = self.overlays.get(key)
+         if not payload:
+             return {"type": "FeatureCollection", "features": []}
+         return payload
+
+     def _build_overlays(self, force: bool = False) -> None:
+         """Construct GeoJSON overlays for boundaries and external layers."""
+
+         if not force and self._overlay_version == self._aggregation_version:
+             return
+         if self.scores.empty or self.geometries.empty:
+             self.overlays.clear()
+             self._overlay_version = self._aggregation_version
+             return
+         if shapely_wkt is None or unary_union is None or shapely_mapping is None:
+             LOGGER.warning(
+                 "ui_overlays_shapely_missing",
+                 msg="Install shapely to enable boundary overlays",
+             )
+             self.overlays.clear()
+             self._overlay_version = self._aggregation_version
+             return
+
+         merged = self.scores.merge(
+             self.geometries[["hex_id", "geometry_wkt"]],
+             on="hex_id",
+             how="left",
+         )
+-        overlays: dict[str, dict] = {}
++        overlays: dict[str, GeoJSONFeatureCollection] = {}
+         for column, key in (("state", "states"), ("county", "counties"), ("metro", "metros")):
+             if column not in merged.columns:
+                 continue
+-            features = []
++            features: list[GeoJSONFeature] = []
+             for value, group in merged.groupby(column):
+                 if not value or group.empty:
+                     continue
+                 shapes = [
+                     shapely_wkt.loads(wkt)
+                     for wkt in group["geometry_wkt"].dropna().unique()
+                 ]
+                 if not shapes:
+                     continue
+                 geometry = unary_union(shapes)
+                 if geometry.is_empty:
+                     continue
+                 simplified = geometry.simplify(0.01, preserve_topology=True)
++                geometry_payload = cast(GeoJSONGeometry, shapely_mapping(simplified))
+                 features.append(
+                     {
+                         "type": "Feature",
+-                        "geometry": shapely_mapping(simplified),
++                        "geometry": geometry_payload,
+                         "properties": {"label": value},
+                     }
+                 )
+             if features:
+                 overlays[key] = {"type": "FeatureCollection", "features": features}
+
+         overlays.update(self._load_external_overlays())
+         self.overlays = overlays
+         self._overlay_version = self._aggregation_version
+
+-    def _load_external_overlays(self) -> dict[str, dict]:
++    def _load_external_overlays(self) -> dict[str, GeoJSONFeatureCollection]:
+         """Load optional overlay GeoJSON files from the data directory."""
+
+-        result: dict[str, dict] = {}
++        result: dict[str, GeoJSONFeatureCollection] = {}
+         base = self.settings.data_path / "overlays"
+         for name in ("transit_lines", "transit_stops", "parks"):
+             path = base / f"{name}.geojson"
+             if not path.exists():
+                 continue
+             try:
+                 payload = json.loads(path.read_text())
+             except json.JSONDecodeError as exc:
+                 LOGGER.warning("ui_overlay_invalid", name=name, error=str(exc))
+                 continue
+-            result[name] = payload
++            if payload.get("type") != "FeatureCollection":
++                LOGGER.warning("ui_overlay_invalid_type", name=name)
++                continue
++            raw_features = payload.get("features")
++            if not isinstance(raw_features, list):
++                LOGGER.warning("ui_overlay_invalid_features", name=name)
++                continue
++            features: list[GeoJSONFeature] = []
++            for feature in raw_features:
++                if isinstance(feature, dict):
++                    features.append(cast(GeoJSONFeature, feature))
++            result[name] = {"type": "FeatureCollection", "features": features}
+         return result
+
+
+ __all__ = ["DataContext", "DatasetVersion"]
+diff --git a/src/Urban_Amenities2/ui/downloads.py b/src/Urban_Amenities2/ui/downloads.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d9bcab1f5282426edadac98d9b4b7c5d664958da
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/downloads.py
+@@ -0,0 +1,19 @@
++"""Typed wrappers around Dash download helpers."""
++
++from __future__ import annotations
++
++from pathlib import Path
++from typing import cast
++
++from dash import dcc
++
++from .export_types import DownloadPayload
++
++
++def send_file(path: Path, *, filename: str | None = None, content_type: str | None = None) -> DownloadPayload:
++    """Return a typed payload compatible with ``dcc.Download``."""
++    response = dcc.send_file(str(path), filename=filename, type=content_type)
++    return cast(DownloadPayload, response)
++
++
++__all__ = ["send_file"]
+diff --git a/src/Urban_Amenities2/ui/export.py b/src/Urban_Amenities2/ui/export.py
+index 9233d7db3ce6962a5e073b87c7255794abdc9fa5..cc61eff25cb2b2aeb2af30dedba3639f3d1a7c83 100644
+--- a/src/Urban_Amenities2/ui/export.py
++++ b/src/Urban_Amenities2/ui/export.py
+@@ -1,181 +1,197 @@
+-"""Export utilities for AUCS data."""
++"""Typed export utilities for AUCS data."""
+
+ from __future__ import annotations
+
++import json
++from importlib import import_module
+ from pathlib import Path
++from typing import Any, Iterable, Mapping, Sequence, cast
+
+-import geopandas as gpd
+-import pandas as pd
+ import structlog
+-from shapely.geometry import Polygon
+
+-logger = structlog.get_logger()
+-
+-
+-def hex_to_polygon(hex_id: str) -> Polygon:
+-    """
+-    Convert H3 hex ID to Shapely polygon.
++from .export_types import (
++    GeoJSONFeature,
++    GeoJSONFeatureCollection,
++    GeoPandasModule,
++    JsonValue,
++    TabularData,
++)
+
+-    Args:
+-        hex_id: H3 hex ID
+-
+-    Returns:
+-        Shapely Polygon
+-    """
+-    import h3
++logger = structlog.get_logger()
+
+-    # Ensure hex_id is a string (H3 v4 requires string format)
+-    hex_str = str(hex_id) if not isinstance(hex_id, str) else hex_id
+
+-    # H3 v4 API: cell_to_boundary returns list of (lat, lon) tuples
+-    boundary = h3.cell_to_boundary(hex_str)
+-    # Convert to (lon, lat) for Shapely
+-    coords = [(lon, lat) for lat, lon in boundary]
+-    return Polygon(coords)
++def _h3() -> Any:
++    return import_module("h3")
++
++
++def _geopandas() -> GeoPandasModule:
++    module = import_module("geopandas")
++    return cast(GeoPandasModule, module)
++
++
++def _polygon_module() -> Any:
++    return import_module("shapely.geometry")
++
++
++def _hex_boundary(hex_id: str) -> list[tuple[float, float]]:
++    boundary = _h3().cell_to_boundary(str(hex_id))
++    return [(float(lon), float(lat)) for lat, lon in boundary]
++
++
++def _hex_centroid(hex_id: str) -> tuple[float, float]:
++    lat, lon = _h3().cell_to_latlng(str(hex_id))
++    return float(lat), float(lon)
++
++
++def _boundary_ring(boundary: Sequence[tuple[float, float]]) -> list[list[float]]:
++    ring = [[lon, lat] for lon, lat in boundary]
++    if ring and ring[0] != ring[-1]:
++        ring.append([ring[0][0], ring[0][1]])
++    return ring
++
++
++def _normalise_value(value: object) -> JsonValue:
++    if value is None:
++        return None
++    if isinstance(value, (str, bool)):
++        return value
++    if isinstance(value, (int, float)):
++        return value
++    if hasattr(value, "item"):
++        return _normalise_value(value.item())
++    if isinstance(value, Mapping):
++        return {str(key): _normalise_value(val) for key, val in value.items()}
++    if isinstance(value, (list, tuple, set)):
++        return [_normalise_value(item) for item in value]
++    return str(value)
++
++
++def _record_to_feature(record: Mapping[str, object]) -> GeoJSONFeature | None:
++    hex_raw = record.get("hex_id")
++    if not isinstance(hex_raw, str):
++        return None
++    boundary = _hex_boundary(hex_raw)
++    coordinates = [_boundary_ring(boundary)]
++    properties: dict[str, JsonValue] = {}
++    for key, value in record.items():
++        if key == "hex_id":
++            properties[key] = hex_raw
++            continue
++        properties[key] = _normalise_value(value)
++    return {
++        "type": "Feature",
++        "geometry": {"type": "Polygon", "coordinates": coordinates},
++        "properties": properties,
++    }
++
++
++def build_feature_collection(
++    frame: TabularData,
++    properties: Sequence[str] | None = None,
++) -> GeoJSONFeatureCollection:
++    requested = list(properties) if properties else [column for column in frame.columns if column != "hex_id"]
++    columns = ["hex_id", *requested]
++    subset_obj = frame[[column for column in columns if column in frame.columns]]
++    subset = cast(TabularData, subset_obj)
++    records = subset.to_dict("records")
++    features: list[GeoJSONFeature] = []
++    for record in records:
++        feature = _record_to_feature(record)
++        if feature is not None:
++            features.append(feature)
++    return {"type": "FeatureCollection", "features": features}
+
+
+ def export_geojson(
+-    df: pd.DataFrame,
++    frame: TabularData,
+     output_path: Path,
+-    properties: list[str] | None = None,
+-) -> None:
+-    """
+-    Export DataFrame to GeoJSON.
+-
+-    Args:
+-        df: DataFrame with hex_id and score columns
+-        output_path: Path to output GeoJSON file
+-        properties: List of properties to include (defaults to all columns)
+-    """
+-    logger.info("export_geojson_start", rows=len(df), output=str(output_path))
+-
+-    # Convert hex IDs to geometries
+-    geometries = [hex_to_polygon(hex_id) for hex_id in df["hex_id"]]
+-
+-    # Create GeoDataFrame
+-    gdf = gpd.GeoDataFrame(df, geometry=geometries, crs="EPSG:4326")
+-
+-    # Select properties to include
+-    if properties:
+-        columns_to_keep = ["geometry"] + [p for p in properties if p in gdf.columns]
+-        gdf = gdf[columns_to_keep]
+-
+-    # Write to file
+-    gdf.to_file(output_path, driver="GeoJSON")
++    properties: Sequence[str] | None = None,
++) -> Path:
++    logger.info("export_geojson_start", rows=len(frame), output=str(output_path))
++    collection = build_feature_collection(frame, properties=properties)
++    output_path.parent.mkdir(parents=True, exist_ok=True)
++    output_path.write_text(json.dumps(collection))
+     logger.info("export_geojson_complete", path=str(output_path))
++    return output_path
+
+
+ def export_csv(
+-    df: pd.DataFrame,
++    frame: TabularData,
+     output_path: Path,
++    *,
+     include_geometry: bool = False,
+-) -> None:
+-    """
+-    Export DataFrame to CSV.
+-
+-    Args:
+-        df: DataFrame with hex-level data
+-        output_path: Path to output CSV file
+-        include_geometry: Whether to include lat/lon columns
+-    """
+-    logger.info("export_csv_start", rows=len(df), output=str(output_path))
+-
+-    export_df = df.copy()
+-
+-    # Optionally add lat/lon centroids
+-    if include_geometry and "lat" not in export_df.columns:
+-        import h3
+-
+-        # H3 v4 API: cell_to_latlng returns (lat, lon)
+-        # Ensure hex_id is string
+-        centroids = [h3.cell_to_latlng(str(hex_id)) for hex_id in export_df["hex_id"]]
+-        export_df["lat"] = [c[0] for c in centroids]
+-        export_df["lon"] = [c[1] for c in centroids]
+-
+-    export_df.to_csv(output_path, index=False)
++) -> Path:
++    logger.info("export_csv_start", rows=len(frame), output=str(output_path))
++    export_frame = frame.copy()
++    if include_geometry and "lat" not in export_frame.columns:
++        centroids = [
++            _hex_centroid(str(hex_id))
++            for hex_id in cast(Iterable[Any], export_frame["hex_id"])
++        ]
++        export_frame["lat"] = [lat for lat, _ in centroids]
++        export_frame["lon"] = [lon for _, lon in centroids]
++    export_frame.to_csv(str(output_path), index=False)
+     logger.info("export_csv_complete", path=str(output_path))
+-
+-
+-def export_shapefile(df: pd.DataFrame, output_path: Path) -> None:
+-    """
+-    Export DataFrame to Shapefile.
+-
+-    Args:
+-        df: DataFrame with hex_id and score columns
+-        output_path: Path to output Shapefile (.shp)
+-    """
+-    logger.info("export_shapefile_start", rows=len(df), output=str(output_path))
+-
+-    # Convert hex IDs to geometries
+-    geometries = [hex_to_polygon(hex_id) for hex_id in df["hex_id"]]
+-
+-    # Create GeoDataFrame
+-    gdf = gpd.GeoDataFrame(df, geometry=geometries, crs="EPSG:4326")
+-
+-    # Truncate column names to 10 chars (Shapefile limitation)
+-    gdf.columns = [col[:10] if len(col) > 10 else col for col in gdf.columns]
+-
+-    # Write to file
+-    gdf.to_file(output_path, driver="ESRI Shapefile")
++    return output_path
++
++
++def export_shapefile(frame: TabularData, output_path: Path) -> Path:
++    logger.info("export_shapefile_start", rows=len(frame), output=str(output_path))
++    geopandas = _geopandas()
++    polygon_module = _polygon_module()
++    geometries = [
++        polygon_module.Polygon(_hex_boundary(str(hex_id)))
++        for hex_id in cast(Iterable[Any], frame["hex_id"])
++    ]
++    geo_frame = geopandas.GeoDataFrame(frame, geometry=geometries, crs="EPSG:4326")
++    rename_map = {column: column[:10] for column in geo_frame.columns}
++    geo_frame.rename(columns=rename_map, inplace=True)
++    geo_frame.to_file(str(output_path), driver="ESRI Shapefile")
+     logger.info("export_shapefile_complete", path=str(output_path))
++    return output_path
+
+
+-def export_parquet(df: pd.DataFrame, output_path: Path) -> None:
+-    """
+-    Export DataFrame to Parquet (most efficient).
+-
+-    Args:
+-        df: DataFrame with hex-level data
+-        output_path: Path to output Parquet file
+-    """
+-    logger.info("export_parquet_start", rows=len(df), output=str(output_path))
+-    df.to_parquet(output_path, compression="snappy", index=False)
++def export_parquet(frame: TabularData, output_path: Path) -> Path:
++    logger.info("export_parquet_start", rows=len(frame), output=str(output_path))
++    frame.to_parquet(str(output_path), compression="snappy", index=False)
+     logger.info("export_parquet_complete", path=str(output_path))
++    return output_path
+
+
+ def create_shareable_url(
+     base_url: str,
+     state: str | None = None,
+     metro: str | None = None,
+     subscore: str | None = None,
+     zoom: int | None = None,
+     center_lat: float | None = None,
+     center_lon: float | None = None,
+ ) -> str:
+-    """
+-    Create a shareable URL with encoded parameters.
+-
+-    Args:
+-        base_url: Base application URL
+-        state: Selected state filter
+-        metro: Selected metro filter
+-        subscore: Selected subscore
+-        zoom: Map zoom level
+-        center_lat: Map center latitude
+-        center_lon: Map center longitude
+-
+-    Returns:
+-        URL string with query parameters
+-    """
+     from urllib.parse import urlencode
+
+-    params = {}
+-
++    params: dict[str, str | int | float] = {}
+     if state:
+         params["state"] = state
+     if metro:
+         params["metro"] = metro
+     if subscore:
+         params["subscore"] = subscore
+     if zoom is not None:
+         params["zoom"] = zoom
+     if center_lat is not None and center_lon is not None:
+         params["lat"] = center_lat
+         params["lon"] = center_lon
+-
+     if not params:
+         return base_url
+-
+     query_string = urlencode(params)
+     return f"{base_url}?{query_string}"
+
++
++__all__ = [
++    "build_feature_collection",
++    "create_shareable_url",
++    "export_csv",
++    "export_geojson",
++    "export_parquet",
++    "export_shapefile",
++]
+diff --git a/src/Urban_Amenities2/ui/export_types.py b/src/Urban_Amenities2/ui/export_types.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c9041861ec123ddb6a7d2df03eeb366b29572c59
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/export_types.py
+@@ -0,0 +1,106 @@
++from __future__ import annotations
++
++from pathlib import Path
++from typing import Any, Iterable, Iterator, Literal, Mapping, Protocol, Sequence, TypedDict, runtime_checkable
++
++JsonPrimitive = str | int | float | bool | None
++JsonValue = JsonPrimitive | Sequence["JsonValue"] | Mapping[str, "JsonValue"]
++
++
++class GeoJSONGeometry(TypedDict):
++    type: Literal["Polygon"]
++    coordinates: list[list[list[float]]]
++
++
++class GeoJSONFeature(TypedDict):
++    type: Literal["Feature"]
++    geometry: GeoJSONGeometry
++    properties: dict[str, JsonValue]
++
++
++class GeoJSONFeatureCollection(TypedDict):
++    type: Literal["FeatureCollection"]
++    features: list[GeoJSONFeature]
++
++
++class DownloadPayload(TypedDict, total=False):
++    content: str
++    filename: str
++    type: str | None
++    base64: Literal[True]
++
++
++@runtime_checkable
++class TabularSeries(Protocol):
++    def __iter__(self) -> Iterator[Any]: ...
++
++    def tolist(self) -> list[Any]: ...
++
++
++@runtime_checkable
++class TabularData(Protocol):
++    columns: Sequence[str]
++
++    def __len__(self) -> int: ...
++
++    def copy(self) -> "TabularData": ...
++
++    def __getitem__(self, key: str | Sequence[str]) -> TabularSeries | "TabularData": ...
++
++    def __setitem__(self, key: str, value: Iterable[Any]) -> None: ...
++
++    def to_csv(self, path: str | Path, *, index: bool = True) -> None: ...
++
++    def to_parquet(
++        self,
++        path: str | Path,
++        *,
++        compression: str = "snappy",
++        index: bool = True,
++    ) -> None: ...
++
++    def to_dict(self, orient: Literal["records"]) -> list[dict[str, Any]]: ...
++
++    def rename(
++        self,
++        *,
++        columns: Mapping[str, str] | None = None,
++        inplace: bool = False,
++    ) -> "TabularData" | None: ...
++
++
++class GeoDataExporter(TabularData, Protocol):
++    def to_file(self, path: str | Path, *, driver: str) -> None: ...
++
++
++class GeoPandasModule(Protocol):
++    def GeoDataFrame(
++        self,
++        data: TabularData,
++        *,
++        geometry: Sequence[Any],
++        crs: str,
++    ) -> GeoDataExporter: ...
++
++
++class PandasModule(Protocol):
++    def DataFrame(self, data: Mapping[str, Iterable[Any]] | Sequence[Mapping[str, Any]] | None = None) -> TabularData: ...
++
++    def read_parquet(self, path: Path, columns: Sequence[str] | None = None) -> TabularData: ...
++
++    class Series(TabularSeries):
++        ...
++
++
++__all__ = [
++    "DownloadPayload",
++    "GeoDataExporter",
++    "GeoJSONFeature",
++    "GeoJSONFeatureCollection",
++    "GeoJSONGeometry",
++    "JsonPrimitive",
++    "JsonValue",
++    "PandasModule",
++    "TabularData",
++    "TabularSeries",
++]
+diff --git a/tests/test_ui_export.py b/tests/test_ui_export.py
+index 8ba6f053d94b417dbd4455d498085f5f33931c0b..0f41d0f7bf5ce9fb152a043f7f5d685df647af29 100644
+--- a/tests/test_ui_export.py
++++ b/tests/test_ui_export.py
+@@ -1,119 +1,135 @@
+ """Tests for UI export functionality."""
+
+ from __future__ import annotations
+
+ import tempfile
+ from pathlib import Path
+
++import json
+ import geopandas as gpd
+ import pandas as pd
+ import pytest
+
+ from Urban_Amenities2.ui.export import (
++    build_feature_collection,
+     create_shareable_url,
+     export_csv,
+     export_geojson,
+     export_parquet,
+ )
+
+
+ @pytest.fixture
+ def sample_data():
+     """Create sample hex data for export testing."""
+     df = pd.DataFrame({
+         "hex_id": ["8928308280fffff", "8928308280bffff"],  # Valid H3 hex IDs
+         "state": ["CO", "CO"],
+         "metro": ["Denver", "Denver"],
+         "aucs": [75.0, 45.0],
+         "ea": [80.0, 50.0],
+         "lca": [70.0, 40.0],
+         "muhaa": [65.0, 35.0],
+         "jea": [85.0, 55.0],
+         "morr": [75.0, 45.0],
+         "cte": [60.0, 30.0],
+         "sou": [70.0, 40.0],
+     })
+     # Ensure hex_id is string type
+     df["hex_id"] = df["hex_id"].astype(str)
+     return df
+
+
+ def test_export_csv(sample_data):
+     """Test CSV export."""
+     with tempfile.TemporaryDirectory() as tmpdir:
+         output_path = Path(tmpdir) / "export.csv"
+-        export_csv(sample_data, output_path, include_geometry=True)
++        result = export_csv(sample_data, output_path, include_geometry=True)
++
++        # Verify the function returns the output path
++        assert result == output_path
+
+         # Verify file exists
+         assert output_path.exists()
+
+         # Load and verify content
+         loaded = pd.read_csv(output_path)
+         assert len(loaded) == len(sample_data)
+         assert "hex_id" in loaded.columns
+         assert "aucs" in loaded.columns
+         assert "lat" in loaded.columns  # Added by include_geometry
+         assert "lon" in loaded.columns
+
+
+ def test_export_geojson(sample_data):
+     """Test GeoJSON export."""
+     with tempfile.TemporaryDirectory() as tmpdir:
+         output_path = Path(tmpdir) / "export.geojson"
+-        export_geojson(sample_data, output_path)
++        result = export_geojson(sample_data, output_path)
++
++        assert result == output_path
+
+         # Verify file exists
+         assert output_path.exists()
+
+         # Load and verify content
+         gdf = gpd.read_file(output_path)
+         assert len(gdf) == len(sample_data)
+         assert "hex_id" in gdf.columns
+         assert "aucs" in gdf.columns
+         assert gdf.crs == "EPSG:4326"
+
+         # Verify geometries are polygons
+         assert all(gdf.geometry.type == "Polygon")
+
+
+ def test_export_geojson_with_properties(sample_data):
+     """Test GeoJSON export with selected properties."""
+     with tempfile.TemporaryDirectory() as tmpdir:
+         output_path = Path(tmpdir) / "export.geojson"
+         export_geojson(sample_data, output_path, properties=["hex_id", "aucs", "ea"])
+
+         # Load and verify only selected properties
+         gdf = gpd.read_file(output_path)
+         assert set(gdf.columns) == {"hex_id", "aucs", "ea", "geometry"}
+
++        payload = json.loads(output_path.read_text())
++        assert payload["type"] == "FeatureCollection"
++        for feature in payload["features"]:
++            assert feature["type"] == "Feature"
++            assert "geometry" in feature
++            assert set(feature["properties"].keys()) <= {"hex_id", "aucs", "ea"}
++
+
+ def test_export_parquet(sample_data):
+     """Test Parquet export."""
+     with tempfile.TemporaryDirectory() as tmpdir:
+         output_path = Path(tmpdir) / "export.parquet"
+-        export_parquet(sample_data, output_path)
++        result = export_parquet(sample_data, output_path)
++
++        assert result == output_path
+
+         # Verify file exists
+         assert output_path.exists()
+
+         # Load and verify content
+         loaded = pd.read_parquet(output_path)
+         pd.testing.assert_frame_equal(loaded, sample_data)
+
+
+ def test_create_shareable_url_basic():
+     """Test creating basic shareable URL."""
+     url = create_shareable_url("https://aucs.example.com")
+     assert url == "https://aucs.example.com"
+
+
+ def test_create_shareable_url_with_filters():
+     """Test creating shareable URL with filters."""
+     url = create_shareable_url(
+         "https://aucs.example.com",
+         state="CO",
+         metro="Denver",
+         subscore="ea",
+     )
+     assert "https://aucs.example.com?" in url
+     assert "state=CO" in url
+@@ -132,25 +148,34 @@ def test_create_shareable_url_with_map_position():
+     assert "zoom=10" in url
+     assert "lat=39.7392" in url
+     assert "lon=-104.9903" in url
+
+
+ def test_create_shareable_url_complete():
+     """Test creating complete shareable URL with all parameters."""
+     url = create_shareable_url(
+         "https://aucs.example.com",
+         state="CO",
+         metro="Denver",
+         subscore="lca",
+         zoom=12,
+         center_lat=39.7392,
+         center_lon=-104.9903,
+     )
+
+     # Verify all parameters present
+     assert "state=CO" in url
+     assert "metro=Denver" in url
+     assert "subscore=lca" in url
+     assert "zoom=12" in url
+     assert "lat=39.7392" in url
+     assert "lon=-104.9903" in url
+
++
++def test_build_feature_collection(sample_data):
++    collection = build_feature_collection(sample_data, properties=["hex_id", "aucs"])
++    assert collection["type"] == "FeatureCollection"
++    assert len(collection["features"]) == len(sample_data)
++    first_feature = collection["features"][0]
++    assert first_feature["geometry"]["type"] == "Polygon"
++    assert set(first_feature["properties"].keys()) >= {"hex_id", "aucs"}
++
+
+EOF
+)

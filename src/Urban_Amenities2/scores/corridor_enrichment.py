@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-
-from collections import OrderedDict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, cast
@@ -156,9 +154,7 @@ class TransitPathIdentifier:
                 continue
             raw_legs = itinerary.get("legs", [])
             legs: Sequence[Mapping[str, object]]
-            if isinstance(raw_legs, Sequence):
-                legs = [entry for entry in raw_legs if isinstance(entry, Mapping)]
-            elif isinstance(raw_legs, Iterable):
+            if isinstance(raw_legs, Sequence) or isinstance(raw_legs, Iterable):
                 legs = [entry for entry in raw_legs if isinstance(entry, Mapping)]
             else:
                 legs = []
@@ -245,7 +241,7 @@ class StopBufferBuilder:
             raise KeyError("stops dataframe must include lon and lat columns")
         stop_lon = pd.to_numeric(stops["lon"], errors="coerce").to_numpy(dtype=float)
         stop_lat = pd.to_numeric(stops["lat"], errors="coerce").to_numpy(dtype=float)
-        stop_geom = [Point(lon, lat) for lon, lat in zip(stop_lon, stop_lat)]
+        stop_geom = [Point(lon, lat) for lon, lat in zip(stop_lon, stop_lat, strict=False)]
         stops["geometry"] = stop_geom
         poi_frame = pois.copy()
         if "category" not in poi_frame.columns:
@@ -259,7 +255,7 @@ class StopBufferBuilder:
             return _empty_mapping_frame()
         poi_lon = pd.to_numeric(poi_frame["lon"], errors="coerce").to_numpy(dtype=float)
         poi_lat = pd.to_numeric(poi_frame["lat"], errors="coerce").to_numpy(dtype=float)
-        poi_geom = [Point(lon, lat) for lon, lat in zip(poi_lon, poi_lat)]
+        poi_geom = [Point(lon, lat) for lon, lat in zip(poi_lon, poi_lat, strict=False)]
         poi_frame["geometry"] = poi_geom
         poi_quality = pd.to_numeric(poi_frame.get("quality", 50.0), errors="coerce").fillna(50.0)
         poi_frame["quality"] = poi_quality.to_numpy(dtype=float)

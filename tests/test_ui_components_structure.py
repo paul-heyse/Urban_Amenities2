@@ -46,8 +46,10 @@ def test_build_overlay_panel_defaults() -> None:
     details = panel.children[0]
     checklist = details.children[1]
     assert isinstance(checklist, dcc.Checklist)
-    assert checklist.value == DEFAULT_OVERLAYS
-    assert {opt["value"] for opt in OVERLAY_OPTIONS} >= set(DEFAULT_OVERLAYS)
+    assert checklist.value == list(DEFAULT_OVERLAYS)
+    option_values = {option["value"] for option in OVERLAY_OPTIONS}
+    assert option_values >= set(DEFAULT_OVERLAYS)
+    assert all(isinstance(option["label"], str) for option in OVERLAY_OPTIONS)
 
 
 def test_filter_and_parameter_panels() -> None:

@@ -4,8 +4,8 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
+from numpy.typing import NDArray
 
 EARTH_RADIUS_M = 6_371_000.0
 LOGGER = logging.getLogger("aucs.quality.dedupe")

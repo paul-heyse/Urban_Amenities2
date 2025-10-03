@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Mapping
+from .contracts import SubscoreCode, SubscoreOption
 
-from .types import DropdownOption
-
-
-SUBSCORE_OPTIONS: list[DropdownOption] = [
+SUBSCORE_OPTIONS: tuple[SubscoreOption, ...] = (
     {"label": "Total AUCS", "value": "aucs"},
     {"label": "Essentials Access", "value": "EA"},
     {"label": "Leisure & Culture", "value": "LCA"},
@@ -16,9 +13,9 @@ SUBSCORE_OPTIONS: list[DropdownOption] = [
     {"label": "Mobility Reliability", "value": "MORR"},
     {"label": "Corridor Trip Enrichment", "value": "CTE"},
     {"label": "Seasonal Outdoors", "value": "SOU"},
-]
+)
 
-SUBSCORE_DESCRIPTIONS: Mapping[str, str] = {
+SUBSCORE_DESCRIPTIONS: dict[SubscoreCode, str] = {
     "aucs": "Overall composite score aggregating all subscores with current weights.",
     "EA": "Access to essential amenities such as groceries, pharmacies, and childcare.",
     "LCA": "Leisure and culture opportunities including dining, arts, parks, and recreation.",

@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Callable, cast
+from typing import Any
 
-from dash import dcc, html, register_page as _register_page
+from dash import dcc, html
 
 from ..config import UISettings
+from ..dash_wrappers import register_page
 from . import DATA_CONTEXT, SETTINGS
 
-register_page = cast(Callable[..., None], _register_page)
 register_page(__name__, path="/data", name="Data")
 
 
-def layout(**_: object) -> html.Div:
+def layout(**_: Any) -> html.Div:
     context = DATA_CONTEXT
-    SETTINGS or UISettings.from_environment()
+    settings = SETTINGS or UISettings.from_environment()
     version = context.version.identifier if context and context.version else "Unavailable"
     return html.Div(
         className="page data-page",
@@ -33,6 +33,10 @@ def layout(**_: object) -> html.Div:
                 ],
             ),
             dcc.Download(id="download-data"),
+            html.Small(
+                f"Automatic refresh every {settings.reload_interval_seconds}s",
+                className="refresh-hint",
+            ),
         ],
     )
 

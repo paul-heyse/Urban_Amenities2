@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from importlib import import_module
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import structlog
@@ -111,7 +112,7 @@ class HexDetails:
 class HexSelector:
     """Manage hex selection and comparison."""
 
-    def __init__(self, df: pd.DataFrame):
+    def __init__(self, df: pd.DataFrame) -> None:
         """
         Initialize hex selector.
 
@@ -201,7 +202,7 @@ class HexSelector:
             DataFrame with neighboring hexes
         """
         h3 = _import_h3()
-        neighbor_ids = list(h3.k_ring(hex_id, k=1))
+        neighbor_ids = cast(Sequence[str], h3.k_ring(hex_id, k=k))
 
         # Filter to neighbors in dataset
         neighbors = self.df[self.df["hex_id"].isin(neighbor_ids)].copy()

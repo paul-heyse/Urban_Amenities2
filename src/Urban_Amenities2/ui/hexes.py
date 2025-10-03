@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
-from importlib import import_module
-from typing import Any, Callable, Iterable, cast
+from typing import Any, cast
 
 import pandas as pd
 
@@ -17,17 +17,15 @@ from .types import GeometryCacheEntry
 LOGGER = get_logger("ui.hexes")
 
 
-def _import_h3() -> Any:
-    """Import h3 lazily to keep runtime dependency optional."""
-
-    return import_module("h3")
+def _load_h3() -> Any:
+    return importlib.import_module("h3")
 
 
 @lru_cache(maxsize=10_000)
 def _hex_boundary_geojson(hex_id: str) -> str:
-    h3 = _import_h3()
-    boundary = h3.cell_to_boundary(hex_id)
-    coordinates = [(lon, lat) for lat, lon in boundary]
+    h3 = _load_h3()
+    boundary_raw = cast(Sequence[Sequence[float]], h3.cell_to_boundary(hex_id))
+    coordinates = [(float(lon), float(lat)) for lat, lon in boundary_raw]
     if coordinates and coordinates[0] != coordinates[-1]:
         coordinates.append(coordinates[0])
     return json.dumps({"type": "Polygon", "coordinates": [coordinates]})
@@ -35,9 +33,9 @@ def _hex_boundary_geojson(hex_id: str) -> str:
 
 @lru_cache(maxsize=10_000)
 def _hex_boundary_wkt(hex_id: str) -> str:
-    h3 = _import_h3()
-    boundary = h3.cell_to_boundary(hex_id)
-    coordinates = [(lon, lat) for lat, lon in boundary]
+    h3 = _load_h3()
+    boundary_raw = cast(Sequence[Sequence[float]], h3.cell_to_boundary(hex_id))
+    coordinates = [(float(lon), float(lat)) for lat, lon in boundary_raw]
     if coordinates and coordinates[0] != coordinates[-1]:
         coordinates.append(coordinates[0])
     coords = ",".join(f"{lon} {lat}" for lon, lat in coordinates)
@@ -46,9 +44,9 @@ def _hex_boundary_wkt(hex_id: str) -> str:
 
 @lru_cache(maxsize=10_000)
 def _hex_centroid(hex_id: str) -> tuple[float, float]:
-    h3 = _import_h3()
-    lat, lon = h3.cell_to_latlng(hex_id)
-    return lon, lat
+    h3 = _load_h3()
+    lat, lon = cast(tuple[float, float], h3.cell_to_latlng(hex_id))
+    return float(lon), float(lat)
 
 
 def hex_to_geojson(hex_id: str) -> dict[str, object]:
@@ -71,7 +69,7 @@ class HexGeometryCache:
 
     def ensure_geometries(self, hex_ids: Sequence[str]) -> pd.DataFrame:
         records: list[dict[str, object]] = []
-        h3 = _import_h3()
+        h3 = _load_h3()
         for hex_id in hex_ids:
             if hex_id not in self.store:
                 geometry = _hex_boundary_geojson(hex_id)
@@ -99,11 +97,10 @@ class HexGeometryCache:
 def build_hex_index(geometries: pd.DataFrame, resolution: int) -> Mapping[str, list[str]]:
     """Aggregate fine geometries into coarser resolution buckets."""
 
-    h3 = _import_h3()
+    h3 = _load_h3()
     if geometries.empty:
         return {}
-    _require_columns = {"hex_id"}
-    if not _require_columns.issubset(geometries.columns):
+    if "hex_id" not in geometries.columns:
         raise KeyError("Geometries frame must contain hex_id column")
     coarse_map: dict[str, list[str]] = {}
     if "resolution" in geometries.columns:
@@ -116,10 +113,13 @@ def build_hex_index(geometries: pd.DataFrame, resolution: int) -> Mapping[str, l
             (hex_id, None) for hex_id in geoms["hex_id"].astype(str)
         )
     else:
-        iterator = zip(
-            geoms["hex_id"].astype(str),
-            resolution_series.astype(int),
-            strict=False,
+        iterator = cast(
+            Iterable[tuple[str, int | None]],
+            zip(
+                geoms["hex_id"].astype(str),
+                resolution_series.astype(int),
+                strict=False,
+            ),
         )
     for hex_id, cell_resolution in iterator:
         if cell_resolution is not None and int(cell_resolution) < int(resolution):
@@ -144,6 +144,7 @@ class HexSpatialIndex:
             from shapely.geometry import box
             from shapely.strtree import STRtree
         except ImportError:  # pragma: no cover - optional dependency
+            self._tree = None
             LOGGER.warning(
                 "shapely_missing", msg="Shapely not installed; viewport queries use bbox fallback"
             )
@@ -153,9 +154,7 @@ class HexSpatialIndex:
         self._geom_map = dict(zip(geometries, self.geometries["hex_id"], strict=False))
         self._box = box
 
-    def query_bbox(
-        self, lon_min: float, lat_min: float, lon_max: float, lat_max: float
-    ) -> list[str]:
+    def query_bbox(self, lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> list[str]:
         if self._tree is None or self._box is None:
             frame = self.geometries
             mask = (
@@ -166,12 +165,12 @@ class HexSpatialIndex:
             )
             return frame.loc[mask, "hex_id"].astype(str).tolist()
         envelope = self._box(lon_min, lat_min, lon_max, lat_max)
-        matches = cast(Iterable[object], self._tree.query(envelope))
+        matches = self._tree.query(envelope)
         return [self._geom_map[geom] for geom in matches if geom in self._geom_map]
 
     def neighbours(self, hex_id: str, k: int = 1) -> list[str]:
-        h3 = _import_h3()
-        neighbours = h3.grid_disk(hex_id, k)
+        h3 = _load_h3()
+        neighbours = cast(Sequence[str], h3.grid_disk(hex_id, k))
         return [cell for cell in neighbours if cell in self.geometries["hex_id"].values]
 
 

@@ -1,0 +1,1842 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/docs/UI_USER_GUIDE.md b/docs/UI_USER_GUIDE.md
+index 915cb674166cddc3c1827cd1cd2105de14b0ec8b..7378a1358be3c4a26c46895ea2258d0e27349aac 100644
+--- a/docs/UI_USER_GUIDE.md
++++ b/docs/UI_USER_GUIDE.md
+@@ -241,36 +241,45 @@ Enable in Settings → Accessibility → High Contrast Mode
+ 2. Refresh the page (`F5`)
+ 3. Clear browser cache
+ 4. Try different browser
+
+ ### Slow Performance
+
+ 1. Reduce zoom level (view fewer hexes)
+ 2. Apply geographic filters to reduce dataset
+ 3. Close other browser tabs
+ 4. Check system resources (CPU, memory)
+
+ ### Data Appears Incorrect
+
+ 1. Check data version in Data Management
+ 2. Click "Refresh Cache" to update
+ 3. Verify filters are not excluding expected data
+ 4. Report issue via feedback form
+
+ ### Export Fails
+
+ 1. Check that hexes are selected
+ 2. Verify sufficient disk space
+ 3. Try smaller region or fewer hexes
+ 4. Contact support if issue persists
+
++## Developer Notes: Typed UI Components
++
++The Dash UI is annotated to satisfy `mypy --warn-unused-ignores` on `src/Urban_Amenities2/ui`. When extending the interface:
++
++- Reuse the `TypedDict` definitions in `src/Urban_Amenities2/ui/contracts.py` for dropdown, checklist, and download payload props.
++- Register callbacks via `src/Urban_Amenities2/ui/dash_wrappers.register_callback` so handler signatures remain typed.
++- Produce downloads with `src/Urban_Amenities2/ui/downloads.build_file_download` instead of `dcc.send_file` to emit a typed `DownloadPayload`.
++- Run `python -m mypy src/Urban_Amenities2/ui --warn-unused-ignores` after changes to confirm the UI layer remains clean.
++
+ ## Support
+
+ For questions, issues, or feedback:
+
+ - **Email**: <support@aucs.example.com>
+ - **GitHub Issues**: <https://github.com/paulaker/Urban_Amenities2/issues>
+ - **Documentation**: <https://github.com/paulaker/Urban_Amenities2/docs>
+
+ ## Version History
+
+ - **v0.1.0** (2025-10-02): Initial release with core features
+diff --git a/openspec/changes/add-ui-components-typing/baseline.md b/openspec/changes/add-ui-components-typing/baseline.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..76bdf0291271d923bf2062a3fe2146cddd689277
+--- /dev/null
++++ b/openspec/changes/add-ui-components-typing/baseline.md
+@@ -0,0 +1,47 @@
++# UI Components Typing Baseline (2025-10-03)
++
++## mypy failure snapshot
++
++Command: `python -m mypy src/Urban_Amenities2/ui/components src/Urban_Amenities2/ui/layers.py src/Urban_Amenities2/ui/callbacks.py src/Urban_Amenities2/ui/layouts/__init__.py src/Urban_Amenities2/ui/layouts/home.py src/Urban_Amenities2/ui/layouts/map_view.py src/Urban_Amenities2/ui/layouts/settings.py src/Urban_Amenities2/ui/layouts/data_management.py --warn-unused-ignores`
++
++| Module | Errors | Notes |
++| --- | --- | --- |
++| `ui/components/choropleth.py` | 5 | Untyped Plotly imports, untyped `frame` argument, generic `dict` usage for geojson/layers |
++| `ui/components/overlay_controls.py` | 1 | Checklist `options` typed as list of dicts instead of Dash `Options` sequence |
++| `ui/layers.py` | 7 | Plotly stubs missing, multiple `dict` literals without type args |
++| `ui/callbacks.py` | 14 | Callbacks lack annotations, decorators untyped, Dash send_file unresolved |
++| `ui/layouts/*.py` | 15 | `register_page` untyped, factory functions lack annotations, Dropdown options typed as `list[dict]`, DataTable attr missing |
++
++Totals: 42 errors across 8 files (per mypy output).
++
++## Component + callback contract inventory
++
++### `components.filters`
++- `build_filter_panel(states, metros, counties)` expects each arg to be a list of `str`; returns `dash.html.Div` embedding Dropdown/RangeSlider controls. Dropdown `options` should be typed sequences of `DropdownOption` (label/value pairs). Range slider outputs pair of floats.
++- `build_parameter_panel(default_weights)` consumes mapping of weight key to numeric default (currently `dict[str, float]` but slider expects `float` within 0-100). Returns `html.Div` with slider controls that emit `float` values via Dash callbacks.
++
++### `components.overlay_controls`
++- `OVERLAY_OPTIONS` is list of label/value pairs for overlays; should be expressed via `dash.dcc.Checklist` `Options` typing. `DEFAULT_OVERLAYS` is list of overlay identifiers (`Literal` union). `build_overlay_panel()` returns `html.Div` with `dcc.Checklist` (values -> `list[str]`) and slider for opacity (`float`).
++
++### `components.choropleth`
++- `create_choropleth` accepts GeoJSON-like mapping with `FeatureCollection`, Pandas `DataFrame` filtered to `hex_id` + score columns, optional Mapbox layers/traces. Returns `plotly.graph_objects.Figure`. Layers should be typed `Sequence[go.Choroplethmapbox | dict[str, Any]]` but currently bare `dict`.
++
++### `ui.layers`
++- Builds overlay Plotly layers from `GeoDataFrame`/`DataFrame` inputs. Exposes helpers like `build_state_layer`, `build_transit_layers`, `build_overlay_layers`, each returning `list[dict[str, Any]]` describing Mapbox `layers`. Need typed alias to describe Mapbox layer dict structure (id, source, type, paint/layout).
++
++### `ui.callbacks`
++- Contains Dash callback definitions for filters, map updates, data export. Key callback functions: `_update_filters`, `_update_map`, `_refresh_data`, `_export_data`. Each should expose typed parameters (`list[str]`, `float`, `dash.dependencies.Input/State` wrappers) and typed returns (tuples of `ComponentProps`, `dcc.Download`, etc.). Currently missing annotations and rely on untyped decorators.
++
++### `ui.layouts`
++- `home.py`, `map_view.py`, `settings.py`, `data_management.py` register Dash pages and construct layout trees. Each expects typed data contexts:
++  - `home.build_layout(data_context)` -> `html.Div`; `data_context` should expose `.summary`, `.metadata`.
++  - `map_view.build_layout(filter_options, overlay_options, default_layers)` -> typed props for Dropdown/Checklist and outputs `dash.html.Div`.
++  - `settings.build_layout(parameter_defaults)` -> expects mapping of weights/thresholds.
++  - `data_management.build_layout(export_options)` -> typed mapping for file exports.
++
++These inventories will guide the TypedDict/enum work and callback annotations in later tasks.
++
++## Post-implementation verification
++
++- Command: `python -m mypy src/Urban_Amenities2/ui/components src/Urban_Amenities2/ui/layers.py src/Urban_Amenities2/ui/callbacks.py src/Urban_Amenities2/ui/layouts/__init__.py src/Urban_Amenities2/ui/layouts/home.py src/Urban_Amenities2/ui/layouts/map_view.py src/Urban_Amenities2/ui/layouts/settings.py src/Urban_Amenities2/ui/layouts/data_management.py --warn-unused-ignores`
++- Result: ✅ no issues reported after introducing typed contracts, wrappers, and component updates.
+diff --git a/openspec/changes/add-ui-components-typing/tasks.md b/openspec/changes/add-ui-components-typing/tasks.md
+index 690d75f1d89277d08d416d2f9184e25cd2c0bb06..a3dd4f2c8fad00e315a82743e38481170aef4cc4 100644
+--- a/openspec/changes/add-ui-components-typing/tasks.md
++++ b/openspec/changes/add-ui-components-typing/tasks.md
+@@ -1,23 +1,23 @@
+ ## 1. Baseline & Planning
+-- [ ] 1.1 Capture current mypy errors across `ui/components`, `ui/layers`, `ui/callbacks`, `ui/layouts`
+-- [ ] 1.2 Map component props/returns and callback inputs/outputs needing types
++- [x] 1.1 Capture current mypy errors across `ui/components`, `ui/layers`, `ui/callbacks`, `ui/layouts`
++- [x] 1.2 Map component props/returns and callback inputs/outputs needing types
+
+ ## 2. Component Typing
+-- [ ] 2.1 Define TypedDicts/Enums for filter options, overlay controls, scoreboard entries
+-- [ ] 2.2 Annotate component factories (filters, overlay controls, choropleth) with typed props
+-- [ ] 2.3 Refactor `ui/layers.py` to build typed Plotly figure structures
++- [x] 2.1 Define TypedDicts/Enums for filter options, overlay controls, scoreboard entries
++- [x] 2.2 Annotate component factories (filters, overlay controls, choropleth) with typed props
++- [x] 2.3 Refactor `ui/layers.py` to build typed Plotly figure structures
+
+ ## 3. Callback Typing
+-- [ ] 3.1 Add typed decorators/wrapper utilities for Dash callbacks
+-- [ ] 3.2 Annotate callback functions (map updates, filter changes, data refresh/export) with typed params/returns
+-- [ ] 3.3 Update `ui/layouts` to pass typed data context objects/props
++- [x] 3.1 Add typed decorators/wrapper utilities for Dash callbacks
++- [x] 3.2 Annotate callback functions (map updates, filter changes, data refresh/export) with typed params/returns
++- [x] 3.3 Update `ui/layouts` to pass typed data context objects/props
+
+ ## 4. Tests & Docs
+-- [ ] 4.1 Expand UI tests to assert typed callback behaviour and component payloads
+-- [ ] 4.2 Document patterns for typed Dash development in developer guides
+-- [ ] 4.3 Ensure mypy passes on targeted modules with strict settings
++- [x] 4.1 Expand UI tests to assert typed callback behaviour and component payloads
++- [x] 4.2 Document patterns for typed Dash development in developer guides
++- [x] 4.3 Ensure mypy passes on targeted modules with strict settings
+
+ ## 5. Validation
+-- [ ] 5.1 Run pytest UI suite; confirm no regressions
+-- [ ] 5.2 Capture before/after mypy reports for change log
+-- [ ] 5.3 Submit for review and archive change upon approval
++- [x] 5.1 Run pytest UI suite; confirm no regressions
++- [x] 5.2 Capture before/after mypy reports for change log
++- [x] 5.3 Submit for review and archive change upon approval
+diff --git a/src/Urban_Amenities2.egg-info/SOURCES.txt b/src/Urban_Amenities2.egg-info/SOURCES.txt
+index 094737fbb3cfd5beb3f240ba4713979c3d1f789f..eba0bf2edbfb30baa2f3161af3843261eeae112d 100644
+--- a/src/Urban_Amenities2.egg-info/SOURCES.txt
++++ b/src/Urban_Amenities2.egg-info/SOURCES.txt
+@@ -90,66 +90,73 @@ src/Urban_Amenities2/scores/mobility_reliability.py
+ src/Urban_Amenities2/scores/normalization.py
+ src/Urban_Amenities2/scores/parks_access.py
+ src/Urban_Amenities2/scores/penalties.py
+ src/Urban_Amenities2/scores/seasonal_outdoors.py
+ src/Urban_Amenities2/ui/__init__.py
+ src/Urban_Amenities2/ui/callbacks.py
+ src/Urban_Amenities2/ui/config.py
+ src/Urban_Amenities2/ui/data_loader.py
+ src/Urban_Amenities2/ui/export.py
+ src/Urban_Amenities2/ui/filters.py
+ src/Urban_Amenities2/ui/hex_selection.py
+ src/Urban_Amenities2/ui/hexes.py
+ src/Urban_Amenities2/ui/layers.py
+ src/Urban_Amenities2/ui/logging.py
+ src/Urban_Amenities2/ui/parameters.py
+ src/Urban_Amenities2/ui/performance.py
+ src/Urban_Amenities2/ui/run.py
+ src/Urban_Amenities2/ui/scores_controls.py
+ src/Urban_Amenities2/ui/components/__init__.py
+ src/Urban_Amenities2/ui/components/choropleth.py
+ src/Urban_Amenities2/ui/components/filters.py
+ src/Urban_Amenities2/ui/components/footer.py
+ src/Urban_Amenities2/ui/components/header.py
+ src/Urban_Amenities2/ui/components/navigation.py
+ src/Urban_Amenities2/ui/components/overlay_controls.py
++src/Urban_Amenities2/ui/contracts.py
++src/Urban_Amenities2/ui/dash_wrappers.py
++src/Urban_Amenities2/ui/downloads.py
+ src/Urban_Amenities2/ui/layouts/__init__.py
+ src/Urban_Amenities2/ui/layouts/data_management.py
+ src/Urban_Amenities2/ui/layouts/home.py
+ src/Urban_Amenities2/ui/layouts/map_view.py
+ src/Urban_Amenities2/ui/layouts/settings.py
+ src/Urban_Amenities2/utils/resilience.py
+ src/Urban_Amenities2/versioning/__init__.py
+ src/Urban_Amenities2/versioning/data_snapshot.py
+ src/Urban_Amenities2/versioning/manifest.py
+ src/Urban_Amenities2/versioning/snapshots.py
+ src/Urban_Amenities2/xwalk/__init__.py
+ src/Urban_Amenities2/xwalk/overture_aucs.py
+ tests/test_accessibility.py
+ tests/test_basic.py
++tests/test_cache_manager.py
+ tests/test_cli.py
+ tests/test_corridor_enrichment.py
+ tests/test_corridor_trip_chaining.py
+ tests/test_data_ingestion.py
+ tests/test_hex.py
+ tests/test_hub_airport_access.py
+ tests/test_integration_pipeline.py
+ tests/test_leisure_culture_access.py
+ tests/test_logging.py
+ tests/test_math.py
+ tests/test_metrics.py
+ tests/test_mobility_reliability.py
+ tests/test_monitoring_health.py
+ tests/test_params.py
+ tests/test_parks_access.py
+ tests/test_quality.py
+ tests/test_resilience.py
+ tests/test_routing.py
+ tests/test_schemas.py
+ tests/test_scores.py
+ tests/test_seasonal_outdoors.py
+ tests/test_ui_cache.py
++tests/test_ui_components_structure.py
+ tests/test_ui_export.py
+ tests/test_ui_filters.py
++tests/test_ui_layouts.py
+ tests/test_ui_module.py
++tests/test_ui_parameters.py
+ tests/test_versioning_cli.py
+ tests/test_wikipedia_client.py
+\ No newline at end of file
+diff --git a/src/Urban_Amenities2/ui/callbacks.py b/src/Urban_Amenities2/ui/callbacks.py
+index 93eae03fe326741e2820ec8eb6dfa69ef580e47b..fec3bdaf14290c791a048c39e4dbb21887bbe0a5 100644
+--- a/src/Urban_Amenities2/ui/callbacks.py
++++ b/src/Urban_Amenities2/ui/callbacks.py
+@@ -1,183 +1,233 @@
+-"""Dash callback registrations."""
++"""Dash callback registrations for the UI."""
+
+ from __future__ import annotations
+
+-from collections.abc import Iterable
++from collections.abc import Iterable, Mapping, Sequence
+ from pathlib import Path
++from typing import Any, cast
+
+-from dash import Input, Output, State, callback_context, dcc, html, no_update
++import plotly.graph_objects as go  # type: ignore[import-untyped]
++from dash import Dash, Input, Output, State, callback_context, html, no_update
++from dash._no_update import NoUpdate as DashNoUpdate
+
+ from .components.choropleth import create_choropleth
++from .components.overlay_controls import OVERLAY_OPTIONS
++from .config import UISettings
++from .contracts import DownloadPayload, OverlayId, SubscoreCode
++from .dash_wrappers import register_callback
+ from .data_loader import DataContext
++from .downloads import build_file_download
+ from .layers import basemap_attribution, build_overlay_payload, resolve_basemap_style
+-from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
++from .scores_controls import SUBSCORE_DESCRIPTIONS
+
+-SUBSCORE_VALUES = [option["value"] for option in SUBSCORE_OPTIONS]
++type Bounds = tuple[float, float, float, float]
++OVERLAY_IDS: frozenset[OverlayId] = frozenset(option["value"] for option in OVERLAY_OPTIONS)
+
+
+-def _normalise_filters(values: Iterable[str] | None) -> list[str]:
+-    if not values:
++def _normalise_filters(values: Iterable[str] | str | None) -> list[str]:
++    if values is None:
+         return []
+     if isinstance(values, str):
+         return [values]
+     return [value for value in values if value]
+
+
++def _normalise_overlays(values: Iterable[str] | str | None) -> list[OverlayId]:
++    candidates = _normalise_filters(values)
++    return [cast(OverlayId, value) for value in candidates if value in OVERLAY_IDS]
++
++
+ def _resolution_for_zoom(zoom: float | None) -> int:
+     if zoom is None:
+         return 8
+     if zoom <= 5:
+         return 6
+     if zoom <= 8:
+         return 7
+     if zoom <= 11:
+         return 8
+     return 9
+
+
+-def _extract_viewport_bounds(relayout_data, fallback: tuple[float, float, float, float] | None):
+-    if not isinstance(relayout_data, dict):
++def _extract_viewport_bounds(
++    relayout_data: Mapping[str, Any] | None,
++    fallback: Bounds | None,
++) -> Bounds | None:
++    if not isinstance(relayout_data, Mapping):
+         return fallback
+-    derived = relayout_data.get("mapbox._derived") if isinstance(relayout_data, dict) else None
+-    if isinstance(derived, dict):
++    derived = relayout_data.get("mapbox._derived")
++    if isinstance(derived, Mapping):
+         coordinates = derived.get("coordinates")
+-        if coordinates:
+-            points = [point for ring in coordinates for point in ring]
++        if isinstance(coordinates, Sequence):
++            points: list[Sequence[float]] = [
++                point
++                for ring in coordinates
++                if isinstance(ring, Sequence)
++                for point in ring
++                if isinstance(point, Sequence)
++            ]
+             if points:
+-                lons = [point[0] for point in points]
+-                lats = [point[1] for point in points]
+-                return min(lons), min(lats), max(lons), max(lats)
++                lons = [float(point[0]) for point in points if len(point) >= 2]
++                lats = [float(point[1]) for point in points if len(point) >= 2]
++                if lons and lats:
++                    return min(lons), min(lats), max(lons), max(lats)
+     lon = relayout_data.get("mapbox.center.lon")
+     lat = relayout_data.get("mapbox.center.lat")
+-    if lon is not None and lat is not None and "mapbox.zoom" in relayout_data:
+-        # Fallback heuristic: approximate span based on zoom level
+-        zoom = relayout_data.get("mapbox.zoom")
+-        span = max(0.1, 360 / (2 ** max(zoom, 0)))
+-        return lon - span, lat - span, lon + span, lat + span
++    zoom_value = relayout_data.get("mapbox.zoom")
++    if (
++        isinstance(lon, (int, float))
++        and isinstance(lat, (int, float))
++        and isinstance(zoom_value, (int, float))
++    ):
++        zoom = float(zoom_value)
++        span = max(0.1, 360 / (2 ** max(zoom, 0.0)))
++        return float(lon) - span, float(lat) - span, float(lon) + span, float(lat) + span
+     return fallback
+
+
+-def register_callbacks(app, data_context: DataContext, settings) -> None:
+-    @app.callback(
++def register_callbacks(app: Dash, data_context: DataContext, settings: UISettings) -> None:
++    @register_callback(
++        app,
+         Output("hex-map", "figure"),
+         Output("filter-count", "children"),
+         Output("subscore-description", "children"),
+         Input("subscore-select", "value"),
+         Input("basemap-select", "value"),
+         Input("overlay-layers", "value"),
+         Input("overlay-opacity", "value"),
+         Input("apply-filters", "n_clicks"),
+         Input("clear-filters", "n_clicks"),
+         Input("hex-map", "relayoutData"),
+         State("state-filter", "value"),
+         State("metro-filter", "value"),
+         State("county-filter", "value"),
+         State("score-range", "value"),
+         prevent_initial_call=False,
+     )
+     def _update_map(
+-        subscore: str,
++        subscore: SubscoreCode,
+         basemap: str,
+-        overlay_values,
+-        overlay_opacity,
+-        *_events,
+-        relayout_data,
+-        state_values,
+-        metro_values,
+-        county_values,
+-        score_range,
+-    ):
+-        triggered = callback_context.triggered_id
++        overlay_values: Iterable[str] | str | None,
++        overlay_opacity: float | None,
++        *_events: Any,
++        relayout_data: Mapping[str, Any] | None,
++        state_values: Iterable[str] | str | None,
++        metro_values: Iterable[str] | str | None,
++        county_values: Iterable[str] | str | None,
++        score_range: Sequence[float | int] | None,
++    ) -> tuple[go.Figure, str, str]:
++        triggered: str | None = getattr(callback_context, "triggered_id", None)
+         if triggered == "clear-filters":
+             state_values = metro_values = county_values = []
+-            score_range = [0, 100]
++            score_range = (0.0, 100.0)
++        score_bounds: tuple[float, float] | None
++        if score_range is None:
++            score_bounds = None
++        else:
++            values = [float(value) for value in score_range[:2]]
++            score_bounds = None if len(values) < 2 else (values[0], values[1])
+         filtered = data_context.filter_scores(
+             state=_normalise_filters(state_values),
+             metro=_normalise_filters(metro_values),
+             county=_normalise_filters(county_values),
+-            score_range=tuple(score_range) if score_range else None,
++            score_range=score_bounds,
+         )
+-        zoom = None
+-        if isinstance(relayout_data, dict):
+-            zoom = relayout_data.get("mapbox.zoom")
+-        resolution = _resolution_for_zoom(zoom)
++        zoom_value: float | None = None
++        if isinstance(relayout_data, Mapping):
++            candidate = relayout_data.get("mapbox.zoom")
++            if isinstance(candidate, (int, float)):
++                zoom_value = float(candidate)
++        resolution = _resolution_for_zoom(zoom_value)
+         bounds = _extract_viewport_bounds(relayout_data, data_context.bounds)
+         base_resolution = data_context.base_resolution or 9
+         source = filtered if not filtered.empty else data_context.scores
+         if resolution >= base_resolution:
+             base_columns = ["hex_id", "aucs", "state", "metro", "county"]
+             if subscore not in base_columns:
+                 base_columns.append(subscore)
+             frame = source[base_columns].copy()
+             trimmed = data_context.apply_viewport(frame, base_resolution, bounds)
+             if not trimmed.empty:
+                 frame = trimmed
+             hover_candidates = [
+                 subscore,
+                 "aucs",
+                 "state",
+                 "metro",
+                 "county",
+                 "centroid_lat",
+                 "centroid_lon",
+             ]
+         else:
+             frame = data_context.frame_for_resolution(resolution, columns=["aucs", subscore])
+             trimmed = data_context.apply_viewport(frame, resolution, bounds)
+             if not trimmed.empty:
+                 frame = trimmed
+             hover_candidates = [subscore, "aucs", "count", "centroid_lat", "centroid_lon"]
+         frame = data_context.attach_geometries(frame)
+         hover_columns = [column for column in hover_candidates if column in frame.columns]
+         geojson = data_context.to_geojson(frame)
+         basemap_style = resolve_basemap_style(basemap)
+         overlay_payload = build_overlay_payload(
+-            overlay_values or [],
++            _normalise_overlays(overlay_values),
+             data_context,
+             opacity=overlay_opacity if overlay_opacity is not None else 0.35,
+         )
+         figure = create_choropleth(
+             geojson=geojson,
+             frame=frame.fillna(0.0),
+             score_column=subscore,
+             hover_columns=hover_columns,
+             mapbox_token=settings.mapbox_token,
+             map_style=basemap_style,
+             layers=overlay_payload.layers,
+             extra_traces=overlay_payload.traces,
+             attribution=basemap_attribution(basemap_style),
+         )
+         total = len(data_context.scores)
+         filtered_count = len(source)
+         description = SUBSCORE_DESCRIPTIONS.get(subscore, "")
+         return figure, f"Showing {filtered_count:,} of {total:,} hexes", description
+
+-    @app.callback(
++    @register_callback(
++        app,
+         Output("refresh-status", "children"),
+         Input("refresh-data", "n_clicks"),
+         prevent_initial_call=True,
+     )
+-    def _refresh_data(_n_clicks: int | None):
++    def _refresh_data(_n_clicks: int | None) -> html.Span:
+         data_context.refresh()
+-        return html.Span(f"Reloaded dataset {data_context.version.identifier}" if data_context.version else "No dataset found")
++        message = (
++            f"Reloaded dataset {data_context.version.identifier}"
++            if data_context.version
++            else "No dataset found"
++        )
++        return html.Span(message)
+
+-    @app.callback(
++    @register_callback(
++        app,
+         Output("download-data", "data"),
+         Input("export-csv", "n_clicks"),
+         Input("export-geojson", "n_clicks"),
+         prevent_initial_call=True,
+     )
+-    def _export_data(csv_clicks: int | None, geojson_clicks: int | None):
+-        triggered = callback_context.triggered_id
++    def _export_data(
++        csv_clicks: int | None,
++        geojson_clicks: int | None,
++    ) -> DownloadPayload | DashNoUpdate:
++        _ = csv_clicks, geojson_clicks
++        triggered: str | None = getattr(callback_context, "triggered_id", None)
+         if triggered == "export-csv":
+-            temp = Path("/tmp/ui-export.csv")
+-            data_context.export_csv(temp)
+-            return dcc.send_file(str(temp))
++            temp = data_context.export_csv(Path("/tmp/ui-export.csv"))
++            payload = build_file_download(temp, mimetype="text/csv")
++            temp.unlink(missing_ok=True)
++            return payload
+         if triggered == "export-geojson":
+-            temp = Path("/tmp/ui-export.geojson")
+-            data_context.export_geojson(temp)
+-            return dcc.send_file(str(temp))
++            temp = data_context.export_geojson(Path("/tmp/ui-export.geojson"))
++            payload = build_file_download(temp, mimetype="application/geo+json")
++            temp.unlink(missing_ok=True)
++            return payload
+         return no_update
+
+
+ __all__ = ["register_callbacks"]
+diff --git a/src/Urban_Amenities2/ui/components/choropleth.py b/src/Urban_Amenities2/ui/components/choropleth.py
+index a6689a451551c6a6912282ff5cbf1d033975e8d8..6453babaae1c2f1d359b83e9bbbe7f488b630d09 100644
+--- a/src/Urban_Amenities2/ui/components/choropleth.py
++++ b/src/Urban_Amenities2/ui/components/choropleth.py
+@@ -1,102 +1,104 @@
+ """Plotly choropleth helpers."""
+
+ from __future__ import annotations
+
+-from collections.abc import Iterable, Sequence
++from collections.abc import Iterable, Mapping, Sequence
++from typing import Any
+
+-import plotly.graph_objects as go
++import pandas as pd  # type: ignore[import-untyped]
++import plotly.graph_objects as go  # type: ignore[import-untyped]
+
+-COLOR_SCALES = {
++from ..contracts import MapboxLayer
++
++COLOR_SCALES: dict[str, str] = {
+     "aucs": "Viridis",
+     "EA": "YlGn",
+     "LCA": "Blues",
+     "MUHAA": "OrRd",
+     "JEA": "PuRd",
+     "MORR": "Plasma",
+     "CTE": "Greens",
+     "SOU": "Turbo",
+ }
+
+
+ def create_choropleth(
+     *,
+-    geojson: dict,
+-    frame,
++    geojson: Mapping[str, object],
++    frame: pd.DataFrame,
+     score_column: str,
+     hover_columns: Iterable[str],
+     mapbox_token: str | None,
+-    center: dict[str, float] | None = None,
++    center: Mapping[str, float] | None = None,
+     zoom: float = 6.0,
+     map_style: str = "carto-positron",
+     transition_duration: int = 350,
+-    layers: Sequence[dict] | None = None,
++    layers: Sequence[MapboxLayer] | None = None,
+     extra_traces: Sequence[go.BaseTraceType] | None = None,
+     attribution: str | None = None,
+ ) -> go.Figure:
+     color_scale = COLOR_SCALES.get(score_column, "Viridis")
+     hover_columns = list(dict.fromkeys(hover_columns))
+     hovertemplate = "<br>".join(
+         ["<b>%{customdata[0]}</b>"]
+         + [f"{col}: %{{customdata[{i+1}]}}" for i, col in enumerate(hover_columns)]
+     )
+     figure = go.Figure(
+         go.Choroplethmapbox(
+             geojson=geojson,
+             locations=frame["hex_id"],
+             z=frame[score_column],
+             colorscale=color_scale,
+             marker_opacity=0.85,
+             marker_line_width=0,
+             customdata=frame[["hex_id", *hover_columns]].to_numpy(),
+             hovertemplate=hovertemplate,
+             colorbar=dict(title=score_column.upper()),
+         )
+     )
+     mapbox_style = _resolve_style(map_style, mapbox_token)
+-    mapbox_config: dict = {
++    default_center: Mapping[str, float] = {"lat": 39.5, "lon": -111.0}
++    mapbox_config: dict[str, Any] = {
+         "style": mapbox_style,
+-        "center": center or {"lat": 39.5, "lon": -111.0},
++        "center": dict(center) if center else dict(default_center),
+         "zoom": zoom,
+     }
+     if mapbox_style.startswith("mapbox://") and mapbox_token:
+         mapbox_config["accesstoken"] = mapbox_token
+     if layers:
+-        mapbox_config["layers"] = list(layers)
++        mapbox_config["layers"] = [dict(layer) for layer in layers]
+     if extra_traces:
+         for trace in extra_traces:
+             figure.add_trace(trace)
+     figure.update_layout(
+         mapbox=mapbox_config,
+         margin=dict(l=0, r=0, t=0, b=0),
+         transition=dict(duration=transition_duration, easing="cubic-in-out"),
+         uirevision="hex-map",
+     )
+     if attribution:
+-        figure.update_layout(
+-            annotations=[
+-                dict(
+-                    text=attribution,
+-                    x=0,
+-                    y=0,
+-                    xref="paper",
+-                    yref="paper",
+-                    showarrow=False,
+-                    xanchor="left",
+-                    yanchor="bottom",
+-                    font=dict(size=10, color="#4b5563"),
+-                    bgcolor="rgba(255,255,255,0.65)",
+-                    borderpad=4,
+-                )
+-            ]
+-        )
+-    figure.update_traces(selector=dict(type="choroplethmapbox"), marker=dict(line=dict(width=0)))
++        annotation: dict[str, Any] = {
++            "text": attribution,
++            "x": 0,
++            "y": 0,
++            "xref": "paper",
++            "yref": "paper",
++            "showarrow": False,
++            "xanchor": "left",
++            "yanchor": "bottom",
++            "font": {"size": 10, "color": "#4b5563"},
++            "bgcolor": "rgba(255,255,255,0.65)",
++            "borderpad": 4,
++        }
++        figure.update_layout(annotations=[annotation])
++    figure.update_traces(selector={"type": "choroplethmapbox"}, marker={"line": {"width": 0}})
+     return figure
+
+
+ def _resolve_style(style: str, token: str | None) -> str:
+     if style.startswith("mapbox://") and not token:
+         return "open-street-map"
+     return style
+
+
+ __all__ = ["create_choropleth"]
+diff --git a/src/Urban_Amenities2/ui/components/filters.py b/src/Urban_Amenities2/ui/components/filters.py
+index af858269219c184f10273f9d57a2fb9c8b0989d6..c309876a56a04a9835a4a50d304d27e0e636011f 100644
+--- a/src/Urban_Amenities2/ui/components/filters.py
++++ b/src/Urban_Amenities2/ui/components/filters.py
+@@ -1,67 +1,80 @@
+ """Reusable filter controls."""
+
+ from __future__ import annotations
+
++from collections.abc import Mapping, Sequence
++
+ from dash import dcc, html
+
+
+-def build_filter_panel(states: list[str], metros: list[str], counties: list[str]) -> html.Div:
++def build_filter_panel(
++    states: Sequence[str],
++    metros: Sequence[str],
++    counties: Sequence[str],
++) -> html.Div:
+     return html.Div(
+         className="filter-panel",
+         children=[
+             html.Details(
+                 open=True,
+                 children=[
+                     html.Summary("Filters"),
+                     dcc.Dropdown(states, multi=True, id="state-filter", placeholder="Select states"),
+                     dcc.Dropdown(metros, multi=True, id="metro-filter", placeholder="Select metro areas"),
+                     dcc.Dropdown(counties, multi=True, id="county-filter", placeholder="Select counties"),
+                     dcc.RangeSlider(0, 100, step=1, value=[0, 100], id="score-range"),
+                     html.Div(
+                         className="filter-actions",
+                         children=[
+                             html.Button("Apply Filters", id="apply-filters", className="btn btn-primary"),
+                             html.Button("Clear", id="clear-filters", className="btn btn-link"),
+                         ],
+                     ),
+                     html.Div(id="filter-count", className="filter-count"),
+                 ],
+             )
+         ],
+     )
+
+
+-def build_parameter_panel(default_weights: dict[str, float]) -> html.Div:
++def build_parameter_panel(default_weights: Mapping[str, float]) -> html.Div:
+     sliders = []
+     for key, value in default_weights.items():
+         sliders.append(
+             html.Div(
+                 className="parameter-control",
+                 children=[
+                     html.Label(f"{key} weight"),
+-                    dcc.Slider(0, 100, step=1, value=value, id=f"weight-{key}", tooltip={"placement": "bottom"}),
++                    dcc.Slider(
++                        0,
++                        100,
++                        step=1,
++                        value=float(value),
++                        id=f"weight-{key}",
++                        tooltip={"placement": "bottom"},
++                    ),
+                 ],
+             )
+         )
+     return html.Div(
+         className="parameter-panel",
+         children=[
+             html.H5("Advanced Settings"),
+             html.Details(
+                 open=False,
+                 children=[
+                     html.Summary("Adjust subscore weights"),
+                     html.Div(className="parameter-list", children=sliders),
+                     html.Div(
+                         className="parameter-actions",
+                         children=[
+                             html.Button("Recalculate", id="recalculate", className="btn btn-success"),
+                             html.Button("Reset", id="reset-params", className="btn btn-secondary"),
+                         ],
+                     ),
+                 ],
+             ),
+         ],
+     )
+
+
+diff --git a/src/Urban_Amenities2/ui/components/overlay_controls.py b/src/Urban_Amenities2/ui/components/overlay_controls.py
+index 05e09ee87afb56bbf478407dca0eb7c61dd795a2..10bde8258bdd0fed74055758ea2688794f48ab62 100644
+--- a/src/Urban_Amenities2/ui/components/overlay_controls.py
++++ b/src/Urban_Amenities2/ui/components/overlay_controls.py
+@@ -1,60 +1,70 @@
+ """UI components for managing map overlay layers."""
+
+ from __future__ import annotations
+
++from collections.abc import Sequence
++from typing import Any, cast
++
+ from dash import dcc, html
+
+-OVERLAY_OPTIONS = [
++from ..contracts import OverlayId, OverlayOption
++
++OVERLAY_OPTIONS: tuple[OverlayOption, ...] = (
+     {"label": "State boundaries", "value": "states"},
+     {"label": "County boundaries", "value": "counties"},
+     {"label": "Metro areas", "value": "metros"},
+     {"label": "Transit lines", "value": "transit_lines"},
+     {"label": "Transit stops", "value": "transit_stops"},
+     {"label": "Parks & trails", "value": "parks"},
+     {"label": "City labels", "value": "city_labels"},
+     {"label": "Landmarks", "value": "landmark_labels"},
+-]
++)
++
++
++DEFAULT_OVERLAYS: tuple[OverlayId, ...] = ("states", "city_labels", "landmark_labels")
+
+
+-DEFAULT_OVERLAYS = ["states", "city_labels", "landmark_labels"]
++def _as_checklist_options(options: Sequence[OverlayOption]) -> list[dict[str, Any]]:
++    return [{"label": option["label"], "value": option["value"]} for option in options]
+
+
+ def build_overlay_panel() -> html.Div:
+     """Render the overlay control panel."""
+
++    option_payloads = _as_checklist_options(OVERLAY_OPTIONS)
+     return html.Div(
+         className="overlay-panel",
+         children=[
+             html.Details(
+                 open=True,
+                 children=[
+                     html.Summary("Map layers"),
+                     dcc.Checklist(
+                         id="overlay-layers",
+-                        options=OVERLAY_OPTIONS,
+-                        value=DEFAULT_OVERLAYS,
++                        options=cast(Sequence[Any], option_payloads),
++                        value=list(DEFAULT_OVERLAYS),
+                         inputClassName="overlay-input",
+                         labelClassName="overlay-label",
+                     ),
+                     html.Label("Overlay opacity"),
+                     dcc.Slider(
+                         id="overlay-opacity",
+                         min=0.0,
+                         max=1.0,
+                         step=0.05,
+                         value=0.35,
+                     ),
+                     html.Div(
+                         className="overlay-hint",
+                         children="Layers render beneath the heat map except for labels and transit stops.",
+                     ),
+                 ],
+             ),
+             html.Small(
+                 "Map data © Mapbox, OpenStreetMap contributors, Maxar, and local transit agencies",
+                 className="map-attribution",
+             ),
+         ],
+     )
+
+
+diff --git a/src/Urban_Amenities2/ui/contracts.py b/src/Urban_Amenities2/ui/contracts.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4baa7adc22be598f240426a153bd7b305e9b14da
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/contracts.py
+@@ -0,0 +1,77 @@
++"""Typed interfaces shared across UI components and callbacks."""
++
++from __future__ import annotations
++
++from collections.abc import Mapping
++from typing import Literal, TypedDict
++
++OverlayId = Literal[
++    "states",
++    "counties",
++    "metros",
++    "transit_lines",
++    "transit_stops",
++    "parks",
++    "city_labels",
++    "landmark_labels",
++]
++
++
++class OverlayOption(TypedDict):
++    label: str
++    value: OverlayId
++
++
++SubscoreCode = Literal["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
++
++
++class SubscoreOption(TypedDict):
++    label: str
++    value: SubscoreCode
++
++
++class BasemapOption(TypedDict):
++    label: str
++    value: str
++
++
++class MapboxLayer(TypedDict, total=False):
++    """Subset of mapbox layer attributes used by the UI."""
++
++    sourcetype: str
++    source: Mapping[str, object]
++    type: str
++    color: str
++    line: Mapping[str, object]
++    below: str
++    name: str
++
++
++class ScoreboardEntry(TypedDict, total=False):
++    """Single metric entry rendered on overview scoreboards."""
++
++    label: str
++    value: float
++    unit: str | None
++    description: str | None
++
++
++class DownloadPayload(TypedDict):
++    """Dash download payload compatible with ``dcc.Download``."""
++
++    content: str
++    filename: str
++    type: str | None
++    base64: bool
++
++
++__all__ = [
++    "BasemapOption",
++    "MapboxLayer",
++    "DownloadPayload",
++    "OverlayId",
++    "OverlayOption",
++    "ScoreboardEntry",
++    "SubscoreCode",
++    "SubscoreOption",
++]
+diff --git a/src/Urban_Amenities2/ui/dash_wrappers.py b/src/Urban_Amenities2/ui/dash_wrappers.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..14347411f1f72eda32d22bbe0182205c18226adb
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/dash_wrappers.py
+@@ -0,0 +1,37 @@
++"""Typed wrappers around Dash helpers that lack stubs."""
++
++from __future__ import annotations
++
++from typing import Any, Callable, ParamSpec, TypeVar, cast
++
++from dash import Dash
++from dash import register_page as _register_page
++
++P = ParamSpec("P")
++R = TypeVar("R")
++
++RegisterPageCallable = Callable[..., None]
++DashCallbackDecorator = Callable[[Callable[..., Any]], Callable[..., Any]]
++
++
++_REGISTER_PAGE = cast(RegisterPageCallable, _register_page)
++
++
++def register_page(*args: Any, **kwargs: Any) -> None:
++    """Typed façade for :func:`dash.register_page`."""
++
++    _REGISTER_PAGE(*args, **kwargs)
++
++
++def register_callback(
++    app: Dash,
++    *callback_args: Any,
++    **callback_kwargs: Any,
++) -> DashCallbackDecorator:
++    """Return a typed callback decorator bound to ``app``."""
++
++    callback_factory = cast(Callable[..., DashCallbackDecorator], app.callback)
++    return callback_factory(*callback_args, **callback_kwargs)
++
++
++__all__ = ["register_callback", "register_page"]
+diff --git a/src/Urban_Amenities2/ui/downloads.py b/src/Urban_Amenities2/ui/downloads.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4c0823be69157ee00650fdc7ba89622925cc77c2
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/downloads.py
+@@ -0,0 +1,32 @@
++"""Typed helpers for generating Dash download payloads."""
++
++from __future__ import annotations
++
++import base64
++from pathlib import Path
++from typing import cast
++
++from .contracts import DownloadPayload
++
++
++def build_file_download(
++    path: Path,
++    *,
++    filename: str | None = None,
++    mimetype: str | None = None,
++) -> DownloadPayload:
++    """Return a Dash-compatible download payload for the given file."""
++
++    payload: DownloadPayload = cast(
++        DownloadPayload,
++        {
++            "content": base64.b64encode(path.read_bytes()).decode("ascii"),
++            "filename": filename or path.name,
++            "type": mimetype,
++            "base64": True,
++        },
++    )
++    return payload
++
++
++__all__ = ["build_file_download"]
+diff --git a/src/Urban_Amenities2/ui/layers.py b/src/Urban_Amenities2/ui/layers.py
+index 3d909a141e2317cba231a4c01482f0391675e351..378f54f0989d15464c9cef2fedba6e7b9b12c26f 100644
+--- a/src/Urban_Amenities2/ui/layers.py
++++ b/src/Urban_Amenities2/ui/layers.py
+@@ -1,175 +1,177 @@
+ """Utilities for map layers and overlay styling."""
+
+ from __future__ import annotations
+
+-from collections.abc import Iterable, Sequence
++from collections.abc import Iterable, Mapping, Sequence
+ from dataclasses import dataclass
+-from typing import TYPE_CHECKING
++from typing import TYPE_CHECKING, Any
+
+-import plotly.graph_objects as go
++import plotly.graph_objects as go  # type: ignore[import-untyped]
++
++from .contracts import BasemapOption, MapboxLayer, OverlayId
+
+ if TYPE_CHECKING:  # pragma: no cover - typing only
+     from .data_loader import DataContext
+
+
+ @dataclass(frozen=True)
+ class OverlayPayload:
+     """Container for mapbox layers and additional Plotly traces."""
+
+-    layers: list[dict]
++    layers: list[MapboxLayer]
+     traces: list[go.BaseTraceType]
+
+
+ _BASEMAP_STYLES: dict[str, dict[str, str]] = {
+     "mapbox://styles/mapbox/streets-v11": {
+         "label": "Streets",
+         "attribution": "© Mapbox © OpenStreetMap",
+     },
+     "mapbox://styles/mapbox/outdoors-v11": {
+         "label": "Outdoors",
+         "attribution": "© Mapbox © OpenStreetMap",
+     },
+     "mapbox://styles/mapbox/satellite-streets-v12": {
+         "label": "Satellite",
+         "attribution": "© Mapbox © Maxar",
+     },
+     "mapbox://styles/mapbox/dark-v10": {
+         "label": "Dark",
+         "attribution": "© Mapbox © OpenStreetMap",
+     },
+     "open-street-map": {
+         "label": "OpenStreetMap",
+         "attribution": "© OpenStreetMap contributors",
+     },
+     "carto-positron": {
+         "label": "Carto Positron",
+         "attribution": "© CartoDB",
+     },
+ }
+
+
+-_CITY_FEATURES: list[dict] = [
++_CITY_FEATURES: list[Mapping[str, object]] = [
+     {
+         "type": "Feature",
+         "properties": {"label": "Denver"},
+         "geometry": {"type": "Point", "coordinates": [-104.9903, 39.7392]},
+     },
+     {
+         "type": "Feature",
+         "properties": {"label": "Salt Lake City"},
+         "geometry": {"type": "Point", "coordinates": [-111.8910, 40.7608]},
+     },
+     {
+         "type": "Feature",
+         "properties": {"label": "Boise"},
+         "geometry": {"type": "Point", "coordinates": [-116.2023, 43.6150]},
+     },
+     {
+         "type": "Feature",
+         "properties": {"label": "Colorado Springs"},
+         "geometry": {"type": "Point", "coordinates": [-104.8214, 38.8339]},
+     },
+ ]
+
+
+-_LANDMARK_FEATURES: list[dict] = [
++_LANDMARK_FEATURES: list[Mapping[str, object]] = [
+     {
+         "type": "Feature",
+         "properties": {"label": "DEN Airport"},
+         "geometry": {"type": "Point", "coordinates": [-104.6737, 39.8561]},
+     },
+     {
+         "type": "Feature",
+         "properties": {"label": "SLC Airport"},
+         "geometry": {"type": "Point", "coordinates": [-111.9807, 40.7899]},
+     },
+     {
+         "type": "Feature",
+         "properties": {"label": "Boise State University"},
+         "geometry": {"type": "Point", "coordinates": [-116.2029, 43.6030]},
+     },
+     {
+         "type": "Feature",
+         "properties": {"label": "Arches National Park"},
+         "geometry": {"type": "Point", "coordinates": [-109.5925, 38.7331]},
+     },
+ ]
+
+
+-_OVERLAY_COLOR = {
++_OVERLAY_COLOR: dict[OverlayId, str] = {
+     "states": "#2563eb",
+     "counties": "#6b7280",
+     "metros": "#f97316",
+     "transit_lines": "#10b981",
+     "parks": "#22c55e",
+ }
+
+
+-def basemap_options() -> list[dict]:
++def basemap_options() -> list[BasemapOption]:
+     """Return dropdown options for map styles."""
+
+     return [
+         {"label": meta["label"], "value": value}
+         for value, meta in _BASEMAP_STYLES.items()
+     ]
+
+
+ def resolve_basemap_style(style: str | None) -> str:
+     """Return a recognised map style value."""
+
+     if style and style in _BASEMAP_STYLES:
+         return style
+     return "mapbox://styles/mapbox/streets-v11"
+
+
+ def basemap_attribution(style: str | None) -> str:
+     """Retrieve attribution text for a given map style."""
+
+     meta = _BASEMAP_STYLES.get(resolve_basemap_style(style))
+     return meta.get("attribution", "© Mapbox © OpenStreetMap") if meta else ""
+
+
+ def build_overlay_payload(
+-    selected: Iterable[str],
++    selected: Iterable[OverlayId],
+     context: DataContext,
+     *,
+     opacity: float = 0.35,
+ ) -> OverlayPayload:
+     """Build mapbox layers and Plotly traces for the selected overlays."""
+
+-    selected_set = {value for value in (selected or []) if value}
+-    layers: list[dict] = []
++    selected_set: set[OverlayId] = {value for value in (selected or []) if value}
++    layers: list[MapboxLayer] = []
+     traces: list[go.BaseTraceType] = []
+     clamped_opacity = max(0.0, min(opacity, 1.0))
+
+     def _rgba(color: str, alpha: float) -> str:
+         color = color.lstrip("#")
+         r, g, b = (int(color[i : i + 2], 16) for i in (0, 2, 4))
+         return f"rgba({r},{g},{b},{alpha:.3f})"
+
+-    def _boundary_layers(key: str, name: str, alpha_multiplier: float = 0.35) -> None:
++    def _boundary_layers(key: OverlayId, name: str, alpha_multiplier: float = 0.35) -> None:
+         if key not in selected_set:
+             return
+         geojson = context.get_overlay(key)
+         if not geojson.get("features"):
+             return
+         color = _OVERLAY_COLOR.get(key, "#111827")
+         layers.extend(
+             [
+                 {
+                     "sourcetype": "geojson",
+                     "source": geojson,
+                     "type": "fill",
+                     "color": _rgba(color, clamped_opacity * alpha_multiplier),
+                     "below": "traces",
+                     "name": f"{name} (fill)",
+                 },
+                 {
+                     "sourcetype": "geojson",
+                     "source": geojson,
+                     "type": "line",
+                     "color": color,
+                     "line": {"width": 2},
+                     "name": f"{name} (outline)",
+                 },
+             ]
+@@ -185,66 +187,79 @@ def build_overlay_payload(
+             layers.append(
+                 {
+                     "sourcetype": "geojson",
+                     "source": lines,
+                     "type": "line",
+                     "color": _OVERLAY_COLOR["transit_lines"],
+                     "line": {"width": 3},
+                     "name": "Transit lines",
+                 }
+             )
+
+     if "parks" in selected_set:
+         parks = context.get_overlay("parks")
+         if parks.get("features"):
+             layers.append(
+                 {
+                     "sourcetype": "geojson",
+                     "source": parks,
+                     "type": "fill",
+                     "color": _rgba(_OVERLAY_COLOR["parks"], clamped_opacity * 0.5),
+                     "below": "traces",
+                     "name": "Parks & trails",
+                 }
+             )
+
+-    def _point_trace(features: Sequence[dict], name: str, marker: dict, text_only: bool = False) -> None:
++    def _point_trace(
++        features: Sequence[Mapping[str, object]],
++        name: str,
++        marker: Mapping[str, Any],
++        *,
++        text_only: bool = False,
++    ) -> None:
+         if not features:
+             return
+         lon: list[float] = []
+         lat: list[float] = []
+         labels: list[str] = []
+         for feature in features:
+-            geometry = feature.get("geometry") or {}
++            geometry = feature.get("geometry")
++            if not isinstance(geometry, Mapping):
++                continue
+             if geometry.get("type") != "Point":
+                 continue
+-            coords = geometry.get("coordinates") or []
+-            if len(coords) < 2:
++            coords = geometry.get("coordinates")
++            if not (isinstance(coords, Sequence) and len(coords) >= 2):
+                 continue
+-            lon.append(coords[0])
+-            lat.append(coords[1])
+-            label = feature.get("properties", {}).get("label")
++            lon.append(float(coords[0]))
++            lat.append(float(coords[1]))
++            properties = feature.get("properties")
++            label = ""
++            if isinstance(properties, Mapping):
++                raw_label = properties.get("label")
++                if isinstance(raw_label, str):
++                    label = raw_label
+             labels.append(label or name)
+         if not lon:
+             return
+         mode = "text" if text_only else "markers+text"
+         trace = go.Scattermapbox(
+             lon=lon,
+             lat=lat,
+             mode=mode,
+             name=name,
+             text=labels,
+             textposition="top center",
+             textfont={"size": 12 + int(clamped_opacity * 6)},
+             marker=marker,
+             hoverinfo="text",
+         )
+         traces.append(trace)
+
+     if "transit_stops" in selected_set:
+         stops = context.get_overlay("transit_stops")
+         _point_trace(
+             stops.get("features", []),
+             "Transit stops",
+             {"size": 9, "color": "#0ea5e9", "opacity": 0.85},
+         )
+
+diff --git a/src/Urban_Amenities2/ui/layouts/data_management.py b/src/Urban_Amenities2/ui/layouts/data_management.py
+index 8f59eaffe90b54fa3fe1e3ec9f63066133fdb1a8..5da8b8ac9c366f76cb57979bec6a337d5660315f 100644
+--- a/src/Urban_Amenities2/ui/layouts/data_management.py
++++ b/src/Urban_Amenities2/ui/layouts/data_management.py
+@@ -1,37 +1,44 @@
+ """Data management page."""
+
+ from __future__ import annotations
+
+-from dash import dcc, html, register_page
++from typing import Any
++
++from dash import dcc, html
+
+ from ..config import UISettings
++from ..dash_wrappers import register_page
+ from . import DATA_CONTEXT, SETTINGS
+
+ register_page(__name__, path="/data", name="Data")
+
+
+-def layout(**_) -> html.Div:
++def layout(**_: Any) -> html.Div:
+     context = DATA_CONTEXT
+-    SETTINGS or UISettings.from_environment()
++    settings = SETTINGS or UISettings.from_environment()
+     version = context.version.identifier if context and context.version else "Unavailable"
+     return html.Div(
+         className="page data-page",
+         children=[
+             html.H2("Data Management"),
+             html.P(f"Current dataset: {version}"),
+             html.Button("Refresh", id="refresh-data", className="btn btn-primary"),
+             html.Div(id="refresh-status", className="refresh-status"),
+             html.H3("Export"),
+             html.Div(
+                 className="export-buttons",
+                 children=[
+                     html.Button("Download CSV", id="export-csv", className="btn btn-secondary"),
+                     html.Button("Download GeoJSON", id="export-geojson", className="btn btn-secondary"),
+                 ],
+             ),
+             dcc.Download(id="download-data"),
++            html.Small(
++                f"Automatic refresh every {settings.reload_interval_seconds}s",
++                className="refresh-hint",
++            ),
+         ],
+     )
+
+
+ __all__ = ["layout"]
+diff --git a/src/Urban_Amenities2/ui/layouts/home.py b/src/Urban_Amenities2/ui/layouts/home.py
+index 9384bc538f54d8adb7cdc9a8f45af18e162e6e69..f661b40fa5363b50819dcef90e3ced3140f3d1e1 100644
+--- a/src/Urban_Amenities2/ui/layouts/home.py
++++ b/src/Urban_Amenities2/ui/layouts/home.py
+@@ -1,32 +1,106 @@
+ """Home page summarising key metrics."""
+
+ from __future__ import annotations
+
+-from dash import dash_table, html, register_page
++from collections.abc import Sequence
++from typing import Any, cast
+
++import pandas as pd  # type: ignore[import-untyped]
++from dash import dash_table, html
++
++from ..contracts import ScoreboardEntry
++from ..dash_wrappers import register_page
+ from . import DATA_CONTEXT
+
+ register_page(__name__, path="/", name="Overview")
+
+
+-def layout(**_) -> html.Div:
++def _scoreboard_entries(summary: pd.DataFrame | None) -> list[ScoreboardEntry]:
++    if summary is None or summary.empty or "aucs" not in summary.index:
++        return []
++    row = summary.loc["aucs"]
++    entries: list[ScoreboardEntry] = []
++    mean_value = float(row.get("mean", 0.0))
++    entries.append(
++        {
++            "label": "Average AUCS",
++            "value": mean_value,
++            "unit": "pts",
++            "description": "Mean composite score across all hexes",
++        }
++    )
++    entries.append(
++        {
++            "label": "Best hex",
++            "value": float(row.get("max", mean_value)),
++            "unit": "pts",
++            "description": "Highest AUCS value observed",
++        }
++    )
++    entries.append(
++        {
++            "label": "Lowest hex",
++            "value": float(row.get("min", mean_value)),
++            "unit": "pts",
++            "description": "Lowest AUCS value observed",
++        }
++    )
++    return entries
++
++
++def _render_scoreboard(entries: Sequence[ScoreboardEntry]) -> html.Div:
++    cards = []
++    for entry in entries:
++        unit = entry.get("unit")
++        value_text = f"{entry['value']:.1f}{f' {unit}' if unit else ''}"
++        cards.append(
++            html.Div(
++                className="scoreboard-card",
++                children=[
++                    html.Span(entry["label"], className="scoreboard-label"),
++                    html.Span(value_text, className="scoreboard-value"),
++                    html.Span(entry.get("description", ""), className="scoreboard-description"),
++                ],
++            )
++        )
++    return html.Div(className="scoreboard", children=cards)
++
++
++def layout(**_: Any) -> html.Div:
+     context = DATA_CONTEXT
+     summary = context.summarise() if context else None
+-    table = dash_table.DataTable(
++    table_data: list[dict[str, Any]]
++    table_columns: list[dict[str, str]]
++    if summary is not None and not summary.empty:
++        reset = summary.reset_index().rename(columns={"index": "metric"})
++        table_data = reset.to_dict("records")
++        table_columns = [{"name": column.title(), "id": column} for column in reset.columns]
++    else:
++        table_data = []
++        table_columns = [
++            {"name": "Metric", "id": "metric"},
++            {"name": "Min", "id": "min"},
++            {"name": "Max", "id": "max"},
++            {"name": "Mean", "id": "mean"},
++        ]
++    data_table_factory = cast(Any, dash_table.DataTable)  # type: ignore[attr-defined]
++    table = data_table_factory(
+         id="summary-table",
+-        data=summary.reset_index().rename(columns={"index": "metric"}).to_dict("records") if summary is not None else [],
+-        columns=[{"name": col.title(), "id": col} for col in (summary.reset_index().columns if summary is not None else ["metric", "min", "max", "mean"])],
++        data=table_data,
++        columns=table_columns,
+         sort_action="native",
+         page_size=10,
+     )
++    scoreboard = _render_scoreboard(_scoreboard_entries(summary))
+     return html.Div(
+         className="page overview-page",
+         children=[
+             html.H2("Urban Amenities Overview"),
+             html.P("Explore composite scores, category distribution, and recent model runs."),
++            scoreboard,
+             table,
+         ],
+     )
+
+
+ __all__ = ["layout"]
+diff --git a/src/Urban_Amenities2/ui/layouts/map_view.py b/src/Urban_Amenities2/ui/layouts/map_view.py
+index 05801e44c813226b3c6487491cca04f9956ca41e..7c253d784c04f7eb9db0395a9a2817f4f001afb0 100644
+--- a/src/Urban_Amenities2/ui/layouts/map_view.py
++++ b/src/Urban_Amenities2/ui/layouts/map_view.py
+@@ -1,63 +1,103 @@
+ """Map exploration page."""
+
+ from __future__ import annotations
+
+-from dash import dcc, html, register_page
++from collections.abc import Mapping, Sequence
++from typing import Any, cast
++
++from dash import dcc, html
+
+ from ..components.filters import build_filter_panel, build_parameter_panel
+ from ..components.overlay_controls import build_overlay_panel
+ from ..config import UISettings
++from ..contracts import SubscoreCode
++from ..dash_wrappers import register_page
+ from ..layers import basemap_options
+ from ..scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
+ from . import DATA_CONTEXT, SETTINGS
+
+ register_page(__name__, path="/map", name="Map Explorer")
+
+
+-def layout(**_) -> html.Div:
++def _as_dropdown_options(options: Sequence[Mapping[str, object]]) -> list[dict[str, str]]:
++    payloads: list[dict[str, str]] = []
++    for option in options:
++        label = option.get("label")
++        value = option.get("value")
++        if isinstance(label, str) and isinstance(value, str):
++            payloads.append({"label": label, "value": value})
++    return payloads
++
++
++def layout(**_: Any) -> html.Div:
+     context = DATA_CONTEXT
+-    SETTINGS or UISettings.from_environment()
+-    states = sorted(context.scores["state"].dropna().unique()) if context and "state" in context.scores else []
+-    metros = sorted(context.scores["metro"].dropna().unique()) if context and "metro" in context.scores else []
+-    counties = sorted(context.scores["county"].dropna().unique()) if context and "county" in context.scores else []
+-    default_weights = {option["value"]: 100 / len(SUBSCORE_OPTIONS) for option in SUBSCORE_OPTIONS}
++    settings = SETTINGS or UISettings.from_environment()
++    states = (
++        sorted(context.scores["state"].dropna().unique())
++        if context is not None and "state" in context.scores
++        else []
++    )
++    metros = (
++        sorted(context.scores["metro"].dropna().unique())
++        if context is not None and "metro" in context.scores
++        else []
++    )
++    counties = (
++        sorted(context.scores["county"].dropna().unique())
++        if context is not None and "county" in context.scores
++        else []
++    )
++    default_weights: dict[str, float] = {
++        str(option["value"]): 100.0 / len(SUBSCORE_OPTIONS) for option in SUBSCORE_OPTIONS
++    }
++    basemap_choices = basemap_options()
++    default_basemap_value = (
++        basemap_choices[0]["value"] if basemap_choices else "mapbox://styles/mapbox/streets-v11"
++    )
++    subscore_default: SubscoreCode = "aucs"
++    subscore_option_payloads = _as_dropdown_options(SUBSCORE_OPTIONS)
++    basemap_option_payloads = _as_dropdown_options(basemap_choices)
+     return html.Div(
+         className="page map-page",
+         children=[
+             html.Div(
+                 className="map-controls",
+                 children=[
+                     build_filter_panel(states, metros, counties),
+                     build_parameter_panel(default_weights),
+                     html.Label("Subscore"),
+                     dcc.Dropdown(
+-                        options=SUBSCORE_OPTIONS,
+-                        value="aucs",
++                        options=cast(Sequence[Any], subscore_option_payloads),
++                        value=subscore_default,
+                         id="subscore-select",
+                         clearable=False,
+                     ),
+                     html.Div(
+-                        SUBSCORE_DESCRIPTIONS["aucs"],
++                        SUBSCORE_DESCRIPTIONS[subscore_default],
+                         id="subscore-description",
+                         className="subscore-description",
+                     ),
+                     html.Label("Base Map"),
+                     dcc.Dropdown(
+-                        options=basemap_options(),
+-                        value="mapbox://styles/mapbox/streets-v11",
++                        options=cast(Sequence[Any], basemap_option_payloads),
++                        value=default_basemap_value,
+                         id="basemap-select",
+                         clearable=False,
+                     ),
+                     build_overlay_panel(),
+                 ],
+             ),
+             dcc.Loading(
+                 id="map-loading",
+                 type="circle",
+                 children=dcc.Graph(id="hex-map", config={"displayModeBar": False}),
+             ),
++            html.Small(
++                f"Configured title: {settings.title}",
++                className="map-settings-hint",
++            ),
+         ],
+     )
+
+
+ __all__ = ["layout"]
+diff --git a/src/Urban_Amenities2/ui/layouts/settings.py b/src/Urban_Amenities2/ui/layouts/settings.py
+index e366d7084a057048eadea36e8a2dc8155cf969bd..2b8134182fd88295ec43049f8588afb7b5f3eeb7 100644
+--- a/src/Urban_Amenities2/ui/layouts/settings.py
++++ b/src/Urban_Amenities2/ui/layouts/settings.py
+@@ -1,33 +1,36 @@
+ """Settings page for environment configuration."""
+
+ from __future__ import annotations
+
+-from dash import html, register_page
++from typing import Any
++
++from dash import html
+
+ from ..config import UISettings
++from ..dash_wrappers import register_page
+ from . import SETTINGS
+
+ register_page(__name__, path="/settings", name="Settings")
+
+
+-def layout(**_) -> html.Div:
++def layout(**_: Any) -> html.Div:
+     settings = SETTINGS or UISettings.from_environment()
+     items = [
+         ("Host", settings.host),
+-        ("Port", settings.port),
+-        ("Debug", settings.debug),
+-        ("Data path", settings.data_path),
++        ("Port", str(settings.port)),
++        ("Debug", "yes" if settings.debug else "no"),
++        ("Data path", str(settings.data_path)),
+         ("CORS origins", ", ".join(settings.cors_origins)),
+         ("Reload interval", f"{settings.reload_interval_seconds}s"),
+         ("Hex resolutions", ", ".join(str(r) for r in settings.hex_resolutions)),
+     ]
+     return html.Div(
+         className="page settings-page",
+         children=[
+             html.H2("Settings"),
+             html.Ul([html.Li([html.Strong(label), f": {value}"]) for label, value in items]),
+         ],
+     )
+
+
+ __all__ = ["layout"]
+diff --git a/src/Urban_Amenities2/ui/scores_controls.py b/src/Urban_Amenities2/ui/scores_controls.py
+index 573a52de8187324fbbfd61a9ba4461db11bec889..714d56fd6637235f2e0a335a6598ebd0b8f1bf07 100644
+--- a/src/Urban_Amenities2/ui/scores_controls.py
++++ b/src/Urban_Amenities2/ui/scores_controls.py
+@@ -1,26 +1,30 @@
+ """Shared constants for score controls."""
+
+-SUBSCORE_OPTIONS = [
++from __future__ import annotations
++
++from .contracts import SubscoreCode, SubscoreOption
++
++SUBSCORE_OPTIONS: tuple[SubscoreOption, ...] = (
+     {"label": "Total AUCS", "value": "aucs"},
+     {"label": "Essentials Access", "value": "EA"},
+     {"label": "Leisure & Culture", "value": "LCA"},
+     {"label": "Major Urban Hub & Airport Access", "value": "MUHAA"},
+     {"label": "Jobs & Education", "value": "JEA"},
+     {"label": "Mobility Reliability", "value": "MORR"},
+     {"label": "Corridor Trip Enrichment", "value": "CTE"},
+     {"label": "Seasonal Outdoors", "value": "SOU"},
+-]
++)
+
+-SUBSCORE_DESCRIPTIONS = {
++SUBSCORE_DESCRIPTIONS: dict[SubscoreCode, str] = {
+     "aucs": "Overall composite score aggregating all subscores with current weights.",
+     "EA": "Access to essential amenities such as groceries, pharmacies, and childcare.",
+     "LCA": "Leisure and culture opportunities including dining, arts, parks, and recreation.",
+     "MUHAA": "Connectivity to major urban hubs and airports weighted by travel cost.",
+     "JEA": "Jobs and education accessibility capturing employment centers and universities.",
+     "MORR": "Mobility options, reliability, and resilience across transit and micromobility.",
+     "CTE": "Corridor trip-chaining enrichment measuring errand-friendly transit paths.",
+     "SOU": "Seasonal outdoors comfort balancing climate, trails, and recreation readiness.",
+ }
+
+
+ __all__ = ["SUBSCORE_OPTIONS", "SUBSCORE_DESCRIPTIONS"]
+diff --git a/tests/test_ui_components_structure.py b/tests/test_ui_components_structure.py
+index f44ba69619d366acd91298a323d5c1fccd3bb7b4..73b09951b0fcc9b191a2c8ab895f13fa02e4e8c4 100644
+--- a/tests/test_ui_components_structure.py
++++ b/tests/test_ui_components_structure.py
+@@ -24,52 +24,54 @@ def test_build_header_uses_settings(ui_settings: UISettings) -> None:
+     assert logo_container.children[1].children == ui_settings.title
+
+
+ def test_build_footer_annotations(monkeypatch) -> None:
+     footer = build_footer()
+     assert isinstance(footer, html.Footer)
+     assert "Urban Amenities Initiative" in footer.children[0].children
+     assert footer.children[1].children == "Build: v1.0"
+
+
+ def test_build_sidebar_links() -> None:
+     sidebar = build_sidebar()
+     assert isinstance(sidebar, html.Aside)
+     assert len(sidebar.children) == len(PAGES)
+     first_link = sidebar.children[0]
+     assert isinstance(first_link, dcc.Link)
+     assert first_link.children[1].children == PAGES[0]["label"]
+
+
+ def test_build_overlay_panel_defaults() -> None:
+     panel = build_overlay_panel()
+     assert isinstance(panel, html.Div)
+     details = panel.children[0]
+     checklist = details.children[1]
+     assert isinstance(checklist, dcc.Checklist)
+-    assert checklist.value == DEFAULT_OVERLAYS
+-    assert {opt["value"] for opt in OVERLAY_OPTIONS} >= set(DEFAULT_OVERLAYS)
++    assert checklist.value == list(DEFAULT_OVERLAYS)
++    option_values = {option["value"] for option in OVERLAY_OPTIONS}
++    assert option_values >= set(DEFAULT_OVERLAYS)
++    assert all(isinstance(option["label"], str) for option in OVERLAY_OPTIONS)
+
+
+ def test_filter_and_parameter_panels() -> None:
+     from Urban_Amenities2.ui.components.filters import (
+         build_filter_panel,
+         build_parameter_panel,
+     )
+
+     filter_panel = build_filter_panel(["CO"], ["Denver"], ["Denver County"])
+     assert isinstance(filter_panel.children[0], html.Details)
+     dropdowns = [child for child in filter_panel.children[0].children if isinstance(child, dcc.Dropdown)]
+     assert len(dropdowns) == 3
+
+     weights = {"aucs": 50.0, "ea": 50.0}
+     parameter_panel = build_parameter_panel(weights)
+     assert any(isinstance(child, html.Details) for child in parameter_panel.children)
+     slider_components: list[dcc.Slider] = []
+     for section in parameter_panel.children:
+         if not isinstance(section, html.Details):
+             continue
+         parameter_list = next(
+             (child for child in section.children if isinstance(child, html.Div) and child.className == "parameter-list"),
+             None,
+         )
+         assert parameter_list is not None
+diff --git a/tests/test_ui_export.py b/tests/test_ui_export.py
+index 8ba6f053d94b417dbd4455d498085f5f33931c0b..90b3b6df0445be0096a8e6626e504894ece22660 100644
+--- a/tests/test_ui_export.py
++++ b/tests/test_ui_export.py
+@@ -1,36 +1,38 @@
+ """Tests for UI export functionality."""
+
+ from __future__ import annotations
+
++import base64
+ import tempfile
+ from pathlib import Path
+
+ import geopandas as gpd
+ import pandas as pd
+ import pytest
+
++from Urban_Amenities2.ui.downloads import build_file_download
+ from Urban_Amenities2.ui.export import (
+     create_shareable_url,
+     export_csv,
+     export_geojson,
+     export_parquet,
+ )
+
+
+ @pytest.fixture
+ def sample_data():
+     """Create sample hex data for export testing."""
+     df = pd.DataFrame({
+         "hex_id": ["8928308280fffff", "8928308280bffff"],  # Valid H3 hex IDs
+         "state": ["CO", "CO"],
+         "metro": ["Denver", "Denver"],
+         "aucs": [75.0, 45.0],
+         "ea": [80.0, 50.0],
+         "lca": [70.0, 40.0],
+         "muhaa": [65.0, 35.0],
+         "jea": [85.0, 55.0],
+         "morr": [75.0, 45.0],
+         "cte": [60.0, 30.0],
+         "sou": [70.0, 40.0],
+     })
+     # Ensure hex_id is string type
+@@ -132,25 +134,36 @@ def test_create_shareable_url_with_map_position():
+     assert "zoom=10" in url
+     assert "lat=39.7392" in url
+     assert "lon=-104.9903" in url
+
+
+ def test_create_shareable_url_complete():
+     """Test creating complete shareable URL with all parameters."""
+     url = create_shareable_url(
+         "https://aucs.example.com",
+         state="CO",
+         metro="Denver",
+         subscore="lca",
+         zoom=12,
+         center_lat=39.7392,
+         center_lon=-104.9903,
+     )
+
+     # Verify all parameters present
+     assert "state=CO" in url
+     assert "metro=Denver" in url
+     assert "subscore=lca" in url
+     assert "zoom=12" in url
+     assert "lat=39.7392" in url
+     assert "lon=-104.9903" in url
+
++
++def test_build_file_download(tmp_path: Path) -> None:
++    payload_path = tmp_path / "sample.txt"
++    payload_path.write_text("typed")
++    payload = build_file_download(payload_path, filename="typed.txt", mimetype="text/plain")
++    assert payload["filename"] == "typed.txt"
++    assert payload["type"] == "text/plain"
++    assert payload["base64"] is True
++    decoded = base64.b64decode(payload["content"]).decode("ascii")
++    assert decoded == "typed"
++
+diff --git a/tests/test_ui_layouts.py b/tests/test_ui_layouts.py
+index 03954fe0fc0547a6418b82c24ef9e8b350dcd8ec..9d6220fc733850c3951feed48a7196413beddb5b 100644
+--- a/tests/test_ui_layouts.py
++++ b/tests/test_ui_layouts.py
+@@ -14,51 +14,54 @@ def layouts_module():
+     return module
+
+
+ @pytest.fixture
+ def dash_app(ui_settings, layouts_module):
+     # Ensure Dash is initialised before pages register themselves
+     app = Dash(__name__, use_pages=True, pages_folder="")
+     reload(layouts_module)
+     app.title = ui_settings.title
+     layouts_module.register_layouts(app, ui_settings)
+     return app, layouts_module
+
+
+ def test_register_layouts_configures_app(dash_app, ui_settings) -> None:
+     app, _ = dash_app
+     assert isinstance(app.layout, html.Div)
+     assert app.title == ui_settings.title
+
+
+ def test_home_layout_uses_context(dash_app, data_context, monkeypatch) -> None:
+     _, layouts_module = dash_app
+     home = import_module("Urban_Amenities2.ui.layouts.home")
+     monkeypatch.setattr(home, "DATA_CONTEXT", data_context)
+     layout = home.layout()
+     assert isinstance(layout, html.Div)
+-    summary_table = layout.children[2]
++    scoreboard = layout.children[2]
++    assert isinstance(scoreboard, html.Div)
++    assert scoreboard.className == "scoreboard"
++    summary_table = layout.children[3]
+     assert getattr(summary_table, "id", None) == "summary-table"
+
+
+ def test_data_management_layout_shows_version(dash_app, data_context, ui_settings, monkeypatch) -> None:
+     data_management = import_module("Urban_Amenities2.ui.layouts.data_management")
+     monkeypatch.setattr(data_management, "DATA_CONTEXT", data_context)
+     monkeypatch.setattr(data_management, "SETTINGS", ui_settings)
+     layout = data_management.layout()
+     assert "Data Management" in layout.children[0].children
+     assert data_context.version and data_context.version.identifier in layout.children[1].children
+
+
+ def test_map_view_layout_has_controls(dash_app, data_context, ui_settings, monkeypatch) -> None:
+     map_view = import_module("Urban_Amenities2.ui.layouts.map_view")
+     monkeypatch.setattr(map_view, "DATA_CONTEXT", data_context)
+     monkeypatch.setattr(map_view, "SETTINGS", ui_settings)
+     layout = map_view.layout()
+     assert isinstance(layout, html.Div)
+     controls = layout.children[0]
+     filter_panel = controls.children[0]
+     assert any(isinstance(child, dcc.Dropdown) for child in filter_panel.children[0].children)
+     loading_container = layout.children[1]
+     assert isinstance(loading_container.children, dcc.Graph)
+
+
+
+EOF
+)

@@ -11,8 +11,8 @@ from ..config import UISettings
 from ..data_loader import DataContext
 from ..logging import configure_logging
 
-DATA_CONTEXT: Optional[DataContext] = None
-SETTINGS: Optional[UISettings] = None
+DATA_CONTEXT: DataContext | None = None
+SETTINGS: UISettings | None = None
 
 
 def register_layouts(app: Dash, settings: UISettings) -> None:

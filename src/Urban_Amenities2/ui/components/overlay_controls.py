@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence, cast
+from collections.abc import Sequence
+from typing import Any, cast
 
 from dash import dcc, html
 
-from ..types import ChecklistOption, OverlayToggle
+from ..contracts import OverlayId, OverlayOption
 
-
-OVERLAY_OPTIONS: list[ChecklistOption] = [
+OVERLAY_OPTIONS: tuple[OverlayOption, ...] = (
     {"label": "State boundaries", "value": "states"},
     {"label": "County boundaries", "value": "counties"},
     {"label": "Metro areas", "value": "metros"},
@@ -18,26 +18,19 @@ OVERLAY_OPTIONS: list[ChecklistOption] = [
     {"label": "Parks & trails", "value": "parks"},
     {"label": "City labels", "value": "city_labels"},
     {"label": "Landmarks", "value": "landmark_labels"},
-]
+)
+
+DEFAULT_OVERLAYS: tuple[OverlayId, ...] = ("states", "city_labels", "landmark_labels")
 
 
-DEFAULT_OVERLAYS: list[OverlayToggle] = [
-    "states",
-    "city_labels",
-    "landmark_labels",
-]
+def _as_checklist_options(options: Sequence[OverlayOption]) -> list[dict[str, Any]]:
+    return [{"label": option["label"], "value": option["value"]} for option in options]
 
 
-def build_overlay_panel(
-    *,
-    options: Sequence[ChecklistOption] | None = None,
-    default: Sequence[OverlayToggle] | None = None,
-) -> html.Div:
+def build_overlay_panel() -> html.Div:
     """Render the overlay control panel."""
 
-    source_options = list(options) if options is not None else OVERLAY_OPTIONS
-    resolved_options = [dict(option) for option in source_options]
-    resolved_default = [str(value) for value in (default or DEFAULT_OVERLAYS)]
+    option_payloads = _as_checklist_options(OVERLAY_OPTIONS)
     return html.Div(
         className="overlay-panel",
         children=[
@@ -47,8 +40,8 @@ def build_overlay_panel(
                     html.Summary("Map layers"),
                     dcc.Checklist(
                         id="overlay-layers",
-                        options=cast(Any, resolved_options),
-                        value=resolved_default,
+                        options=cast(Sequence[Any], option_payloads),
+                        value=list(DEFAULT_OVERLAYS),
                         inputClassName="overlay-input",
                         labelClassName="overlay-label",
                     ),

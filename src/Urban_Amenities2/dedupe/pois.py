@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from math import exp
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
+from numpy.typing import NDArray
 from rapidfuzz import fuzz
 
 from ..hex.core import latlon_to_hex

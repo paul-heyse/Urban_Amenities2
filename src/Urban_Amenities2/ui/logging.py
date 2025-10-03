@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+
 from structlog.typing import FilteringBoundLogger
 
 from ..logging_utils import get_logger

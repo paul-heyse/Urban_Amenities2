@@ -142,7 +142,7 @@ def test_ces_aggregate_monotonic(pairs: list[tuple[float, float]], rho: float) -
 def test_apply_satiation_monotonic(values: list[float], kappa: float) -> None:
     sorted_values = np.sort(np.array(values, dtype=float))
     scores = apply_satiation(sorted_values, kappa)
-    assert np.all((0 <= scores) & (scores <= 100))
+    assert np.all((scores >= 0) & (scores <= 100))
     assert np.all(np.diff(scores) >= -1e-9)
 
 

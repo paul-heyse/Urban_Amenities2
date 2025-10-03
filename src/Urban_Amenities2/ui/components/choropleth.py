@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Iterable
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
-import pandas as pd
-import plotly.graph_objects as go
+import pandas as pd  # type: ignore[import-untyped]
+import plotly.graph_objects as go  # type: ignore[import-untyped]
 from plotly.basedatatypes import BaseTraceType
 
-from ..types import GeoJSONFeatureCollection, MapboxLayer
+from ..contracts import MapboxLayer
 
 COLOR_SCALES: dict[str, str] = {
     "aucs": "Viridis",
@@ -25,12 +25,12 @@ COLOR_SCALES: dict[str, str] = {
 
 def create_choropleth(
     *,
-    geojson: GeoJSONFeatureCollection,
+    geojson: Mapping[str, object],
     frame: pd.DataFrame,
     score_column: str,
     hover_columns: Iterable[str],
     mapbox_token: str | None,
-    center: dict[str, float] | None = None,
+    center: Mapping[str, float] | None = None,
     zoom: float = 6.0,
     map_style: str = "carto-positron",
     transition_duration: int = 350,
@@ -58,15 +58,16 @@ def create_choropleth(
         )
     )
     mapbox_style = _resolve_style(map_style, mapbox_token)
-    mapbox_config: dict[str, object] = {
+    default_center: Mapping[str, float] = {"lat": 39.5, "lon": -111.0}
+    mapbox_config: dict[str, Any] = {
         "style": mapbox_style,
-        "center": center or {"lat": 39.5, "lon": -111.0},
+        "center": dict(center) if center else dict(default_center),
         "zoom": zoom,
     }
     if mapbox_style.startswith("mapbox://") and mapbox_token:
         mapbox_config["accesstoken"] = mapbox_token
     if layers:
-        mapbox_config["layers"] = list(layers)
+        mapbox_config["layers"] = [dict(layer) for layer in layers]
     if extra_traces:
         for trace in extra_traces:
             figure.add_trace(trace)
@@ -77,24 +78,21 @@ def create_choropleth(
         uirevision="hex-map",
     )
     if attribution:
-        figure.update_layout(
-            annotations=[
-                dict(
-                    text=attribution,
-                    x=0,
-                    y=0,
-                    xref="paper",
-                    yref="paper",
-                    showarrow=False,
-                    xanchor="left",
-                    yanchor="bottom",
-                    font=dict(size=10, color="#4b5563"),
-                    bgcolor="rgba(255,255,255,0.65)",
-                    borderpad=4,
-                )
-            ]
-        )
-    figure.update_traces(selector=dict(type="choroplethmapbox"), marker=dict(line=dict(width=0)))
+        annotation: dict[str, Any] = {
+            "text": attribution,
+            "x": 0,
+            "y": 0,
+            "xref": "paper",
+            "yref": "paper",
+            "showarrow": False,
+            "xanchor": "left",
+            "yanchor": "bottom",
+            "font": {"size": 10, "color": "#4b5563"},
+            "bgcolor": "rgba(255,255,255,0.65)",
+            "borderpad": 4,
+        }
+        figure.update_layout(annotations=[annotation])
+    figure.update_traces(selector={"type": "choroplethmapbox"}, marker={"line": {"width": 0}})
     return figure
 
 

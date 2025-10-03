@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Sequence
-from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-import math
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
+from numpy.typing import NDArray
 
 
 @dataclass(slots=True)

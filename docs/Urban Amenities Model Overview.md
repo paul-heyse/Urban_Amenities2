@@ -45,6 +45,7 @@ Subscores map to 0–100 via metro‑relative percentiles (or absolute anchors),
 * **Airports** (FAA enplanements).
 * **Climate** (NOAA normals) and optional **air quality**.
 * **Type safety:** Ingestion code now uses typed fallbacks for optional dependencies (BigQuery, shapely) and typed HTTP request payloads. When extending this layer, rely on `Mapping`-based params and keep `mypy src/Urban_Amenities2/io --warn-unused-ignores` clean.
+* **UI exports:** GeoJSON/CSV/shapefile exports use typed feature builders and a typed Dash download helper. When adding new exports, assemble payloads via `build_feature_collection`, normalise values to JSON-safe primitives, and return `Path` objects so callbacks can pass them to `ui.downloads.send_file` without extra casting.
 
 **B) Enrich & index**
 

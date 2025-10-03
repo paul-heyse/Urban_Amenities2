@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import pytest
 
 from tests.ui_factories import make_export_dataset
 from Urban_Amenities2.ui.export import (
+    build_feature_collection,
     create_shareable_url,
     export_csv,
     export_geojson,
@@ -28,17 +30,16 @@ def test_export_csv(sample_data):
     """Test CSV export."""
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "export.csv"
-        export_csv(sample_data, output_path, include_geometry=True)
+        result = export_csv(sample_data, output_path, include_geometry=True)
 
-        # Verify file exists
+        assert result == output_path
         assert output_path.exists()
 
-        # Load and verify content
         loaded = pd.read_csv(output_path)
         assert len(loaded) == len(sample_data)
         assert "hex_id" in loaded.columns
         assert "aucs" in loaded.columns
-        assert "lat" in loaded.columns  # Added by include_geometry
+        assert "lat" in loaded.columns
         assert "lon" in loaded.columns
 
 
@@ -46,20 +47,24 @@ def test_export_geojson(sample_data):
     """Test GeoJSON export."""
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "export.geojson"
-        export_geojson(sample_data, output_path)
+        result = export_geojson(sample_data, output_path)
 
-        # Verify file exists
+        assert result == output_path
         assert output_path.exists()
 
-        # Load and verify content
         gdf = gpd.read_file(output_path)
         assert len(gdf) == len(sample_data)
         assert "hex_id" in gdf.columns
         assert "aucs" in gdf.columns
         assert gdf.crs == "EPSG:4326"
-
-        # Verify geometries are polygons
         assert all(gdf.geometry.type == "Polygon")
+
+        payload = json.loads(output_path.read_text())
+        assert payload["type"] == "FeatureCollection"
+        for feature in payload["features"]:
+            assert feature["type"] == "Feature"
+            assert "geometry" in feature
+            assert set(feature["properties"].keys()) >= {"hex_id", "aucs"}
 
 
 def test_export_geojson_with_properties(sample_data):
@@ -68,21 +73,23 @@ def test_export_geojson_with_properties(sample_data):
         output_path = Path(tmpdir) / "export.geojson"
         export_geojson(sample_data, output_path, properties=["hex_id", "aucs", "ea"])
 
-        # Load and verify only selected properties
         gdf = gpd.read_file(output_path)
         assert set(gdf.columns) == {"hex_id", "aucs", "ea", "geometry"}
+
+        payload = json.loads(output_path.read_text())
+        for feature in payload["features"]:
+            assert set(feature["properties"].keys()) <= {"hex_id", "aucs", "ea"}
 
 
 def test_export_parquet(sample_data):
     """Test Parquet export."""
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "export.parquet"
-        export_parquet(sample_data, output_path)
+        result = export_parquet(sample_data, output_path)
 
-        # Verify file exists
+        assert result == output_path
         assert output_path.exists()
 
-        # Load and verify content
         loaded = pd.read_parquet(output_path)
         pd.testing.assert_frame_equal(loaded, sample_data)
 
@@ -132,10 +139,18 @@ def test_create_shareable_url_complete():
         center_lon=-104.9903,
     )
 
-    # Verify all parameters present
     assert "state=CO" in url
     assert "metro=Denver" in url
     assert "subscore=lca" in url
     assert "zoom=12" in url
     assert "lat=39.7392" in url
     assert "lon=-104.9903" in url
+
+
+def test_build_feature_collection(sample_data):
+    collection = build_feature_collection(sample_data, properties=["hex_id", "aucs"])
+    assert collection["type"] == "FeatureCollection"
+    assert len(collection["features"]) == len(sample_data)
+    first_feature = collection["features"][0]
+    assert first_feature["geometry"]["type"] == "Polygon"
+    assert set(first_feature["properties"].keys()) >= {"hex_id", "aucs"}

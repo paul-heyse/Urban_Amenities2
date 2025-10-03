@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING
-
-from __future__ import annotations
-
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any
 
-import plotly.graph_objects as go
+import plotly.graph_objects as go  # type: ignore[import-untyped]
 from plotly.basedatatypes import BaseTraceType
 
-from .types import DropdownOption, GeoJSONFeature, GeoJSONFeatureCollection, MapboxLayer, OverlayKey, OverlayPayload
+from .contracts import BasemapOption, MapboxLayer, OverlayId
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .data_loader import DataContext
+
+
+@dataclass(frozen=True)
+class OverlayPayload:
+    """Container for mapbox layers and additional Plotly traces."""
+
+    layers: list[MapboxLayer]
+    traces: list[BaseTraceType]
 
 
 _BASEMAP_STYLES: dict[str, dict[str, str]] = {
@@ -48,7 +51,7 @@ _BASEMAP_STYLES: dict[str, dict[str, str]] = {
 }
 
 
-_CITY_FEATURES: list[GeoJSONFeature] = [
+_CITY_FEATURES: list[Mapping[str, object]] = [
     {
         "type": "Feature",
         "properties": {"label": "Denver"},
@@ -72,7 +75,7 @@ _CITY_FEATURES: list[GeoJSONFeature] = [
 ]
 
 
-_LANDMARK_FEATURES: list[GeoJSONFeature] = [
+_LANDMARK_FEATURES: list[Mapping[str, object]] = [
     {
         "type": "Feature",
         "properties": {"label": "DEN Airport"},
@@ -96,7 +99,7 @@ _LANDMARK_FEATURES: list[GeoJSONFeature] = [
 ]
 
 
-_OVERLAY_COLOR = {
+_OVERLAY_COLOR: dict[OverlayId, str] = {
     "states": "#2563eb",
     "counties": "#6b7280",
     "metros": "#f97316",
@@ -104,21 +107,8 @@ _OVERLAY_COLOR = {
     "parks": "#22c55e",
 }
 
-_OVERLAY_KEYS: set[OverlayKey] = {
-    "states",
-    "counties",
-    "metros",
-    "transit_lines",
-    "transit_stops",
-    "parks",
-}
 
-TRANSIT_LINES_KEY: OverlayKey = "transit_lines"
-TRANSIT_STOPS_KEY: OverlayKey = "transit_stops"
-PARKS_KEY: OverlayKey = "parks"
-
-
-def basemap_options() -> list[DropdownOption]:
+def basemap_options() -> list[BasemapOption]:
     """Return dropdown options for map styles."""
 
     return [
@@ -142,32 +132,30 @@ def basemap_attribution(style: str | None) -> str:
     return meta.get("attribution", "© Mapbox © OpenStreetMap") if meta else ""
 
 
+def _rgba(color: str, alpha: float) -> str:
+    color = color.lstrip("#")
+    r, g, b = (int(color[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha:.3f})"
+
+
 def build_overlay_payload(
-    selected: Iterable[str],
+    selected: Iterable[OverlayId],
     context: DataContext,
     *,
     opacity: float = 0.35,
 ) -> OverlayPayload:
     """Build mapbox layers and Plotly traces for the selected overlays."""
 
-    selected_values: set[str] = {str(value) for value in selected or []}
-    selected_set: set[OverlayKey] = {
-        cast(OverlayKey, value) for value in selected_values if value in _OVERLAY_KEYS
-    }
+    selected_set: set[OverlayId] = {value for value in selected or [] if value}
     layers: list[MapboxLayer] = []
     traces: list[BaseTraceType] = []
     clamped_opacity = max(0.0, min(opacity, 1.0))
 
-    def _rgba(color: str, alpha: float) -> str:
-        color = color.lstrip("#")
-        r, g, b = (int(color[i : i + 2], 16) for i in (0, 2, 4))
-        return f"rgba({r},{g},{b},{alpha:.3f})"
-
-    def _boundary_layers(key: OverlayKey, name: str, alpha_multiplier: float = 0.35) -> None:
+    def _boundary_layers(key: OverlayId, name: str, alpha_multiplier: float = 0.35) -> None:
         if key not in selected_set:
             return
         geojson = context.get_overlay(key)
-        features = geojson.get("features", [])
+        features = geojson.get("features") if isinstance(geojson, Mapping) else None
         if not features:
             return
         color = _OVERLAY_COLOR.get(key, "#111827")
@@ -196,9 +184,10 @@ def build_overlay_payload(
     _boundary_layers("counties", "Counties", alpha_multiplier=0.1)
     _boundary_layers("metros", "Metros", alpha_multiplier=0.25)
 
-    if TRANSIT_LINES_KEY in selected_set:
-        lines = context.get_overlay(TRANSIT_LINES_KEY)
-        if lines.get("features"):
+    if "transit_lines" in selected_set:
+        lines = context.get_overlay("transit_lines")
+        features = lines.get("features") if isinstance(lines, Mapping) else None
+        if features:
             layers.append(
                 {
                     "sourcetype": "geojson",
@@ -210,9 +199,10 @@ def build_overlay_payload(
                 }
             )
 
-    if PARKS_KEY in selected_set:
-        parks = context.get_overlay(PARKS_KEY)
-        if parks.get("features"):
+    if "parks" in selected_set:
+        parks = context.get_overlay("parks")
+        features = parks.get("features") if isinstance(parks, Mapping) else None
+        if features:
             layers.append(
                 {
                     "sourcetype": "geojson",
@@ -225,9 +215,10 @@ def build_overlay_payload(
             )
 
     def _point_trace(
-        features: Sequence[GeoJSONFeature],
+        features: Sequence[Mapping[str, object]],
         name: str,
-        marker: dict[str, object],
+        marker: Mapping[str, Any],
+        *,
         text_only: bool = False,
     ) -> None:
         if not features:
@@ -236,17 +227,21 @@ def build_overlay_payload(
         lat: list[float] = []
         labels: list[str] = []
         for feature in features:
-            geometry = cast(dict[str, object], feature.get("geometry") or {})
-            if geometry.get("type") != "Point":
+            geometry = feature.get("geometry")
+            if not isinstance(geometry, Mapping) or geometry.get("type") != "Point":
                 continue
-            coords = cast(Sequence[float], geometry.get("coordinates") or ())
-            if len(coords) < 2:
+            coords = geometry.get("coordinates")
+            if not (isinstance(coords, Sequence) and len(coords) >= 2):
                 continue
             lon.append(float(coords[0]))
             lat.append(float(coords[1]))
-            properties = cast(dict[str, object], feature.get("properties") or {})
-            label_value = properties.get("label")
-            labels.append(label_value if isinstance(label_value, str) else name)
+            properties = feature.get("properties")
+            label = ""
+            if isinstance(properties, Mapping):
+                raw_label = properties.get("label")
+                if isinstance(raw_label, str):
+                    label = raw_label
+            labels.append(label or name)
         if not lon:
             return
         mode = "text" if text_only else "markers+text"
@@ -258,20 +253,18 @@ def build_overlay_payload(
             text=labels,
             textposition="top center",
             textfont={"size": 12 + int(clamped_opacity * 6)},
-            marker=marker,
+            marker=dict(marker),
             hoverinfo="text",
         )
         traces.append(trace)
 
-    if TRANSIT_STOPS_KEY in selected_set:
-        stops = context.get_overlay(TRANSIT_STOPS_KEY)
-        _point_trace(
-            stops.get("features", []),
-            "Transit stops",
-            {"size": 9, "color": "#0ea5e9", "opacity": 0.85},
-        )
+    if "transit_stops" in selected_set:
+        stops = context.get_overlay("transit_stops")
+        features = stops.get("features") if isinstance(stops, Mapping) else None
+        if isinstance(features, Sequence):
+            _point_trace(features, "Transit stops", {"size": 9, "color": "#0ea5e9", "opacity": 0.85})
 
-    if "city_labels" in selected_values:
+    if "city_labels" in selected_set:
         _point_trace(
             _CITY_FEATURES,
             "City labels",
@@ -279,7 +272,7 @@ def build_overlay_payload(
             text_only=True,
         )
 
-    if "landmark_labels" in selected_values:
+    if "landmark_labels" in selected_set:
         _point_trace(
             _LANDMARK_FEATURES,
             "Landmarks",

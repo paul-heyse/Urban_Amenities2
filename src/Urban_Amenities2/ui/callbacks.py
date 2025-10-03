@@ -1,4 +1,4 @@
-"""Dash callback registrations."""
+"""Dash callback registrations for the UI."""
 
 from __future__ import annotations
 
@@ -7,29 +7,34 @@ from pathlib import Path
 from typing import Any, cast
 
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, callback_context, dcc, html, no_update
+from dash import Dash, Input, Output, State, callback_context, html, no_update
+from dash._no_update import NoUpdate as DashNoUpdate
 
 from .components.choropleth import create_choropleth
+from .components.overlay_controls import OVERLAY_OPTIONS
 from .config import UISettings
+from .contracts import OverlayId, SubscoreCode
+from .dash_wrappers import register_callback
 from .data_loader import DataContext
+from .downloads import send_file
+from .export_types import DownloadPayload
 from .layers import basemap_attribution, build_overlay_payload, resolve_basemap_style
-from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
+from .scores_controls import SUBSCORE_DESCRIPTIONS
 
-SUBSCORE_VALUES: list[str] = [option["value"] for option in SUBSCORE_OPTIONS]
+OVERLAY_IDS: frozenset[OverlayId] = frozenset(option["value"] for option in OVERLAY_OPTIONS)
 
 
 def _normalise_filters(values: Iterable[str] | str | None) -> list[str]:
-    if not values:
+    if values is None:
         return []
     if isinstance(values, str):
         return [values]
     return [value for value in values if value]
 
 
-def _coerce_float(value: object) -> float | None:
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
+def _normalise_overlays(values: Iterable[str] | str | None) -> list[OverlayId]:
+    candidates = _normalise_filters(values)
+    return [cast(OverlayId, value) for value in candidates if value in OVERLAY_IDS]
 
 
 def _resolution_for_zoom(zoom: float | None) -> int:
@@ -45,37 +50,46 @@ def _resolution_for_zoom(zoom: float | None) -> int:
 
 
 def _extract_viewport_bounds(
-    relayout_data: Mapping[str, object] | None,
+    relayout_data: Mapping[str, Any] | None,
     fallback: tuple[float, float, float, float] | None,
 ) -> tuple[float, float, float, float] | None:
     if not isinstance(relayout_data, Mapping):
         return fallback
-    derived = relayout_data.get("mapbox._derived") if isinstance(relayout_data, Mapping) else None
-    if isinstance(derived, dict):
+    derived = relayout_data.get("mapbox._derived")
+    if isinstance(derived, Mapping):
         coordinates = derived.get("coordinates")
-        if coordinates:
-            points = [point for ring in coordinates for point in ring]
+        if isinstance(coordinates, Sequence):
+            points: list[Sequence[float]] = [
+                point
+                for ring in coordinates
+                if isinstance(ring, Sequence)
+                for point in ring
+                if isinstance(point, Sequence)
+            ]
             if points:
-                lons = [point[0] for point in points]
-                lats = [point[1] for point in points]
-                return min(lons), min(lats), max(lons), max(lats)
-    lon = _coerce_float(relayout_data.get("mapbox.center.lon"))
-    lat = _coerce_float(relayout_data.get("mapbox.center.lat"))
-    zoom = _coerce_float(relayout_data.get("mapbox.zoom"))
-    if lon is not None and lat is not None and zoom is not None:
-        # Fallback heuristic: approximate span based on zoom level
+                lons = [float(point[0]) for point in points if len(point) >= 2]
+                lats = [float(point[1]) for point in points if len(point) >= 2]
+                if lons and lats:
+                    return min(lons), min(lats), max(lons), max(lats)
+    lon = relayout_data.get("mapbox.center.lon")
+    lat = relayout_data.get("mapbox.center.lat")
+    zoom_value = relayout_data.get("mapbox.zoom")
+    if (
+        isinstance(lon, (int, float))
+        and isinstance(lat, (int, float))
+        and isinstance(zoom_value, (int, float))
+    ):
+        zoom = float(zoom_value)
         span = max(0.1, 360 / (2 ** max(zoom, 0.0)))
-        return lon - span, lat - span, lon + span, lat + span
+        lon_f = float(lon)
+        lat_f = float(lat)
+        return lon_f - span, lat_f - span, lon_f + span, lat_f + span
     return fallback
 
 
-def _send_file_response(path: Path) -> dict[str, object]:
-    sender = getattr(dcc, "send_file")
-    return cast(dict[str, object], sender(str(path)))
-
-
 def register_callbacks(app: Dash, data_context: DataContext, settings: UISettings) -> None:
-    @app.callback(
+    @register_callback(
+        app,
         Output("hex-map", "figure"),
         Output("filter-count", "children"),
         Output("subscore-description", "children"),
@@ -93,31 +107,37 @@ def register_callbacks(app: Dash, data_context: DataContext, settings: UISetting
         prevent_initial_call=False,
     )
     def _update_map(
-        subscore: str,
+        subscore: SubscoreCode,
         basemap: str,
-        overlay_values: Sequence[str] | None,
+        overlay_values: Iterable[str] | str | None,
         overlay_opacity: float | None,
         *_events: object,
-        relayout_data: Mapping[str, object] | None,
-        state_values: Sequence[str] | str | None,
-        metro_values: Sequence[str] | str | None,
-        county_values: Sequence[str] | str | None,
+        relayout_data: Mapping[str, Any] | None,
+        state_values: Iterable[str] | str | None,
+        metro_values: Iterable[str] | str | None,
+        county_values: Iterable[str] | str | None,
         score_range: Sequence[float] | None,
     ) -> tuple[go.Figure, str, str]:
-        triggered = callback_context.triggered_id
+        triggered = cast(str | None, getattr(callback_context, "triggered_id", None))
         if triggered == "clear-filters":
             state_values = metro_values = county_values = []
-            score_range = [0.0, 100.0]
-        typed_score_range: tuple[float, float] | None = None
-        if score_range and len(score_range) >= 2:
-            typed_score_range = (float(score_range[0]), float(score_range[1]))
+            score_range = (0.0, 100.0)
+        score_bounds: tuple[float, float] | None
+        if score_range is None or len(score_range) < 2:
+            score_bounds = None
+        else:
+            score_bounds = (float(score_range[0]), float(score_range[1]))
         filtered = data_context.filter_scores(
             state=_normalise_filters(state_values),
             metro=_normalise_filters(metro_values),
             county=_normalise_filters(county_values),
-            score_range=typed_score_range,
+            score_range=score_bounds,
         )
-        zoom_value = _coerce_float(relayout_data.get("mapbox.zoom")) if isinstance(relayout_data, Mapping) else None
+        zoom_value: float | None = None
+        if isinstance(relayout_data, Mapping):
+            candidate = relayout_data.get("mapbox.zoom")
+            if isinstance(candidate, (int, float)):
+                zoom_value = float(candidate)
         resolution = _resolution_for_zoom(zoom_value)
         bounds = _extract_viewport_bounds(relayout_data, data_context.bounds)
         base_resolution = data_context.base_resolution or 9
@@ -150,7 +170,7 @@ def register_callbacks(app: Dash, data_context: DataContext, settings: UISetting
         geojson = data_context.to_geojson(frame)
         basemap_style = resolve_basemap_style(basemap)
         overlay_payload = build_overlay_payload(
-            list(overlay_values or []),
+            _normalise_overlays(overlay_values),
             data_context,
             opacity=overlay_opacity if overlay_opacity is not None else 0.35,
         )
@@ -170,7 +190,8 @@ def register_callbacks(app: Dash, data_context: DataContext, settings: UISetting
         description = SUBSCORE_DESCRIPTIONS.get(subscore, "")
         return figure, f"Showing {filtered_count:,} of {total:,} hexes", description
 
-    @app.callback(
+    @register_callback(
+        app,
         Output("refresh-status", "children"),
         Input("refresh-data", "n_clicks"),
         prevent_initial_call=True,
@@ -184,7 +205,8 @@ def register_callbacks(app: Dash, data_context: DataContext, settings: UISetting
         )
         return html.Span(message)
 
-    @app.callback(
+    @register_callback(
+        app,
         Output("download-data", "data"),
         Input("export-csv", "n_clicks"),
         Input("export-geojson", "n_clicks"),
@@ -193,16 +215,16 @@ def register_callbacks(app: Dash, data_context: DataContext, settings: UISetting
     def _export_data(
         csv_clicks: int | None,
         geojson_clicks: int | None,
-    ) -> dict[str, object] | Any:
-        triggered = callback_context.triggered_id
+    ) -> DownloadPayload | DashNoUpdate:
+        triggered = cast(str | None, getattr(callback_context, "triggered_id", None))
         if triggered == "export-csv":
             temp = Path("/tmp/ui-export.csv")
             data_context.export_csv(temp)
-            return _send_file_response(temp)
+            return send_file(temp)
         if triggered == "export-geojson":
             temp = Path("/tmp/ui-export.geojson")
             data_context.export_geojson(temp)
-            return _send_file_response(temp)
+            return send_file(temp)
         return no_update
 
 

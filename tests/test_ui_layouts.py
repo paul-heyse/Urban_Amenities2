@@ -36,7 +36,10 @@ def test_home_layout_uses_context(dash_app, data_context, monkeypatch) -> None:
     monkeypatch.setattr(home, "DATA_CONTEXT", data_context)
     layout = home.layout()
     assert isinstance(layout, html.Div)
-    summary_table = layout.children[2]
+    scoreboard = layout.children[2]
+    assert isinstance(scoreboard, html.Div)
+    assert scoreboard.className == "scoreboard"
+    summary_table = layout.children[3]
     assert getattr(summary_table, "id", None) == "summary-table"
 
 
