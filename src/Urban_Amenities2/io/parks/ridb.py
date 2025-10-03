@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
 
 import pandas as pd
 import requests
@@ -34,14 +35,21 @@ class RIDBIngestor:
         for state in states:
             offset = 0
             while True:
-                params = {
+                params: dict[str, str | int] = {
                     "limit": self.config.page_size,
                     "offset": offset,
                     "state": state,
                 }
-                headers = {"apikey": self.config.api_key} if self.config.api_key else None
+                headers: Mapping[str, str] | None = (
+                    {"apikey": self.config.api_key} if self.config.api_key else None
+                )
                 LOGGER.info("fetching_ridb", state=state, offset=offset)
-                response = session.get(RIDB_URL, params=params, headers=headers, timeout=60)
+                response = session.get(
+                    RIDB_URL,
+                    params=params,
+                    headers=headers,
+                    timeout=60,
+                )
                 response.raise_for_status()
                 data = response.json()
                 if self.registry.has_changed(f"ridb-{state}", response.content):

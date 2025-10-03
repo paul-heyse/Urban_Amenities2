@@ -1,19 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import fsspec
 import pandas as pd
 
 try:  # pragma: no cover - import guard for optional dependency
-    from google.transit import gtfs_realtime_pb2 as feedmessage_pb2  # type: ignore
+    from google.transit import gtfs_realtime_pb2 as feedmessage_pb2
 except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
     import json
+    from dataclasses import dataclass, field
+    from typing import Iterable, Mapping
 
+    @dataclass(slots=True)
     class _StopTimeEvent:
-        def __init__(self) -> None:
-            self.delay: int | None = None
+        delay: int | None = None
 
         def HasField(self, name: str) -> bool:
             return getattr(self, name, None) is not None
@@ -22,16 +24,15 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             return {"delay": self.delay}
 
         @classmethod
-        def from_dict(cls, payload: dict[str, int | None]) -> _StopTimeEvent:
-            event = cls()
-            event.delay = payload.get("delay")
-            return event
+        def from_dict(cls, payload: Mapping[str, object]) -> "_StopTimeEvent":
+            value = payload.get("delay")
+            return cls(delay=int(value) if isinstance(value, int) else None)
 
+    @dataclass(slots=True)
     class _StopTimeUpdate:
-        def __init__(self) -> None:
-            self.stop_sequence: int | None = None
-            self.departure = _StopTimeEvent()
-            self.arrival = _StopTimeEvent()
+        stop_sequence: int | None = None
+        departure: _StopTimeEvent = field(default_factory=_StopTimeEvent)
+        arrival: _StopTimeEvent = field(default_factory=_StopTimeEvent)
 
         def HasField(self, name: str) -> bool:
             return getattr(self, name, None) is not None
@@ -44,34 +45,40 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             }
 
         @classmethod
-        def from_dict(cls, payload: dict[str, object]) -> _StopTimeUpdate:
+        def from_dict(cls, payload: Mapping[str, object]) -> "_StopTimeUpdate":
             update = cls()
-            update.stop_sequence = payload.get("stop_sequence")  # type: ignore[assignment]
-            if "departure" in payload:
-                update.departure = _StopTimeEvent.from_dict(payload["departure"])  # type: ignore[arg-type]
-            if "arrival" in payload:
-                update.arrival = _StopTimeEvent.from_dict(payload["arrival"])  # type: ignore[arg-type]
+            sequence = payload.get("stop_sequence")
+            if isinstance(sequence, int):
+                update.stop_sequence = sequence
+            departure_payload = payload.get("departure")
+            if isinstance(departure_payload, Mapping):
+                update.departure = _StopTimeEvent.from_dict(departure_payload)
+            arrival_payload = payload.get("arrival")
+            if isinstance(arrival_payload, Mapping):
+                update.arrival = _StopTimeEvent.from_dict(arrival_payload)
             return update
 
+    @dataclass(slots=True)
     class _TripDescriptor:
-        def __init__(self) -> None:
-            self.trip_id: str = ""
-            self.route_id: str = ""
+        trip_id: str = ""
+        route_id: str = ""
 
         def to_dict(self) -> dict[str, str]:
             return {"trip_id": self.trip_id, "route_id": self.route_id}
 
         @classmethod
-        def from_dict(cls, payload: dict[str, str]) -> _TripDescriptor:
-            trip = cls()
-            trip.trip_id = payload.get("trip_id", "")
-            trip.route_id = payload.get("route_id", "")
-            return trip
+        def from_dict(cls, payload: Mapping[str, object]) -> "_TripDescriptor":
+            trip_id = payload.get("trip_id")
+            route_id = payload.get("route_id")
+            return cls(
+                trip_id=str(trip_id) if isinstance(trip_id, str) else "",
+                route_id=str(route_id) if isinstance(route_id, str) else "",
+            )
 
+    @dataclass(slots=True)
     class _TripUpdate:
-        def __init__(self) -> None:
-            self.trip = _TripDescriptor()
-            self.stop_time_update: list[_StopTimeUpdate] = []
+        trip: _TripDescriptor = field(default_factory=_TripDescriptor)
+        stop_time_update: list[_StopTimeUpdate] = field(default_factory=list)
 
         def to_dict(self) -> dict[str, object]:
             return {
@@ -80,30 +87,37 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             }
 
         @classmethod
-        def from_dict(cls, payload: dict[str, object]) -> _TripUpdate:
+        def from_dict(cls, payload: Mapping[str, object]) -> "_TripUpdate":
             update = cls()
-            if "trip" in payload:
-                update.trip = _TripDescriptor.from_dict(payload["trip"])  # type: ignore[arg-type]
-            updates = payload.get("stop_time_update", [])  # type: ignore[assignment]
-            update.stop_time_update = [
-                _StopTimeUpdate.from_dict(item) for item in updates  # type: ignore[list-item]
-            ]
+            trip_payload = payload.get("trip")
+            if isinstance(trip_payload, Mapping):
+                update.trip = _TripDescriptor.from_dict(trip_payload)
+            raw_updates = payload.get("stop_time_update")
+            updates: list[_StopTimeUpdate] = []
+            if isinstance(raw_updates, Iterable):
+                for item in raw_updates:
+                    if isinstance(item, Mapping):
+                        updates.append(_StopTimeUpdate.from_dict(item))
+            update.stop_time_update = updates
             return update
 
+    @dataclass(slots=True)
     class _Entity:
-        def __init__(self) -> None:
-            self.id: str = ""
-            self.trip_update = _TripUpdate()
+        id: str = ""
+        trip_update: _TripUpdate = field(default_factory=_TripUpdate)
 
         def to_dict(self) -> dict[str, object]:
             return {"id": self.id, "trip_update": self.trip_update.to_dict()}
 
         @classmethod
-        def from_dict(cls, payload: dict[str, object]) -> _Entity:
+        def from_dict(cls, payload: Mapping[str, object]) -> "_Entity":
             entity = cls()
-            entity.id = payload.get("id", "")
-            if "trip_update" in payload:
-                entity.trip_update = _TripUpdate.from_dict(payload["trip_update"])  # type: ignore[arg-type]
+            identifier = payload.get("id")
+            if isinstance(identifier, str):
+                entity.id = identifier
+            trip_payload = payload.get("trip_update")
+            if isinstance(trip_payload, Mapping):
+                entity.trip_update = _TripUpdate.from_dict(trip_payload)
             return entity
 
     class _RepeatedContainer(list[_Entity]):
@@ -114,7 +128,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
 
     class _FeedMessage:
         def __init__(self) -> None:
-            self.entity = _RepeatedContainer()
+            self.entity: _RepeatedContainer = _RepeatedContainer()
 
         def SerializeToString(self) -> bytes:
             data = {"entity": [entity.to_dict() for entity in self.entity]}
@@ -122,14 +136,18 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
 
         def ParseFromString(self, payload: bytes) -> None:
             data = json.loads(payload.decode("utf-8"))
-            self.entity = _RepeatedContainer()
-            for entity_payload in data.get("entity", []):
-                self.entity.append(_Entity.from_dict(entity_payload))
+            entities = _RepeatedContainer()
+            raw_entities = data.get("entity", [])
+            if isinstance(raw_entities, Iterable):
+                for entry in raw_entities:
+                    if isinstance(entry, Mapping):
+                        entities.append(_Entity.from_dict(entry))
+            self.entity = entities
 
     class _FeedModule:
         FeedMessage = _FeedMessage
 
-    feedmessage_pb2 = _FeedModule()  # type: ignore
+    feedmessage_pb2 = _FeedModule()
 
 from ...logging_utils import get_logger
 from ...versioning.snapshots import SnapshotRegistry

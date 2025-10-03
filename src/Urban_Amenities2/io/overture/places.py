@@ -2,10 +2,73 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Mapping, Sequence, cast, Protocol
 
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
+
+try:  # pragma: no cover - optional dependency
+    from google.cloud import bigquery as _bigquery_module  # type: ignore[import]
+except ModuleNotFoundError:  # pragma: no cover - fallback stub
+    _bigquery_module = None
+
+
+if TYPE_CHECKING:  # pragma: no cover - mypy typing
+    from google.cloud import bigquery as bigquery  # type: ignore[import]
+else:
+
+    class _ScalarQueryParameter:
+        def __init__(self, name: str, param_type: str, value: str) -> None:
+            self.name = name
+            self.param_type = param_type
+            self.value = value
+
+    class _QueryJobConfig:
+        def __init__(self) -> None:
+            self.query_parameters: list[_ScalarQueryParameter] = []
+
+    class _QueryJobResult:
+        def __init__(self) -> None:
+            raise ModuleNotFoundError(
+                "google.cloud.bigquery is required runtime dependency for this feature"
+            )
+
+        def result(self) -> "_QueryJobResult":  # pragma: no cover - stub path
+            return self
+
+        def to_dataframe(self, *, create_bqstorage_client: bool = False) -> pd.DataFrame:
+            raise ModuleNotFoundError(
+                "google.cloud.bigquery is required runtime dependency for this feature"
+            )
+
+    class _ClientStub:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:  # pragma: no cover - stub
+            raise ModuleNotFoundError(
+                "google.cloud.bigquery is required runtime dependency for this feature"
+            )
+
+        def query(self, query: str, job_config: Any | None = None) -> _QueryJobResult:
+            raise ModuleNotFoundError(
+                "google.cloud.bigquery is required runtime dependency for this feature"
+            )
+
+    class _BigQueryStub:
+        Client = _ClientStub
+        QueryJobConfig = _QueryJobConfig
+        ScalarQueryParameter = _ScalarQueryParameter
+
+    bigquery = cast("Any", _bigquery_module or _BigQueryStub())
+
+
+class _BigQueryQueryJob(Protocol):
+    def result(self) -> Any:  # pragma: no cover - protocol stub
+        ...
+
+
+class _BigQueryClient(Protocol):
+    def query(self, query: str, job_config: Any | None = None) -> _BigQueryQueryJob:
+        ...
 
 from ...dedupe.pois import DedupeConfig, deduplicate_pois
 from ...hex.aggregation import points_to_hex
@@ -54,24 +117,26 @@ def build_bigquery_query(config: BigQueryConfig, state: str | None = None, bbox:
 
 def read_places_from_bigquery(
     config: BigQueryConfig,
-    client=None,
+    client: _BigQueryClient | None = None,
     state: str | None = None,
     bbox: BBox | None = None,
 ) -> pd.DataFrame:
-    from google.cloud import bigquery  # type: ignore
-
-    if client is None:
-        client = bigquery.Client(project=config.project)
+    bigquery_client: _BigQueryClient = client or cast(_BigQueryClient, bigquery.Client(project=config.project))
     job_config = bigquery.QueryJobConfig()
     if state:
-        job_config.query_parameters.append(bigquery.ScalarQueryParameter("state", "STRING", state))
+        job_config.query_parameters.append(
+            bigquery.ScalarQueryParameter("state", "STRING", state)
+        )
     if bbox:
         polygon = _bbox_to_wkt(bbox)
-        job_config.query_parameters.append(bigquery.ScalarQueryParameter("bbox", "STRING", polygon))
+        job_config.query_parameters.append(
+            bigquery.ScalarQueryParameter("bbox", "STRING", polygon)
+        )
     query = build_bigquery_query(config, state=state, bbox=bbox)
     LOGGER.info("querying_overture_bigquery", query=query)
-    result = client.query(query, job_config=job_config)
-    return result.result().to_dataframe(create_bqstorage_client=False)
+    job = bigquery_client.query(query, job_config=job_config)
+    frame = job.result().to_dataframe(create_bqstorage_client=False)
+    return pd.DataFrame(frame)
 
 
 def read_places_from_cloud(path: str | Path, bbox: BBox | None = None) -> pd.DataFrame:

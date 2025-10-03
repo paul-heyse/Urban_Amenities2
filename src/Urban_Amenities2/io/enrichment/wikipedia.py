@@ -84,8 +84,8 @@ class WikipediaClient:
         return frame
 
     # Internal helpers -------------------------------------------------
-    def _fetch_remote(self, title: str, months: int) -> list[dict] | None:
-        def _execute() -> list[dict] | None:
+    def _fetch_remote(self, title: str, months: int) -> list[dict[str, object]] | None:
+        def _execute() -> list[dict[str, object]] | None:
             self.rate_limiter.acquire()
             end = datetime.utcnow().date().replace(day=1) - timedelta(days=1)
             start = end - timedelta(days=30 * months)
@@ -98,9 +98,12 @@ class WikipediaClient:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
             payload = response.json()
-            return payload.get("items", [])
+            items = payload.get("items", [])
+            if not isinstance(items, list):
+                return []
+            return [item for item in items if isinstance(item, dict)]
 
-        def _wrapped() -> list[dict] | None:
+        def _wrapped() -> list[dict[str, object]] | None:
             return retry_with_backoff(
                 _execute,
                 attempts=3,
@@ -112,7 +115,7 @@ class WikipediaClient:
 
         return self.circuit_breaker.call(_wrapped)
 
-    def _normalise_records(self, records: list[dict]) -> pd.DataFrame:
+    def _normalise_records(self, records: list[dict[str, object]]) -> pd.DataFrame:
         if not records:
             return pd.DataFrame(columns=["timestamp", "pageviews"])
         frame = pd.DataFrame.from_records(records)
@@ -129,7 +132,7 @@ class WikipediaClient:
         return title[:100]
 
     @staticmethod
-    def _to_frame(records: list[dict]) -> pd.DataFrame:
+    def _to_frame(records: list[dict[str, object]]) -> pd.DataFrame:
         if not records:
             return pd.DataFrame(columns=["timestamp", "pageviews"])
         frame = pd.DataFrame.from_records(records)

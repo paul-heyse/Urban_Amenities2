@@ -2,6 +2,7 @@ import gzip
 import json
 import zipfile
 from pathlib import Path
+from typing import Mapping
 
 import geopandas as gpd
 import numpy as np
@@ -18,14 +19,14 @@ from Urban_Amenities2.io.education.ipeds import compute_weights as ipeds_weights
 from Urban_Amenities2.io.education.nces import prepare_schools
 from Urban_Amenities2.io.enrichment import merge_enrichment
 from Urban_Amenities2.io.enrichment.wikidata import WikidataEnricher
-from Urban_Amenities2.io.enrichment.wikipedia import compute_statistics
+from Urban_Amenities2.io.enrichment.wikipedia import WikipediaClient, compute_statistics
 from Urban_Amenities2.io.gtfs.realtime import GTFSRealtimeIngestor
 from Urban_Amenities2.io.gtfs.registry import load_registry
 from Urban_Amenities2.io.gtfs.static import GTFSCache, GTFSStaticIngestor
 from Urban_Amenities2.io.jobs.lodes import LODESConfig, LODESIngestor
 from Urban_Amenities2.io.overture.transportation import prepare_transportation
 from Urban_Amenities2.io.parks.padus import index_to_hex
-from Urban_Amenities2.io.parks.ridb import RIDBIngestor
+from Urban_Amenities2.io.parks.ridb import RIDBConfig, RIDBIngestor
 from Urban_Amenities2.io.parks.trails import index_trails
 from Urban_Amenities2.io.quality.checks import coverage_check
 from Urban_Amenities2.io.versioning.snapshots import SnapshotRegistry
@@ -176,6 +177,104 @@ def test_climate_and_parks(tmp_path: Path) -> None:
     assert "hex_id" in indexed_recreation.columns
 
 
+def test_ridb_request_serialization(tmp_path: Path) -> None:
+    captured_params: list[dict[str, str | int]] = []
+    captured_headers: list[dict[str, str] | None] = []
+
+    class _DummyResponse:
+        def __init__(self, url: str) -> None:
+            self._url = url
+            self.content = b"{}"
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, list[dict[str, object]]]:
+            return {"RECDATA": []}
+
+        @property
+        def url(self) -> str:
+            return self._url
+
+    class _DummySession:
+        def get(
+            self,
+            url: str,
+            *,
+            params: Mapping[str, str | int],
+            headers: Mapping[str, str] | None = None,
+            timeout: float | int | None = None,
+        ) -> _DummyResponse:
+            captured_params.append(dict(params))
+            captured_headers.append(dict(headers) if headers is not None else None)
+            assert timeout == 60
+            return _DummyResponse(url)
+
+    registry = SnapshotRegistry(tmp_path / "snap.jsonl")
+    ingestor = RIDBIngestor(
+        config=RIDBConfig(api_key="token", page_size=10),
+        registry=registry,
+    )
+    session = _DummySession()
+    frame = ingestor.fetch(["CO"], session=session)  # type: ignore[arg-type]
+    assert frame.empty
+    assert captured_params
+    params = captured_params[0]
+    assert params == {"limit": 10, "offset": 0, "state": "CO"}
+    assert captured_headers[0] == {"apikey": "token"}
+
+
+def test_ridb_request_serialization(tmp_path: Path) -> None:
+    captured_params: list[dict[str, str | int]] = []
+    captured_headers: list[dict[str, str] | None] = []
+
+    class _DummyResponse:
+        def __init__(self, url: str) -> None:
+            self._url = url
+            self.content = b"{}"
+
+        def raise_for_status(self) -> None:  # pragma: no cover - stub
+            return None
+
+        def json(self) -> dict[str, list[dict[str, object]]]:
+            return {"RECDATA": []}
+
+        @property
+        def url(self) -> str:
+            return self._url
+
+    class _DummySession:
+        def get(
+            self,
+            url: str,
+            *,
+            params: Mapping[str, str | int],
+            headers: Mapping[str, str] | None = None,
+            timeout: float | int | None = None,
+        ) -> _DummyResponse:
+            assert timeout == 60
+            captured_params.append(dict(params))
+            captured_headers.append(dict(headers) if headers is not None else None)
+            return _DummyResponse(url)
+
+    registry = SnapshotRegistry(tmp_path / "snap.jsonl")
+    ingestor = RIDBIngestor(
+        config=RIDBConfig(api_key="token", page_size=10),
+        registry=registry,
+    )
+    session = _DummySession()
+    frame = ingestor.fetch(["CO"], session=session)  # type: ignore[arg-type]
+    assert frame.empty
+    assert captured_params
+    for params in captured_params:
+        assert set(params.keys()) == {"limit", "offset", "state"}
+        assert isinstance(params["limit"], int)
+        assert isinstance(params["offset"], int)
+        assert isinstance(params["state"], str)
+    header = captured_headers[0]
+    assert header == {"apikey": "token"}
+
+
 def test_jobs_and_education(tmp_path: Path, monkeypatch) -> None:
     # Mock the LODES URL to use our test file
     lodes_csv = tmp_path / "co_wac.csv.gz"
@@ -258,6 +357,45 @@ def test_enrichment_and_quality(tmp_path: Path) -> None:
     summary = summarize_quality(enriched, category_col="aucstype")
     assert not summary.empty
     assert summary.loc[0, "mean_quality"] >= 0
+
+
+def test_wikipedia_client_makes_typed_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _StubRateLimiter:
+        def acquire(self) -> None:
+            return None
+
+    class _StubCircuitBreaker:
+        def call(self, func):
+            return func()
+
+    class _StubSession:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, float | int | None]] = []
+
+        def get(self, url: str, timeout: float | int | None = None):
+            self.calls.append((url, timeout))
+
+            class _Response:
+                def raise_for_status(self) -> None:
+                    return None
+
+                def json(self) -> dict[str, list[dict[str, object]]]:
+                    return {"items": []}
+
+            return _Response()
+
+    session = _StubSession()
+    client = WikipediaClient(
+        session=session,
+        rate_limiter=_StubRateLimiter(),
+        circuit_breaker=_StubCircuitBreaker(),
+    )
+    frame = client.fetch("Test Page", months=1)
+    assert isinstance(frame, pd.DataFrame)
+    assert session.calls
+    url, timeout = session.calls[0]
+    assert url.startswith("https://wikimedia.org/api/rest_v1/")
+    assert timeout == 30
 
 
 def test_noaa_normalise_handles_missing_columns() -> None:

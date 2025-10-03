@@ -3,10 +3,73 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Iterable as IterableType, Mapping, cast, Protocol
 
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import LineString
+
+try:  # pragma: no cover
+    from google.cloud import bigquery as _bigquery_module  # type: ignore[import]
+except ModuleNotFoundError:  # pragma: no cover
+    _bigquery_module = None
+
+
+if TYPE_CHECKING:  # pragma: no cover
+    from google.cloud import bigquery as bigquery  # type: ignore[import]
+else:
+
+    class _ScalarQueryParameter:
+        def __init__(self, name: str, param_type: str, value: str) -> None:
+            self.name = name
+            self.param_type = param_type
+            self.value = value
+
+    class _QueryJobConfig:
+        def __init__(self) -> None:
+            self.query_parameters: list[_ScalarQueryParameter] = []
+
+    class _QueryJobResult:
+        def __init__(self) -> None:
+            raise ModuleNotFoundError(
+                "google.cloud.bigquery is required runtime dependency for this feature"
+            )
+
+        def result(self) -> "_QueryJobResult":  # pragma: no cover
+            return self
+
+        def to_dataframe(self, *, create_bqstorage_client: bool = False) -> pd.DataFrame:
+            raise ModuleNotFoundError(
+                "google.cloud.bigquery is required runtime dependency for this feature"
+            )
+
+    class _ClientStub:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:  # pragma: no cover
+            raise ModuleNotFoundError(
+                "google.cloud.bigquery is required runtime dependency for this feature"
+            )
+
+        def query(self, query: str, job_config: Any | None = None) -> _QueryJobResult:
+            raise ModuleNotFoundError(
+                "google.cloud.bigquery is required runtime dependency for this feature"
+            )
+
+    class _BigQueryStub:
+        Client = _ClientStub
+        QueryJobConfig = _QueryJobConfig
+        ScalarQueryParameter = _ScalarQueryParameter
+
+    bigquery = cast("Any", _bigquery_module or _BigQueryStub())
+
+
+class _BigQueryQueryJob(Protocol):
+    def result(self) -> Any:  # pragma: no cover
+        ...
+
+
+class _BigQueryClient(Protocol):
+    def query(self, query: str, job_config: Any | None = None) -> _BigQueryQueryJob:
+        ...
 
 from ...hex.aggregation import lines_to_hex
 from ...logging_utils import get_logger
@@ -27,7 +90,9 @@ class TransportationBigQueryConfig:
 ALLOWED_CLASSES = {"road", "footway", "cycleway"}
 
 
-def build_transportation_query(config: TransportationBigQueryConfig, classes: Iterable[str] | None = None) -> str:
+def build_transportation_query(
+    config: TransportationBigQueryConfig, classes: Iterable[str] | None = None
+) -> str:
     classes = set(classes or ALLOWED_CLASSES)
     where = " OR ".join([f"class = '{cls}'" for cls in classes])
     query = (
@@ -37,15 +102,17 @@ def build_transportation_query(config: TransportationBigQueryConfig, classes: It
     return query
 
 
-def read_transportation_from_bigquery(config: TransportationBigQueryConfig, client=None, classes: Iterable[str] | None = None) -> pd.DataFrame:
-    from google.cloud import bigquery  # type: ignore
-
-    if client is None:
-        client = bigquery.Client(project=config.project)
+def read_transportation_from_bigquery(
+    config: TransportationBigQueryConfig,
+    client: _BigQueryClient | None = None,
+    classes: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    bigquery_client: _BigQueryClient = client or cast(_BigQueryClient, bigquery.Client(project=config.project))
     query = build_transportation_query(config, classes=classes)
     LOGGER.info("querying_overture_transport", query=query)
-    result = client.query(query)
-    return result.result().to_dataframe(create_bqstorage_client=False)
+    result = bigquery_client.query(query)
+    frame = result.result().to_dataframe(create_bqstorage_client=False)
+    return pd.DataFrame(frame)
 
 
 def read_transportation_from_cloud(path: str | Path) -> pd.DataFrame:
@@ -106,8 +173,6 @@ def prepare_transportation(frame: pd.DataFrame) -> pd.DataFrame:
     parsed = parse_geometry(filtered)
     modes = determine_modes(parsed)
     return modes
-
-
 __all__ = [
     "TransportationBigQueryConfig",
     "build_transportation_query",
@@ -122,11 +187,14 @@ __all__ = [
 ]
 
 
-def _ensure_linestring(value) -> LineString:
+def _ensure_linestring(value: LineString | str) -> LineString:
     if isinstance(value, LineString):
         return value
     if isinstance(value, str):
         from shapely import wkt
 
-        return wkt.loads(value)
+        geometry = wkt.loads(value)
+        if not isinstance(geometry, LineString):
+            raise TypeError("Geometry WKT must resolve to LineString")
+        return geometry
     raise TypeError("Unsupported geometry type for transportation segment")

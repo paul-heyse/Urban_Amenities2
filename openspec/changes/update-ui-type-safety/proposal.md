@@ -1,12 +1,14 @@
 ## Why
-UI modules (callbacks, map layers, export helpers) currently produce mypy failures—18 errors—involving inconsistent option types, unsafe `None` assignments, and missing Plotly/Dash type information. Without isolating these fixes, front-end regressions risk slipping into production and block the overall type safety initiative.
+Front-end UI modules (Dash components, layouts, callbacks, data loaders) currently rely on implicit Any typing and lack disciplined interface definitions. That makes refactors risky, obscures expected data shapes, and blocks enforcing mypy across the UI. Dedicated work is needed to introduce explicit type annotations, ensure Plotly/Dash constructs have typed helpers, and eliminate unchecked assumptions about figure payloads and cached data.
 
 ## What Changes
-- Annotate Dash callback inputs/outputs, map layer builders, and export utilities so UI-specific mypy checks pass with `--warn-unused-ignores`.
-- Normalize shared helpers (`ui/performance`, `ui/logging`, `ui/hex_selection`) to avoid mutating typed state with `None` and ensure dropdown/trace factories use typed structures.
-- Introduce Plotly/Dash-friendly typing patterns (e.g., typed `layers`, custom trace protocols if necessary) and update fixtures/tests to validate behaviour remains unchanged.
-- Document UI typing conventions for contributors (dropdown options, map layers, `mapbox_config` construction).
+- Audit UI modules (`src/Urban_Amenities2/ui/**`) to document untyped entry points, dynamic dict usage, and interactions with cached hex data.
+- Introduce typed helper structures (TypedDict/dataclasses) for map overlays, filter controls, and Dash callback inputs/outputs.
+- Annotate Dash callbacks, data loader functions, and layout factories to satisfy mypy without depending on protocol facades or stub adapters.
+- Update UI tests to exercise typed interfaces (e.g., fixture factories returning typed payloads) and to catch future regressions.
+- Ensure mypy/CI incorporate UI modules with strict settings and no residual ignores.
+- Document patterns for typed Dash development in developer guides.
 
 ## Impact
-- Affected specs: `qa/ui-type-safety`
-- Affected code: `src/Urban_Amenities2/ui/*` (callbacks, layouts, layers, export, logging, performance), related tests/fixtures.
+- Affected specs: `qa/type-safety`, `frontend/ui`
+- Affected code: `src/Urban_Amenities2/ui/` modules, UI tests, typing utilities, CI config, developer documentation.
