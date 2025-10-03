@@ -1,12 +1,19 @@
 [run]
 branch = True
 source =
-    src/Urban_Amenities2/router
+    src/Urban_Amenities2
 omit =
-    src/Urban_Amenities2/router/otp.py
+    */tests/*
+    */test_*.py
 
 [report]
 fail_under = 95
 show_missing = True
+precision = 2
 
-
+[thresholds]
+overall = 95
+Urban_Amenities2.math = 90
+Urban_Amenities2.router = 85
+Urban_Amenities2.ui = 85
+Urban_Amenities2.io = 75
