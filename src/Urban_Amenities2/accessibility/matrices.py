@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, Sequence
 
 import numpy as np
 import pandas as pd
@@ -23,8 +23,8 @@ class NestConfig:
 
 @dataclass
 class AccessibilityConfig:
-    mode_params: Dict[str, ModeUtilityParams]
-    nests: Dict[str, NestConfig]
+    mode_params: dict[str, ModeUtilityParams]
+    nests: dict[str, NestConfig]
     mu_top: float
     time_weights: Sequence[float]
 

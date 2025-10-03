@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional
 
 import pandas as pd
 import requests
@@ -19,7 +19,7 @@ RIDB_URL = "https://ridb.recreation.gov/api/v1/recareas"
 
 @dataclass
 class RIDBConfig:
-    api_key: Optional[str] = None
+    api_key: str | None = None
     page_size: int = 200
 
 
@@ -28,9 +28,9 @@ class RIDBIngestor:
         self.config = config or RIDBConfig()
         self.registry = registry or SnapshotRegistry(Path("data/snapshots.jsonl"))
 
-    def fetch(self, states: Iterable[str], session: Optional[requests.Session] = None) -> pd.DataFrame:
+    def fetch(self, states: Iterable[str], session: requests.Session | None = None) -> pd.DataFrame:
         session = session or requests.Session()
-        records: List[dict[str, object]] = []
+        records: list[dict[str, object]] = []
         for state in states:
             offset = 0
             while True:

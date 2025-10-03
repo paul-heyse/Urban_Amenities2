@@ -2,18 +2,14 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from collections import defaultdict
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from threading import Lock
-from typing import Dict, Mapping, MutableMapping, Optional
 
 import numpy as np
-
 from structlog.typing import FilteringBoundLogger
 
 from ..logging_utils import get_logger
-
-import time
 
 LOGGER = get_logger("aucs.metrics")
 
@@ -53,7 +49,7 @@ class MetricsCollector:
         )
         self._lock = Lock()
 
-    def record_timing(self, name: str, duration: float, *, count: Optional[int] = None) -> None:
+    def record_timing(self, name: str, duration: float, *, count: int | None = None) -> None:
         if duration < 0:
             raise ValueError("duration must be non-negative")
         with self._lock:
@@ -109,7 +105,7 @@ class MetricsCollector:
         return summary
 
     def serialise(self) -> dict[str, Mapping[str, float]]:
-        payload: Dict[str, Mapping[str, float]] = {}
+        payload: dict[str, Mapping[str, float]] = {}
         with self._lock:
             timing_keys = list(self._timings)
         for name in timing_keys:
@@ -143,8 +139,8 @@ class OperationTracker:
         *,
         metrics: MetricsCollector | None = None,
         logger: FilteringBoundLogger | None = None,
-        items: Optional[int] = None,
-        extra: Optional[Mapping[str, object]] = None,
+        items: int | None = None,
+        extra: Mapping[str, object] | None = None,
     ) -> None:
         self.name = name
         self.metrics = metrics or METRICS
@@ -179,8 +175,8 @@ def track_operation(
     *,
     metrics: MetricsCollector | None = None,
     logger: FilteringBoundLogger | None = None,
-    items: Optional[int] = None,
-    extra: Optional[Mapping[str, object]] = None,
+    items: int | None = None,
+    extra: Mapping[str, object] | None = None,
 ) -> OperationTracker:
     """Helper to create an :class:`OperationTracker` context manager."""
 

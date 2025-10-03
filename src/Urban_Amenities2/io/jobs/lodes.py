@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import pandas as pd
 
@@ -45,6 +45,12 @@ class LODESIngestor:
         return pd.concat(frames, ignore_index=True)
 
     def geocode_blocks(self, frame: pd.DataFrame, geocodes: pd.DataFrame) -> pd.DataFrame:
+        # Ensure consistent types for merge keys
+        frame = frame.copy()
+        frame["w_geocode"] = frame["w_geocode"].astype(str)
+        geocodes = geocodes.copy()
+        geocodes["block_geoid"] = geocodes["block_geoid"].astype(str)
+
         merged = frame.merge(geocodes, left_on="w_geocode", right_on="block_geoid", how="left")
         if merged[["lat", "lon"]].isna().any().any():
             missing = merged[merged["lat"].isna()]["w_geocode"].unique().tolist()

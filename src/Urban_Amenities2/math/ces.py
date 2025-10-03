@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Tuple
-
 import numpy as np
 from numba import njit
 
@@ -13,7 +11,7 @@ _LINEAR_TOL = 1e-6
 _GEOMETRIC_TOL = 1e-6
 
 
-def _validate_inputs(quality: np.ndarray, accessibility: np.ndarray, rho: float) -> Tuple[np.ndarray, np.ndarray]:
+def _validate_inputs(quality: np.ndarray, accessibility: np.ndarray, rho: float) -> tuple[np.ndarray, np.ndarray]:
     quality = np.asarray(quality, dtype=float)
     accessibility = np.asarray(accessibility, dtype=float)
     if quality.shape != accessibility.shape:

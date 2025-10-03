@@ -6,11 +6,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from Urban_Amenities2.ui.components.choropleth import create_choropleth
 from Urban_Amenities2.ui.config import UISettings
 from Urban_Amenities2.ui.data_loader import DataContext
 from Urban_Amenities2.ui.hexes import HexGeometryCache, hex_centroid, hex_to_geojson
 from Urban_Amenities2.ui.layers import build_overlay_payload
-from Urban_Amenities2.ui.components.choropleth import create_choropleth
 
 
 @pytest.fixture()

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable
 
 import geopandas as gpd
 import pandas as pd
@@ -80,7 +80,7 @@ def export_mode_geojson(frame: pd.DataFrame, path: Path, mode_column: str) -> No
     gdf.to_file(path, driver="GeoJSON")
 
 
-def export_networks(frame: pd.DataFrame, output_root: Path = Path("data/processed")) -> Dict[str, Path]:
+def export_networks(frame: pd.DataFrame, output_root: Path = Path("data/processed")) -> dict[str, Path]:
     mapping = {
         "car": ("mode_car", output_root / "network_car.geojson"),
         "foot": ("mode_foot", output_root / "network_foot.geojson"),
@@ -88,7 +88,7 @@ def export_networks(frame: pd.DataFrame, output_root: Path = Path("data/processe
     }
     for _, column in mapping.values():
         frame[column] = frame.get(column, False)
-    for mode, (column, path) in mapping.items():
+    for _mode, (column, path) in mapping.items():
         export_mode_geojson(frame, path, column)
     return {mode: path for mode, (_, path) in mapping.items()}
 

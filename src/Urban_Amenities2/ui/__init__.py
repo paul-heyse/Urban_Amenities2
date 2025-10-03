@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any, Dict
+from typing import Any
 
 from .config import UISettings
 
 __all__ = ["UISettings", "create_app"]
 
 
-def create_app(settings: UISettings | None = None, **overrides: Dict[str, Any]) -> Any:
+def create_app(settings: UISettings | None = None, **overrides: dict[str, Any]) -> Any:
     """Create and configure the Dash application.
 
     Parameters

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple
 
 import pandas as pd
 from diskcache import Cache
@@ -19,7 +19,7 @@ LOGGER = get_logger("aucs.router.batch")
 class BatchConfig:
     cache_dir: Path = Path("data/cache/skims")
     mode: str = "car"
-    period: Optional[str] = None
+    period: str | None = None
 
 
 class SkimBuilder:
@@ -28,14 +28,14 @@ class SkimBuilder:
         self.config = config
         self.cache = Cache(str(config.cache_dir))
 
-    def _cache_key(self, origins: Sequence[Tuple[float, float]], destinations: Sequence[Tuple[float, float]]) -> str:
+    def _cache_key(self, origins: Sequence[tuple[float, float]], destinations: Sequence[tuple[float, float]]) -> str:
         payload = json.dumps({"origins": origins, "destinations": destinations, "mode": self.config.mode, "period": self.config.period})
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def matrix(
         self,
-        origins: Sequence[Tuple[float, float]],
-        destinations: Sequence[Tuple[float, float]],
+        origins: Sequence[tuple[float, float]],
+        destinations: Sequence[tuple[float, float]],
     ) -> pd.DataFrame:
         key = self._cache_key(origins, destinations)
         if key in self.cache:
@@ -48,8 +48,8 @@ class SkimBuilder:
 
     def hex_to_poi(
         self,
-        hex_coords: Dict[str, Tuple[float, float]],
-        poi_coords: Dict[str, Tuple[float, float]],
+        hex_coords: dict[str, tuple[float, float]],
+        poi_coords: dict[str, tuple[float, float]],
     ) -> pd.DataFrame:
         origins = list(hex_coords.values())
         destinations = list(poi_coords.values())

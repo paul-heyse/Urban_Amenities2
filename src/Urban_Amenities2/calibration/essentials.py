@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List
+from collections.abc import Iterable
 
 import pandas as pd
 
@@ -14,7 +14,7 @@ def sensitivity_analysis(
     parameter: str,
     values: Iterable[float],
 ) -> pd.DataFrame:
-    records: List[dict[str, object]] = []
+    records: list[dict[str, object]] = []
     for value in values:
         _apply_parameter(calculator.config, parameter, value)
         ea, _ = calculator.compute(pois, accessibility)

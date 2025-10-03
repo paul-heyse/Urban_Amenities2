@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from typing import Dict, List
-
 import pandas as pd
 
 
 def top_contributors(ea_frame: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
-    records: List[dict[str, object]] = []
+    records: list[dict[str, object]] = []
     for row in ea_frame.itertuples():
-        contributors: Dict[str, List[dict[str, object]]] = getattr(row, "contributors", {}) or {}
+        contributors: dict[str, list[dict[str, object]]] = getattr(row, "contributors", {}) or {}
+        # Handle None or empty contributors
+        if not contributors:
+            continue
         for category, items in contributors.items():
+            # Handle None items list
+            if not items:
+                continue
             for item in sorted(items, key=lambda entry: entry.get("contribution", 0), reverse=True)[:top_n]:
                 records.append(
                     {

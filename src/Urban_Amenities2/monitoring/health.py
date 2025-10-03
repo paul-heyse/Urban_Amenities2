@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import shutil
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
 
 import requests
-import shutil
 
 try:  # pragma: no cover - optional dependency fallback
     import psutil  # type: ignore

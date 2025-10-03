@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import exp
-from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -19,7 +18,7 @@ class DedupeConfig:
     name_distance_m: float = 25.0
     name_similarity: float = 0.85
     beta_per_km: float = 3.0
-    distance_overrides: Optional[Dict[str, float]] = None
+    distance_overrides: dict[str, float] | None = None
 
 
 def ensure_hex_index(frame: pd.DataFrame, lat_col: str = "lat", lon_col: str = "lon", hex_col: str = "hex_id") -> pd.DataFrame:
@@ -73,7 +72,7 @@ def deduplicate_pois(
                     drop_indices.add(neighbour_idx)
             weights[idx] = 1.0 / (1.0 + contribution)
 
-    for hex_value, group in frame.reset_index().groupby(hex_col):
+    for _hex_value, group in frame.reset_index().groupby(hex_col):
         coords = group[[lat_col, lon_col]].to_numpy(dtype=float)
         distances = _pairwise_distance(coords)
         names = group[name_col].fillna("").to_list()
@@ -103,7 +102,7 @@ def deduplicate_pois(
     return deduped
 
 
-def _resolve_threshold(config: DedupeConfig, category: Optional[str]) -> float:
+def _resolve_threshold(config: DedupeConfig, category: str | None) -> float:
     if config.distance_overrides and category and category in config.distance_overrides:
         return config.distance_overrides[category]
     return config.name_distance_m

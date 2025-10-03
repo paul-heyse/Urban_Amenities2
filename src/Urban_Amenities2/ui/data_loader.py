@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 
 try:  # pragma: no cover - optional dependency handled gracefully
     from shapely import wkt as shapely_wkt
@@ -46,7 +45,7 @@ class DatasetVersion:
     path: Path
 
     @classmethod
-    def from_path(cls, path: Path) -> "DatasetVersion":
+    def from_path(cls, path: Path) -> DatasetVersion:
         stat = path.stat()
         identifier = path.stem
         created_at = datetime.fromtimestamp(stat.st_mtime)
@@ -64,14 +63,14 @@ class DataContext:
     version: DatasetVersion | None = None
     hex_cache: HexGeometryCache = field(default_factory=HexGeometryCache)
     base_resolution: int | None = None
-    bounds: Tuple[float, float, float, float] | None = None
-    _aggregation_cache: Dict[Tuple[int, Tuple[str, ...]], pd.DataFrame] = field(default_factory=dict)
+    bounds: tuple[float, float, float, float] | None = None
+    _aggregation_cache: dict[tuple[int, tuple[str, ...]], pd.DataFrame] = field(default_factory=dict)
     _aggregation_version: str | None = None
-    overlays: Dict[str, dict] = field(default_factory=dict)
+    overlays: dict[str, dict] = field(default_factory=dict)
     _overlay_version: str | None = None
 
     @classmethod
-    def from_settings(cls, settings: UISettings) -> "DataContext":
+    def from_settings(cls, settings: UISettings) -> DataContext:
         context = cls(settings=settings)
         context.refresh()
         return context
@@ -125,7 +124,7 @@ class DataContext:
             return
         self.hex_cache.validate(self.scores["hex_id"].astype(str))
 
-    def _load_parquet(self, path: Path, columns: Optional[Iterable[str]] = None) -> pd.DataFrame:
+    def _load_parquet(self, path: Path, columns: Iterable[str] | None = None) -> pd.DataFrame:
         frame = pd.read_parquet(path, columns=list(columns) if columns else None)
         if "hex_id" in frame.columns:
             frame["hex_id"] = frame["hex_id"].astype("category")
@@ -225,7 +224,7 @@ class DataContext:
         gdf.to_file(path)
         return path
 
-    def get_hex_index(self, resolution: int) -> Mapping[str, List[str]]:
+    def get_hex_index(self, resolution: int) -> Mapping[str, list[str]]:
         if self.geometries.empty:
             return {}
         return build_hex_index(self.geometries, resolution)
@@ -301,11 +300,11 @@ class DataContext:
 
     def ids_in_viewport(
         self,
-        bounds: Tuple[float, float, float, float] | None,
+        bounds: tuple[float, float, float, float] | None,
         *,
         resolution: int | None = None,
         buffer: float = 0.0,
-    ) -> List[str]:
+    ) -> list[str]:
         if bounds is None or self.geometries.empty:
             return []
         lon_min, lat_min, lon_max, lat_max = bounds
@@ -325,7 +324,7 @@ class DataContext:
         return frame.loc[mask, "hex_id"].astype(str).tolist()
 
     def apply_viewport(
-        self, frame: pd.DataFrame, resolution: int, bounds: Tuple[float, float, float, float] | None
+        self, frame: pd.DataFrame, resolution: int, bounds: tuple[float, float, float, float] | None
     ) -> pd.DataFrame:
         if bounds is None or frame.empty:
             return frame
@@ -386,7 +385,7 @@ class DataContext:
             on="hex_id",
             how="left",
         )
-        overlays: Dict[str, dict] = {}
+        overlays: dict[str, dict] = {}
         for column, key in (("state", "states"), ("county", "counties"), ("metro", "metros")):
             if column not in merged.columns:
                 continue
@@ -418,10 +417,10 @@ class DataContext:
         self.overlays = overlays
         self._overlay_version = self._aggregation_version
 
-    def _load_external_overlays(self) -> Dict[str, dict]:
+    def _load_external_overlays(self) -> dict[str, dict]:
         """Load optional overlay GeoJSON files from the data directory."""
 
-        result: Dict[str, dict] = {}
+        result: dict[str, dict] = {}
         base = self.settings.data_path / "overlays"
         for name in ("transit_lines", "transit_stops", "parks"):
             path = base / f"{name}.geojson"

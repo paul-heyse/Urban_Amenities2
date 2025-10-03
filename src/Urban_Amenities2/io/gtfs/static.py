@@ -5,7 +5,6 @@ import zipfile
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Dict
 
 import pandas as pd
 
@@ -48,9 +47,9 @@ class GTFSStaticIngestor:
         LOGGER.info("cached_gtfs_static", agency=agency.name, path=str(target))
         return target
 
-    def parse(self, path: Path) -> Dict[str, pd.DataFrame]:
+    def parse(self, path: Path) -> dict[str, pd.DataFrame]:
         with zipfile.ZipFile(path) as archive:
-            datasets: Dict[str, pd.DataFrame] = {}
+            datasets: dict[str, pd.DataFrame] = {}
             for name in ("stops.txt", "routes.txt", "trips.txt", "stop_times.txt", "calendar.txt"):
                 if name not in archive.namelist():
                     continue
@@ -68,7 +67,7 @@ class GTFSStaticIngestor:
             times = sorted(group["seconds"].tolist())
             if len(times) < 2:
                 continue
-            deltas = [t2 - t1 for t1, t2 in zip(times, times[1:]) if t2 > t1]
+            deltas = [t2 - t1 for t1, t2 in zip(times, times[1:], strict=False) if t2 > t1]
             if not deltas:
                 continue
             mean_headway = sum(deltas) / len(deltas) / 60.0
@@ -92,11 +91,11 @@ class GTFSStaticIngestor:
     def write_outputs(
         self,
         agency: Agency,
-        datasets: Dict[str, pd.DataFrame],
+        datasets: dict[str, pd.DataFrame],
         output_dir: Path = Path("data/processed"),
-    ) -> Dict[str, Path]:
+    ) -> dict[str, Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
-        paths: Dict[str, Path] = {}
+        paths: dict[str, Path] = {}
         if "stops" in datasets:
             stops = self.index_stops(datasets["stops"])
             path = output_dir / "gtfs_stops.parquet"
@@ -113,7 +112,7 @@ class GTFSStaticIngestor:
             paths["headways"] = path
         return paths
 
-    def ingest(self, agency: Agency, session=None, output_dir: Path = Path("data/processed")) -> Dict[str, Path]:
+    def ingest(self, agency: Agency, session=None, output_dir: Path = Path("data/processed")) -> dict[str, Path]:
         path = self.download(agency, session=session)
         datasets = self.parse(path)
         return self.write_outputs(agency, datasets, output_dir=output_dir)

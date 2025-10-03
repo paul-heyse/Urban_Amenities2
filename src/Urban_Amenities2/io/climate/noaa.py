@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
 
 import pandas as pd
 import requests
@@ -21,7 +21,7 @@ class NOAAConfig:
     dataset: str = "normals-monthly-1991-2020"
     elements: Sequence[str] = ("MLY-TAVG-NORMAL", "MLY-PRCP-PRB", "MLY-WSF2-NORMAL")
     units: str = "metric"
-    token: Optional[str] = None
+    token: str | None = None
 
 
 class NoaaNormalsIngestor:
@@ -29,7 +29,7 @@ class NoaaNormalsIngestor:
         self.config = config or NOAAConfig()
         self.registry = registry or SnapshotRegistry(Path("data/snapshots.jsonl"))
 
-    def fetch(self, state: str, session: Optional[requests.Session] = None) -> pd.DataFrame:
+    def fetch(self, state: str, session: requests.Session | None = None) -> pd.DataFrame:
         session = session or requests.Session()
         params = {
             "dataset": self.config.dataset,
@@ -70,7 +70,7 @@ class NoaaNormalsIngestor:
             normalised["wind_mps"] = normalised["wind_mps"].astype(float)
         return normalised
 
-    def fetch_states(self, states: Iterable[str], session: Optional[requests.Session] = None) -> pd.DataFrame:
+    def fetch_states(self, states: Iterable[str], session: requests.Session | None = None) -> pd.DataFrame:
         frames = [self.fetch(state, session=session) for state in states]
         return pd.concat(frames, ignore_index=True)
 
@@ -84,7 +84,7 @@ class NoaaNormalsIngestor:
     def compute_comfort_index(self, frame: pd.DataFrame) -> pd.DataFrame:
         if frame.empty:
             return pd.DataFrame(columns=["hex_id", "month", "sigma_out"])
-        records: List[dict[str, object]] = []
+        records: list[dict[str, object]] = []
         for (hex_id, month), group in frame.groupby(["hex_id", "month"]):
             temp = group["tavg_c"].mean() if "tavg_c" in group else None
             precip_prob = group["precip_probability"].mean() if "precip_probability" in group else None
@@ -96,7 +96,7 @@ class NoaaNormalsIngestor:
     def ingest(
         self,
         states: Iterable[str],
-        session: Optional[requests.Session] = None,
+        session: requests.Session | None = None,
         output_path: Path = Path("data/processed/climate_comfort.parquet"),
     ) -> pd.DataFrame:
         frame = self.fetch_states(states, session=session)
@@ -107,7 +107,7 @@ class NoaaNormalsIngestor:
         return comfort
 
 
-def _comfortable_fraction(temp: Optional[float], precip_prob: Optional[float], wind: Optional[float]) -> float:
+def _comfortable_fraction(temp: float | None, precip_prob: float | None, wind: float | None) -> float:
     if temp is None:
         return 1.0
     temp_ok = 1.0 if 10.0 <= temp <= 27.0 else 0.0

@@ -5,7 +5,6 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List
 
 
 @dataclass(slots=True)
@@ -21,7 +20,7 @@ class DataSnapshot:
         return json.dumps(payload, sort_keys=True)
 
     @staticmethod
-    def from_json(payload: str) -> "DataSnapshot":
+    def from_json(payload: str) -> DataSnapshot:
         data = json.loads(payload)
         data["download_date"] = datetime.fromisoformat(data["download_date"])
         return DataSnapshot(**data)
@@ -33,10 +32,10 @@ def register_snapshot(snapshot: DataSnapshot, storage: Path) -> None:
         fp.write(snapshot.to_json() + "\n")
 
 
-def list_snapshots(storage: Path) -> List[DataSnapshot]:
+def list_snapshots(storage: Path) -> list[DataSnapshot]:
     if not storage.exists():
         return []
-    snapshots: List[DataSnapshot] = []
+    snapshots: list[DataSnapshot] = []
     for line in storage.read_text().splitlines():
         line = line.strip()
         if not line:

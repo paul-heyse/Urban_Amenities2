@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Sequence
 
 import requests
 
@@ -22,7 +22,7 @@ class OTPError(RuntimeError):
 
 
 class OTPClient:
-    def __init__(self, config: OTPConfig, session: Optional[requests.Session] = None):
+    def __init__(self, config: OTPConfig, session: requests.Session | None = None):
         self.config = config
         self.session = session or requests.Session()
 
@@ -31,9 +31,9 @@ class OTPClient:
         origin: tuple[float, float],
         destination: tuple[float, float],
         modes: Sequence[str],
-        departure: Optional[datetime] = None,
+        departure: datetime | None = None,
         max_itineraries: int = 3,
-    ) -> List[dict[str, object]]:
+    ) -> list[dict[str, object]]:
         query = _build_plan_query()
         departure = departure or datetime.utcnow()
         variables = {

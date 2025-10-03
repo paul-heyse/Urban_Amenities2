@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dash import dcc, html
 
-
 OVERLAY_OPTIONS = [
     {"label": "State boundaries", "value": "states"},
     {"label": "County boundaries", "value": "counties"},

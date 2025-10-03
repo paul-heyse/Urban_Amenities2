@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
 
 from ..logging_utils import get_logger
 
@@ -21,7 +20,7 @@ class UISettings:
     debug: bool = field(default_factory=lambda: os.getenv("UI_DEBUG", "false").lower() == "true")
     secret_key: str = field(default_factory=lambda: os.getenv("UI_SECRET_KEY", "change-me"))
     mapbox_token: str | None = field(default_factory=lambda: os.getenv("MAPBOX_TOKEN"))
-    cors_origins: List[str] = field(default_factory=lambda: _split_env("UI_CORS_ORIGINS", "*"))
+    cors_origins: list[str] = field(default_factory=lambda: _split_env("UI_CORS_ORIGINS", "*"))
     enable_cors: bool = field(default_factory=lambda: os.getenv("UI_ENABLE_CORS", "true").lower() == "true")
     data_path: Path = field(default_factory=lambda: Path(os.getenv("UI_DATA_PATH", "data/outputs")))
     log_level: str = field(default_factory=lambda: os.getenv("UI_LOG_LEVEL", "INFO"))
@@ -29,11 +28,11 @@ class UISettings:
     reload_interval_seconds: int = field(
         default_factory=lambda: int(os.getenv("UI_RELOAD_INTERVAL", "30"))
     )
-    hex_resolutions: List[int] = field(default_factory=lambda: _split_int_env("UI_HEX_RESOLUTIONS", "6,7,8,9"))
-    summary_percentiles: List[int] = field(default_factory=lambda: _split_int_env("UI_SUMMARY_PERCENTILES", "5,25,50,75,95"))
+    hex_resolutions: list[int] = field(default_factory=lambda: _split_int_env("UI_HEX_RESOLUTIONS", "6,7,8,9"))
+    summary_percentiles: list[int] = field(default_factory=lambda: _split_int_env("UI_SUMMARY_PERCENTILES", "5,25,50,75,95"))
 
     @classmethod
-    def from_environment(cls) -> "UISettings":
+    def from_environment(cls) -> UISettings:
         settings = cls()
         LOGGER.info(
             "ui_settings_loaded",
@@ -45,12 +44,12 @@ class UISettings:
         return settings
 
 
-def _split_env(name: str, default: str) -> List[str]:
+def _split_env(name: str, default: str) -> list[str]:
     value = os.getenv(name, default)
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-def _split_int_env(name: str, default: str) -> List[int]:
+def _split_int_env(name: str, default: str) -> list[int]:
     return [int(item) for item in _split_env(name, default)]
 
 

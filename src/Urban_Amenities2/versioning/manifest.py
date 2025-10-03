@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable, List, Optional
 
 
 @dataclass(slots=True)
@@ -14,8 +14,8 @@ class RunManifest:
     run_id: str
     timestamp: datetime
     param_hash: str
-    data_snapshot_ids: List[str]
-    git_commit: Optional[str]
+    data_snapshot_ids: list[str]
+    git_commit: str | None
 
     def to_json(self) -> str:
         payload = asdict(self)
@@ -23,7 +23,7 @@ class RunManifest:
         return json.dumps(payload, sort_keys=True)
 
     @staticmethod
-    def from_json(payload: str) -> "RunManifest":
+    def from_json(payload: str) -> RunManifest:
         data = json.loads(payload)
         data["timestamp"] = datetime.fromisoformat(data["timestamp"])
         return RunManifest(**data)
@@ -32,12 +32,12 @@ class RunManifest:
 def create_run_manifest(
     param_hash: str,
     data_snapshot_ids: Iterable[str],
-    git_commit: Optional[str],
+    git_commit: str | None,
     storage: Path,
 ) -> RunManifest:
     run = RunManifest(
         run_id=str(uuid.uuid4()),
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         param_hash=param_hash,
         data_snapshot_ids=list(data_snapshot_ids),
         git_commit=git_commit,
@@ -52,10 +52,10 @@ def append_manifest(manifest: RunManifest, storage: Path) -> None:
         fp.write(manifest.to_json() + "\n")
 
 
-def list_manifests(storage: Path) -> List[RunManifest]:
+def list_manifests(storage: Path) -> list[RunManifest]:
     if not storage.exists():
         return []
-    manifests: List[RunManifest] = []
+    manifests: list[RunManifest] = []
     for line in storage.read_text().splitlines():
         line = line.strip()
         if not line:
@@ -64,7 +64,7 @@ def list_manifests(storage: Path) -> List[RunManifest]:
     return manifests
 
 
-def get_manifest(run_id: str, storage: Path) -> Optional[RunManifest]:
+def get_manifest(run_id: str, storage: Path) -> RunManifest | None:
     for manifest in list_manifests(storage):
         if manifest.run_id == run_id:
             return manifest

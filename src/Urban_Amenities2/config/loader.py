@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any
 
 from pydantic import ValidationError
 from ruamel.yaml import YAML
@@ -39,7 +39,7 @@ def compute_param_hash(params: AUCSParams | dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def load_params(path: str | Path) -> Tuple[AUCSParams, str]:
+def load_params(path: str | Path) -> tuple[AUCSParams, str]:
     """Load a YAML configuration file and return the parsed params and hash."""
 
     path = Path(path)

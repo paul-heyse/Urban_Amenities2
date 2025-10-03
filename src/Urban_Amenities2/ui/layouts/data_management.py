@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from dash import dcc, html, register_page
 
 from ..config import UISettings
@@ -14,7 +12,7 @@ register_page(__name__, path="/data", name="Data")
 
 def layout(**_) -> html.Div:
     context = DATA_CONTEXT
-    settings = SETTINGS or UISettings.from_environment()
+    SETTINGS or UISettings.from_environment()
     version = context.version.identifier if context and context.version else "Unavailable"
     return html.Div(
         className="page data-page",

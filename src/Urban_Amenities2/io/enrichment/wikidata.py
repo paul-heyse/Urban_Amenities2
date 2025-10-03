@@ -5,14 +5,18 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
 
 import pandas as pd
-from SPARQLWrapper import JSON, SPARQLWrapper
 from diskcache import Cache
+from SPARQLWrapper import JSON, SPARQLWrapper
 
 from ...logging_utils import get_logger
-from ...utils.resilience import CircuitBreaker, CircuitBreakerOpenError, RateLimiter, retry_with_backoff
+from ...utils.resilience import (
+    CircuitBreaker,
+    CircuitBreakerOpenError,
+    RateLimiter,
+    retry_with_backoff,
+)
 
 LOGGER = get_logger("aucs.enrichment.wikidata")
 
@@ -38,7 +42,7 @@ class WikidataClient:
             expected_exceptions=(Exception,),
         )
 
-    def query(self, query: str) -> Dict:
+    def query(self, query: str) -> dict:
         key = self._cache_key(query)
         cached = self._cache.get(key)
         try:
@@ -56,8 +60,8 @@ class WikidataClient:
         self._cache.set(key, result, expire=self.cache_ttl_seconds)
         return result
 
-    def _execute(self, query: str) -> Dict:
-        def _call() -> Dict:
+    def _execute(self, query: str) -> dict:
+        def _call() -> dict:
             self._rate_limiter.acquire()
             self._client.setQuery(query)
             response = self._client.query()
@@ -100,7 +104,7 @@ class WikidataEnricher:
     def __init__(self, client: WikidataClient | None = None) -> None:
         self.client = client or WikidataClient()
 
-    def match(self, name: str, lat: float, lon: float) -> Dict[str, Optional[str]]:
+    def match(self, name: str, lat: float, lon: float) -> dict[str, str | None]:
         query = build_query(name, lat, lon)
         response = self.client.query(query)
         bindings = response.get("results", {}).get("bindings", [])

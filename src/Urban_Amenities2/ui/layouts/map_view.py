@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dash import dcc, html, register_page
 
-from ..config import UISettings
-from ..scores_controls import SUBSCORE_OPTIONS, SUBSCORE_DESCRIPTIONS
 from ..components.filters import build_filter_panel, build_parameter_panel
 from ..components.overlay_controls import build_overlay_panel
+from ..config import UISettings
 from ..layers import basemap_options
+from ..scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
 from . import DATA_CONTEXT, SETTINGS
 
 register_page(__name__, path="/map", name="Map Explorer")
@@ -16,7 +16,7 @@ register_page(__name__, path="/map", name="Map Explorer")
 
 def layout(**_) -> html.Div:
     context = DATA_CONTEXT
-    settings = SETTINGS or UISettings.from_environment()
+    SETTINGS or UISettings.from_environment()
     states = sorted(context.scores["state"].dropna().unique()) if context and "state" in context.scores else []
     metros = sorted(context.scores["metro"].dropna().unique()) if context and "metro" in context.scores else []
     counties = sorted(context.scores["county"].dropna().unique()) if context and "county" in context.scores else []

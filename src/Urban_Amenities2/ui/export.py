@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Literal
 
 import geopandas as gpd
 import pandas as pd
@@ -26,8 +24,14 @@ def hex_to_polygon(hex_id: str) -> Polygon:
     """
     import h3
 
-    boundary = h3.h3_to_geo_boundary(hex_id, geo_json=True)
-    return Polygon(boundary)
+    # Ensure hex_id is a string (H3 v4 requires string format)
+    hex_str = str(hex_id) if not isinstance(hex_id, str) else hex_id
+
+    # H3 v4 API: cell_to_boundary returns list of (lat, lon) tuples
+    boundary = h3.cell_to_boundary(hex_str)
+    # Convert to (lon, lat) for Shapely
+    coords = [(lon, lat) for lat, lon in boundary]
+    return Polygon(coords)
 
 
 def export_geojson(
@@ -82,7 +86,9 @@ def export_csv(
     if include_geometry and "lat" not in export_df.columns:
         import h3
 
-        centroids = [h3.h3_to_geo(hex_id) for hex_id in export_df["hex_id"]]
+        # H3 v4 API: cell_to_latlng returns (lat, lon)
+        # Ensure hex_id is string
+        centroids = [h3.cell_to_latlng(str(hex_id)) for hex_id in export_df["hex_id"]]
         export_df["lat"] = [c[0] for c in centroids]
         export_df["lon"] = [c[1] for c in centroids]
 

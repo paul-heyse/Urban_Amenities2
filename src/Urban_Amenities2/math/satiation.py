@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
-from typing import Dict
-
 import numpy as np
 
 
@@ -27,8 +23,8 @@ def apply_satiation(values: np.ndarray, kappa: np.ndarray | float) -> np.ndarray
 def resolve_kappa(
     kappa: float | dict[str, float] | None,
     anchors: dict[str, tuple[float, float]] | None = None,
-) -> Dict[str, float]:
-    resolved: Dict[str, float] = {}
+) -> dict[str, float]:
+    resolved: dict[str, float] = {}
     if isinstance(kappa, dict):
         for key, value in kappa.items():
             if value <= 0:

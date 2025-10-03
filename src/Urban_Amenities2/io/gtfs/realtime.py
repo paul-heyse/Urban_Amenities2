@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
 
 import fsspec
 import pandas as pd
+
 try:  # pragma: no cover - import guard for optional dependency
-    from gtfs_realtime_bindings import feedmessage_pb2  # type: ignore
+    from google.transit import gtfs_realtime_pb2 as feedmessage_pb2  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
     import json
 
@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             return {"delay": self.delay}
 
         @classmethod
-        def from_dict(cls, payload: dict[str, int | None]) -> "_StopTimeEvent":
+        def from_dict(cls, payload: dict[str, int | None]) -> _StopTimeEvent:
             event = cls()
             event.delay = payload.get("delay")
             return event
@@ -44,7 +44,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             }
 
         @classmethod
-        def from_dict(cls, payload: dict[str, object]) -> "_StopTimeUpdate":
+        def from_dict(cls, payload: dict[str, object]) -> _StopTimeUpdate:
             update = cls()
             update.stop_sequence = payload.get("stop_sequence")  # type: ignore[assignment]
             if "departure" in payload:
@@ -62,7 +62,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             return {"trip_id": self.trip_id, "route_id": self.route_id}
 
         @classmethod
-        def from_dict(cls, payload: dict[str, str]) -> "_TripDescriptor":
+        def from_dict(cls, payload: dict[str, str]) -> _TripDescriptor:
             trip = cls()
             trip.trip_id = payload.get("trip_id", "")
             trip.route_id = payload.get("route_id", "")
@@ -80,7 +80,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             }
 
         @classmethod
-        def from_dict(cls, payload: dict[str, object]) -> "_TripUpdate":
+        def from_dict(cls, payload: dict[str, object]) -> _TripUpdate:
             update = cls()
             if "trip" in payload:
                 update.trip = _TripDescriptor.from_dict(payload["trip"])  # type: ignore[arg-type]
@@ -99,7 +99,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             return {"id": self.id, "trip_update": self.trip_update.to_dict()}
 
         @classmethod
-        def from_dict(cls, payload: dict[str, object]) -> "_Entity":
+        def from_dict(cls, payload: dict[str, object]) -> _Entity:
             entity = cls()
             entity.id = payload.get("id", "")
             if "trip_update" in payload:
@@ -159,7 +159,7 @@ class GTFSRealtimeIngestor:
     def parse_trip_updates(self, payload: bytes) -> pd.DataFrame:
         feed = feedmessage_pb2.FeedMessage()
         feed.ParseFromString(payload)
-        records: List[Dict[str, object]] = []
+        records: list[dict[str, object]] = []
         for entity in feed.entity:
             if not entity.trip_update.trip.trip_id:
                 continue
@@ -191,7 +191,7 @@ class GTFSRealtimeIngestor:
         return pd.DataFrame.from_records(records)
 
     def ingest(self, agency: Agency, output_path: Path = Path("data/processed/gtfs_reliability.parquet")) -> Path:
-        all_trip_updates: List[pd.DataFrame] = []
+        all_trip_updates: list[pd.DataFrame] = []
         for url in agency.realtime_urls:
             payload = self.fetch(url)
             updates = self.parse_trip_updates(payload)

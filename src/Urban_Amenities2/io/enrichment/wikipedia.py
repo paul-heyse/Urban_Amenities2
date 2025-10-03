@@ -5,14 +5,18 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict
 
 import pandas as pd
 import requests
 from diskcache import Cache
 
 from ...logging_utils import get_logger
-from ...utils.resilience import CircuitBreaker, CircuitBreakerOpenError, RateLimiter, retry_with_backoff
+from ...utils.resilience import (
+    CircuitBreaker,
+    CircuitBreakerOpenError,
+    RateLimiter,
+    retry_with_backoff,
+)
 
 LOGGER = get_logger("aucs.enrichment.wikipedia")
 
@@ -133,7 +137,7 @@ class WikipediaClient:
         return frame[["timestamp", "pageviews"]]
 
 
-def compute_statistics(pageviews: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+def compute_statistics(pageviews: dict[str, pd.DataFrame]) -> pd.DataFrame:
     records = []
     for title, frame in pageviews.items():
         if frame.empty:
@@ -153,12 +157,12 @@ def compute_statistics(pageviews: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 
 def enrich_with_pageviews(
-    titles: Dict[str, str],
+    titles: dict[str, str],
     *,
     client: WikipediaClient | None = None,
 ) -> pd.DataFrame:
     client = client or WikipediaClient()
-    pageview_data: Dict[str, pd.DataFrame] = {}
+    pageview_data: dict[str, pd.DataFrame] = {}
     for poi_id, title in titles.items():
         frame = client.fetch(title)
         pageview_data[poi_id] = frame

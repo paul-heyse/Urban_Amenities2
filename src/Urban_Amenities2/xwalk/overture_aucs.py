@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from ruamel.yaml import YAML
 
@@ -14,14 +14,14 @@ class CategoryMatch:
     aucstype: str
     group: str
     rule_name: str
-    notes: Optional[str]
+    notes: str | None
 
 
 @dataclass
 class _Rule:
-    include: List[Tuple[str, ...]]
-    exclude: List[Tuple[str, ...]]
-    notes: Optional[str]
+    include: list[tuple[str, ...]]
+    exclude: list[tuple[str, ...]]
+    notes: str | None
     group: str
     rule_name: str
 
@@ -31,9 +31,7 @@ class _Rule:
         path_tuple = tuple(category_path)
         if not any(_prefix_matches(path_tuple, inc) for inc in self.include):
             return False
-        if any(_prefix_matches(path_tuple, exc) for exc in self.exclude):
-            return False
-        return True
+        return not any(_prefix_matches(path_tuple, exc) for exc in self.exclude)
 
     def to_match(self) -> CategoryMatch:
         return CategoryMatch(
@@ -48,12 +46,12 @@ class CategoryMatcher:
     """Category mapper that applies prefix-based rules."""
 
     def __init__(self, rules: Iterable[_Rule]):
-        self._rules: Dict[str, _Rule] = {rule.rule_name: rule for rule in rules}
+        self._rules: dict[str, _Rule] = {rule.rule_name: rule for rule in rules}
 
-    def categories(self) -> List[str]:
+    def categories(self) -> list[str]:
         return sorted(self._rules.keys())
 
-    def match_single(self, category: str) -> Optional[CategoryMatch]:
+    def match_single(self, category: str) -> CategoryMatch | None:
         path = _normalise_category(category)
         if not path:
             return None
@@ -62,7 +60,7 @@ class CategoryMatcher:
                 return rule.to_match()
         return None
 
-    def match_many(self, categories: Sequence[str]) -> Optional[CategoryMatch]:
+    def match_many(self, categories: Sequence[str]) -> CategoryMatch | None:
         for category in categories:
             match = self.match_single(category)
             if match:
@@ -82,8 +80,8 @@ class CategoryMatcher:
             raise TypeError("CategoryMatcher.assign expects a pandas DataFrame")
         frame = frame.copy()
 
-        def _resolve(row: pd.Series) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-            categories: List[str] = []
+        def _resolve(row: pd.Series) -> tuple[str | None, str | None, str | None]:
+            categories: list[str] = []
             primary = row.get(primary_column)
             if isinstance(primary, str):
                 categories.append(primary)
@@ -120,7 +118,7 @@ def load_crosswalk(path: Path | str = Path("docs/AUCS place category crosswalk")
         msg = "Crosswalk YAML missing 'aucscrosswalk' root"
         raise ValueError(msg)
 
-    rules: List[_Rule] = []
+    rules: list[_Rule] = []
     for group, group_rules in aucs.items():
         if not isinstance(group_rules, dict):
             continue
@@ -143,7 +141,7 @@ def load_crosswalk(path: Path | str = Path("docs/AUCS place category crosswalk")
     return CategoryMatcher(rules)
 
 
-def _extract_yaml_block(text: str) -> Optional[str]:
+def _extract_yaml_block(text: str) -> str | None:
     start = text.find("```yaml")
     if start == -1:
         return None
@@ -154,7 +152,7 @@ def _extract_yaml_block(text: str) -> Optional[str]:
     return text[start:end].strip()
 
 
-def _normalise_category(category: str) -> Tuple[str, ...]:
+def _normalise_category(category: str) -> tuple[str, ...]:
     if not category:
         return ()
     cleaned = category.replace("|", " ")
@@ -162,7 +160,7 @@ def _normalise_category(category: str) -> Tuple[str, ...]:
     return tuple(part for part in parts if part)
 
 
-def _prefix_matches(path: Tuple[str, ...], prefix: Tuple[str, ...]) -> bool:
+def _prefix_matches(path: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
     if not prefix:
         return False
     if len(prefix) > len(path):

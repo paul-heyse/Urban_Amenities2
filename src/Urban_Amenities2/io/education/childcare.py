@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
 
 import pandas as pd
 
@@ -27,14 +26,14 @@ def normalize_registry(frame: pd.DataFrame, state: str) -> pd.DataFrame:
     return frame[list(columns) + ["state"]]
 
 
-def combine_registries(registries: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+def combine_registries(registries: dict[str, pd.DataFrame]) -> pd.DataFrame:
     frames = [normalize_registry(df, state) for state, df in registries.items()]
     combined = pd.concat(frames, ignore_index=True)
     combined = points_to_hex(combined, lat_column="lat", lon_column="lon", hex_column="hex_id")
     return combined
 
 
-def ingest_childcare(registries: Dict[str, str | Path], output_path: Path = Path("data/processed/childcare.parquet")) -> pd.DataFrame:
+def ingest_childcare(registries: dict[str, str | Path], output_path: Path = Path("data/processed/childcare.parquet")) -> pd.DataFrame:
     frames = {state: (pd.read_parquet(path) if str(path).endswith(".parquet") else pd.read_csv(path)) for state, path in registries.items()}
     combined = combine_registries(frames)
     output_path.parent.mkdir(parents=True, exist_ok=True)

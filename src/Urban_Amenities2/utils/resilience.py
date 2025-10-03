@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Callable, Iterable, Tuple, Type, TypeVar
-
+from typing import TypeVar
 
 __all__ = [
     "CircuitBreaker",
@@ -77,7 +77,7 @@ class CircuitBreaker:
 
     failure_threshold: int = 5
     recovery_timeout: float = 60.0
-    expected_exceptions: Tuple[Type[BaseException], ...] = (Exception,)
+    expected_exceptions: tuple[type[BaseException], ...] = (Exception,)
     clock: Callable[[], float] = time.monotonic
     _state: str = "closed"
     _failures: int = 0
@@ -100,7 +100,7 @@ class CircuitBreaker:
         self.before_call()
         try:
             result = func()
-        except self.expected_exceptions as exc:  # pragma: no cover - exercised via tests
+        except self.expected_exceptions:  # pragma: no cover - exercised via tests
             self.record_failure()
             raise
         else:
@@ -128,7 +128,7 @@ class CircuitBreaker:
                 self._opened_at = self.clock()
 
 
-def retry_with_backoff(
+def retry_with_backoff[T](
     func: Callable[[], T],
     *,
     attempts: int = 3,
@@ -136,7 +136,7 @@ def retry_with_backoff(
     max_delay: float = 4.0,
     jitter: float = 0.1,
     sleep_func: Callable[[float], None] = time.sleep,
-    exceptions: Tuple[Type[BaseException], ...] = (Exception,),
+    exceptions: tuple[type[BaseException], ...] = (Exception,),
 ) -> T:
     """Execute ``func`` with exponential backoff and jitter."""
 

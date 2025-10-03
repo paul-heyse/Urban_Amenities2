@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import plotly.graph_objects as go
 
@@ -15,11 +16,11 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 class OverlayPayload:
     """Container for mapbox layers and additional Plotly traces."""
 
-    layers: List[dict]
-    traces: List[go.BaseTraceType]
+    layers: list[dict]
+    traces: list[go.BaseTraceType]
 
 
-_BASEMAP_STYLES: Dict[str, Dict[str, str]] = {
+_BASEMAP_STYLES: dict[str, dict[str, str]] = {
     "mapbox://styles/mapbox/streets-v11": {
         "label": "Streets",
         "attribution": "© Mapbox © OpenStreetMap",
@@ -47,7 +48,7 @@ _BASEMAP_STYLES: Dict[str, Dict[str, str]] = {
 }
 
 
-_CITY_FEATURES: List[dict] = [
+_CITY_FEATURES: list[dict] = [
     {
         "type": "Feature",
         "properties": {"label": "Denver"},
@@ -71,7 +72,7 @@ _CITY_FEATURES: List[dict] = [
 ]
 
 
-_LANDMARK_FEATURES: List[dict] = [
+_LANDMARK_FEATURES: list[dict] = [
     {
         "type": "Feature",
         "properties": {"label": "DEN Airport"},
@@ -104,7 +105,7 @@ _OVERLAY_COLOR = {
 }
 
 
-def basemap_options() -> List[dict]:
+def basemap_options() -> list[dict]:
     """Return dropdown options for map styles."""
 
     return [
@@ -130,15 +131,15 @@ def basemap_attribution(style: str | None) -> str:
 
 def build_overlay_payload(
     selected: Iterable[str],
-    context: "DataContext",
+    context: DataContext,
     *,
     opacity: float = 0.35,
 ) -> OverlayPayload:
     """Build mapbox layers and Plotly traces for the selected overlays."""
 
     selected_set = {value for value in (selected or []) if value}
-    layers: List[dict] = []
-    traces: List[go.BaseTraceType] = []
+    layers: list[dict] = []
+    traces: list[go.BaseTraceType] = []
     clamped_opacity = max(0.0, min(opacity, 1.0))
 
     def _rgba(color: str, alpha: float) -> str:
@@ -209,9 +210,9 @@ def build_overlay_payload(
     def _point_trace(features: Sequence[dict], name: str, marker: dict, text_only: bool = False) -> None:
         if not features:
             return
-        lon: List[float] = []
-        lat: List[float] = []
-        labels: List[str] = []
+        lon: list[float] = []
+        lat: list[float] = []
+        labels: list[str] = []
         for feature in features:
             geometry = feature.get("geometry") or {}
             if geometry.get("type") != "Point":

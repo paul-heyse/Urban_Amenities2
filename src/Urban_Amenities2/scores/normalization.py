@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -12,12 +12,12 @@ class NormalizationConfig:
     mode: Literal["percentile", "standard"] = "percentile"
     lower_percentile: float = 5.0
     upper_percentile: float = 95.0
-    standard_target: Optional[float] = None
+    standard_target: float | None = None
 
 
 def percentile_normalize(frame: pd.DataFrame, group: str, value: str, config: NormalizationConfig) -> pd.DataFrame:
     records = []
-    for key, subset in frame.groupby(group):
+    for _key, subset in frame.groupby(group):
         low = np.percentile(subset[value], config.lower_percentile)
         high = np.percentile(subset[value], config.upper_percentile)
         if high == low:

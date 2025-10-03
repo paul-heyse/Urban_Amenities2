@@ -14,6 +14,8 @@ from Urban_Amenities2.scores.corridor_enrichment import (
 )
 from Urban_Amenities2.scores.corridor_trip_chaining import (
     CorridorConfig as TripConfig,
+)
+from Urban_Amenities2.scores.corridor_trip_chaining import (
     CorridorTripChaining,
 )
 

@@ -1,8 +1,9 @@
 """Pydantic models describing AUCS 2.0 configuration."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from functools import cached_property
-from typing import Dict, Iterable, List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -20,7 +21,7 @@ class GridConfig(_BaseConfig):
     """Configuration for the spatial grid resolution and search limits."""
 
     hex_size_m: float = Field(..., gt=0, description="Approximate edge length of the grid in metres")
-    isochrone_minutes: List[int] = Field(..., min_length=1, description="Minute values for isochrone rings")
+    isochrone_minutes: list[int] = Field(..., min_length=1, description="Minute values for isochrone rings")
     search_cap_minutes: int = Field(..., gt=0, description="Maximum travel minutes to consider during searches")
 
     @model_validator(mode="after")
@@ -73,7 +74,7 @@ class ModeConfig(_BaseConfig):
     half_life_min: float = Field(..., gt=0)
     beta0: float
     reliability_buffer: float = Field(0.0, ge=0)
-    max_access_distance_m: Optional[float] = Field(None, gt=0)
+    max_access_distance_m: float | None = Field(None, gt=0)
     enabled: bool = True
 
     @cached_property
@@ -89,7 +90,7 @@ class NestConfig(_BaseConfig):
     """Grouping of modes for the nested logit."""
 
     id: str
-    modes: List[str] = Field(..., min_length=1)
+    modes: list[str] = Field(..., min_length=1)
     mu: float = Field(..., gt=0)
     eta: float = Field(..., gt=0)
 
@@ -103,18 +104,18 @@ class LogitConfig(_BaseConfig):
 class CarryPenaltyConfig(_BaseConfig):
     """Penalties applied when users have to carry goods."""
 
-    category_multipliers: Dict[str, float]
-    per_mode_extra_minutes: Dict[str, float]
+    category_multipliers: dict[str, float]
+    per_mode_extra_minutes: dict[str, float]
 
 
 class QualityConfig(_BaseConfig):
     """Quality scoring parameters."""
 
-    component_weights: Dict[str, float]
+    component_weights: dict[str, float]
     z_clip_abs: float = Field(..., ge=0)
     opening_hours_bonus_xi: float = Field(..., ge=0)
     dedupe_beta_per_km: float = Field(..., ge=0)
-    hours_defaults: Dict[str, str] = Field(default_factory=dict)
+    hours_defaults: dict[str, str] = Field(default_factory=dict)
 
 
 class CategoryDiversityConfig(_BaseConfig):
@@ -135,22 +136,22 @@ class CategoryDiversityConfig(_BaseConfig):
 class CategoryConfig(_BaseConfig):
     """Category level configuration."""
 
-    essentials: List[str]
-    leisure: List[str]
-    ces_rho: Dict[str, float] | float
+    essentials: list[str]
+    leisure: list[str]
+    ces_rho: dict[str, float] | float
     satiation_mode: Literal["none", "anchor", "direct"] = "none"
-    satiation_kappa: Dict[str, float] | float | None = None
-    satiation_targets: Optional[Dict[str, Dict[str, float]]] = None
-    diversity: Dict[str, CategoryDiversityConfig] = Field(default_factory=dict)
+    satiation_kappa: dict[str, float] | float | None = None
+    satiation_targets: dict[str, dict[str, float]] | None = None
+    diversity: dict[str, CategoryDiversityConfig] = Field(default_factory=dict)
 
-    def derived_satiation(self) -> Dict[str, float]:
+    def derived_satiation(self) -> dict[str, float]:
         """Compute satiation kappa per category based on the selected mode."""
 
         from math import log
 
         if self.satiation_mode == "direct":
             if isinstance(self.satiation_kappa, dict):
-                output: Dict[str, float] = {}
+                output: dict[str, float] = {}
                 for category, value in self.satiation_kappa.items():
                     if value <= 0:
                         msg = f"Satiation kappa for {category} must be positive"
@@ -167,7 +168,7 @@ class CategoryConfig(_BaseConfig):
             if not self.satiation_targets:
                 msg = "Anchor satiation requires satiation_targets"
                 raise ValueError(msg)
-            output: Dict[str, float] = {}
+            output: dict[str, float] = {}
             for category, target in self.satiation_targets.items():
                 score = target.get("score")
                 value = target.get("value")
@@ -178,7 +179,7 @@ class CategoryConfig(_BaseConfig):
             return output
         return {}
 
-    def derived_rho(self, categories: Iterable[str] | None = None) -> Dict[str, float]:
+    def derived_rho(self, categories: Iterable[str] | None = None) -> dict[str, float]:
         names = list(categories or (self.essentials + self.leisure))
         if isinstance(self.ces_rho, dict):
             mapping = {}
@@ -196,7 +197,7 @@ class CategoryConfig(_BaseConfig):
                 raise ValueError(msg)
         return mapping
 
-    def get_diversity(self, category: str) -> Optional[CategoryDiversityConfig]:
+    def get_diversity(self, category: str) -> CategoryDiversityConfig | None:
         if category in self.diversity:
             return self.diversity[category]
         if category in self.essentials and "essentials" in self.diversity:
@@ -215,9 +216,9 @@ class NoveltyBonusConfig(_BaseConfig):
 
 
 class LeisureCrossCategoryConfig(_BaseConfig):
-    weights: Dict[str, float]
+    weights: dict[str, float]
     elasticity_zeta: float
-    category_groups: Dict[str, str] = Field(default_factory=dict)
+    category_groups: dict[str, str] = Field(default_factory=dict)
     novelty: NoveltyBonusConfig = Field(default_factory=NoveltyBonusConfig)
 
     @model_validator(mode="after")
@@ -232,11 +233,11 @@ class LeisureCrossCategoryConfig(_BaseConfig):
 
 
 class HubsAirportsConfig(_BaseConfig):
-    hub_mass_weights: Dict[str, float]
+    hub_mass_weights: dict[str, float]
     hub_decay_alpha: float = Field(..., gt=0)
     airport_decay_alpha: float = Field(..., gt=0)
-    contributions: Dict[str, float] = Field(default_factory=lambda: {"hub": 0.7, "airport": 0.3})
-    airport_weights: Dict[str, float] = Field(default_factory=dict)
+    contributions: dict[str, float] = Field(default_factory=lambda: {"hub": 0.7, "airport": 0.3})
+    airport_weights: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_config(self) -> HubsAirportsConfig:
@@ -254,7 +255,7 @@ class HubsAirportsConfig(_BaseConfig):
 
 class JobsEducationConfig(_BaseConfig):
     university_weight_kappa: float
-    industry_weights: Dict[str, float]
+    industry_weights: dict[str, float]
 
 
 class MORRConfig(_BaseConfig):
@@ -276,10 +277,10 @@ class CorridorConfig(_BaseConfig):
     max_paths: int = Field(..., gt=0)
     stop_buffer_m: float = Field(..., ge=0)
     detour_cap_min: float = Field(..., ge=0)
-    pair_categories: List[List[str]] = Field(default_factory=list)
+    pair_categories: list[list[str]] = Field(default_factory=list)
     walk_decay_alpha: float = Field(..., ge=0)
-    major_hubs: Dict[str, List[HubDefinitionConfig]] = Field(default_factory=dict)
-    chain_weights: Dict[str, float] = Field(default_factory=dict)
+    major_hubs: dict[str, list[HubDefinitionConfig]] = Field(default_factory=dict)
+    chain_weights: dict[str, float] = Field(default_factory=dict)
     min_stop_count: int = Field(5, ge=0)
     cache_size: int = Field(1024, ge=0)
 
@@ -294,7 +295,7 @@ class CorridorConfig(_BaseConfig):
 
 class SeasonalityConfig(_BaseConfig):
     comfort_index_default: float
-    weather_adjustments: Dict[str, float] = Field(default_factory=dict)
+    weather_adjustments: dict[str, float] = Field(default_factory=dict)
 
 
 class NormalizationStandard(_BaseConfig):
@@ -305,14 +306,14 @@ class NormalizationStandard(_BaseConfig):
 class NormalizationConfig(_BaseConfig):
     mode: Literal["metro", "global"] = "metro"
     metro_percentile: float = Field(95.0, ge=0, le=100)
-    standards: List[NormalizationStandard] = Field(default_factory=list)
+    standards: list[NormalizationStandard] = Field(default_factory=list)
 
 
 class ComputeConfig(_BaseConfig):
     topK_per_category: int = Field(..., gt=0)
     hub_max_minutes: int = Field(..., gt=0)
     preload_hex_neighbors: bool = True
-    cache_dir: Optional[str] = None
+    cache_dir: str | None = None
 
 
 class AUCSParams(_BaseConfig):
@@ -320,9 +321,9 @@ class AUCSParams(_BaseConfig):
 
     grid: GridConfig
     subscores: SubscoreWeights
-    time_slices: List[TimeSliceConfig]
-    modes: Dict[str, ModeConfig]
-    nests: List[NestConfig]
+    time_slices: list[TimeSliceConfig]
+    modes: dict[str, ModeConfig]
+    nests: list[NestConfig]
     logit: LogitConfig
     carry_penalty: CarryPenaltyConfig
     quality: QualityConfig
@@ -346,17 +347,17 @@ class AUCSParams(_BaseConfig):
                 raise ValueError(msg)
         return self
 
-    def derived_mode_alphas(self) -> Dict[str, float]:
+    def derived_mode_alphas(self) -> dict[str, float]:
         """Return the decay coefficient per mode."""
 
         return {mode_name: mode.decay_alpha for mode_name, mode in self.modes.items()}
 
-    def derived_satiation(self) -> Dict[str, float]:
+    def derived_satiation(self) -> dict[str, float]:
         """Expose derived satiation kappas from the category configuration."""
 
         return self.categories.derived_satiation()
 
-    def derived_ces_rho(self, categories: Iterable[str] | None = None) -> Dict[str, float]:
+    def derived_ces_rho(self, categories: Iterable[str] | None = None) -> dict[str, float]:
         """Expose CES rho values per category."""
 
         return self.categories.derived_rho(categories)

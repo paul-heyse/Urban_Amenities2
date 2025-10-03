@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple
 
 import geopandas as gpd
 import pandas as pd
@@ -16,7 +15,7 @@ from ...xwalk.overture_aucs import CategoryMatcher, load_crosswalk
 LOGGER = get_logger("aucs.ingest.overture")
 
 
-BBox = Tuple[float, float, float, float]
+BBox = tuple[float, float, float, float]
 
 
 @dataclass
@@ -29,7 +28,7 @@ class BigQueryConfig:
         return f"`{self.project}.{self.dataset}.{self.table}`"
 
 
-def build_bigquery_query(config: BigQueryConfig, state: Optional[str] = None, bbox: BBox | None = None) -> str:
+def build_bigquery_query(config: BigQueryConfig, state: str | None = None, bbox: BBox | None = None) -> str:
     where: list[str] = ["operating_status = 'open'"]
     if state:
         where.append("address_components.administrative_area = @state")
@@ -56,7 +55,7 @@ def build_bigquery_query(config: BigQueryConfig, state: Optional[str] = None, bb
 def read_places_from_bigquery(
     config: BigQueryConfig,
     client=None,
-    state: Optional[str] = None,
+    state: str | None = None,
     bbox: BBox | None = None,
 ) -> pd.DataFrame:
     from google.cloud import bigquery  # type: ignore
@@ -123,7 +122,7 @@ class PlacesPipeline:
     def run(
         self,
         frame: pd.DataFrame,
-        output_path: Optional[Path] = None,
+        output_path: Path | None = None,
         hex_resolution: int = 9,
     ) -> gpd.GeoDataFrame:
         working = filter_operating(frame)
@@ -131,7 +130,7 @@ class PlacesPipeline:
         working = self.matcher.assign(working, primary_column="primary_category", alternate_column="alternate_categories")
         deduped = deduplicate_pois(working, config=self.dedupe_config)
         hexed = points_to_hex(deduped, lat_column="lat", lon_column="lon", hex_column="hex_id", resolution=hex_resolution)
-        geo = gpd.GeoDataFrame(hexed, geometry=[Point(lon, lat) for lat, lon in zip(hexed["lat"], hexed["lon"])], crs="EPSG:4326")
+        geo = gpd.GeoDataFrame(hexed, geometry=[Point(lon, lat) for lat, lon in zip(hexed["lat"], hexed["lon"], strict=False)], crs="EPSG:4326")
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             geo.to_parquet(output_path)
@@ -147,7 +146,7 @@ def ingest_places(
     source: pd.DataFrame | str | Path,
     crosswalk_path: Path | str = Path("docs/AUCS place category crosswalk"),
     bbox: BBox | None = None,
-    output_path: Optional[Path] = Path("data/processed/pois.parquet"),
+    output_path: Path | None = Path("data/processed/pois.parquet"),
 ) -> gpd.GeoDataFrame:
     if isinstance(source, (str, Path)):
         frame = read_places_from_cloud(source, bbox=bbox)

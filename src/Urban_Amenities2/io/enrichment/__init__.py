@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
 from ...quality import BrandDedupeConfig, QualityScorer, apply_brand_dedupe
 
+
 def merge_enrichment(
     pois: pd.DataFrame,
-    wikidata: Optional[pd.DataFrame] = None,
-    wikipedia: Optional[pd.DataFrame] = None,
+    wikidata: pd.DataFrame | None = None,
+    wikipedia: pd.DataFrame | None = None,
     output_path: Path | None = None,
     quality_scorer: QualityScorer | None = None,
     brand_dedupe_config: BrandDedupeConfig | None = None,

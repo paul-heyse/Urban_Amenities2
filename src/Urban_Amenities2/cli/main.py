@@ -1,10 +1,11 @@
+# ruff: noqa: B008
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable as IterableABC
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -52,8 +53,6 @@ data_app = typer.Typer(help="Data quality and snapshots")
 score_app = typer.Typer(help="Scoring commands")
 calibrate_app = typer.Typer(help="Calibration utilities")
 routing_app = typer.Typer(help="Routing tools")
-score_app = typer.Typer(help="Scoring commands")
-calibrate_app = typer.Typer(help="Calibration utilities")
 
 
 @app.command("healthcheck")
@@ -112,7 +111,7 @@ def cli_healthcheck(
         logger.warning("healthcheck_warning", status=status.value)
 
 
-def _parse_bbox(bbox: Optional[str]):
+def _parse_bbox(bbox: str | None):
     if not bbox:
         return None
     parts = [float(part) for part in bbox.split(",")]
@@ -147,12 +146,12 @@ def _sanitize_properties(record: dict[str, object]) -> dict[str, object]:
     return {key: _json_safe(value) for key, value in record.items()}
 
 
-def _load_coords(path: Path, id_column: str) -> Dict[str, Tuple[float, float]]:
+def _load_coords(path: Path, id_column: str) -> dict[str, tuple[float, float]]:
     table = _load_table(path, id_column)
     return {row[id_column]: (row["lon"], row["lat"]) for _, row in table.iterrows()}
 
 
-def _haversine(origin: Tuple[float, float], destination: Tuple[float, float]) -> float:
+def _haversine(origin: tuple[float, float], destination: tuple[float, float]) -> float:
     from math import asin, cos, radians, sin, sqrt
 
     lon1, lat1 = origin
@@ -172,15 +171,15 @@ class GreatCircleOSRM:
     def _speed(self) -> float:
         return {"car": 15.0, "bike": 5.0, "foot": 1.4}.get(self.mode, 10.0)
 
-    def route(self, coords: Sequence[Tuple[float, float]]):
+    def route(self, coords: Sequence[tuple[float, float]]):
         distance = _haversine(coords[0], coords[-1])
         duration = distance / self._speed()
         return {"duration": duration, "distance": distance, "legs": []}
 
     def table(
         self,
-        sources: Sequence[Tuple[float, float]],
-        destinations: Sequence[Tuple[float, float]],
+        sources: Sequence[tuple[float, float]],
+        destinations: Sequence[tuple[float, float]],
     ) -> dict:
         durations = []
         distances = []
@@ -196,7 +195,7 @@ class GreatCircleOSRM:
         return {"durations": durations, "distances": distances}
 
 
-def _parse_weights(value: str) -> Dict[str, float]:
+def _parse_weights(value: str) -> dict[str, float]:
     candidate = Path(value)
     if candidate.exists():
         payload = json.loads(candidate.read_text(encoding="utf-8"))
@@ -236,7 +235,7 @@ def hex_info(lat: float, lon: float, k: int = typer.Option(1, help="Neighbourhoo
 
 
 @run_app.command("init")
-def run_init(params: Path, git_commit: Optional[str] = typer.Option(None)) -> None:
+def run_init(params: Path, git_commit: str | None = typer.Option(None)) -> None:
     try:
         _, param_hash = load_params(params)
     except ParameterLoadError as exc:
@@ -274,7 +273,7 @@ def cli_ingest_places(
     crosswalk: Path = typer.Option(
         Path("docs/AUCS place category crosswalk"), help="Crosswalk document"
     ),
-    bbox: Optional[str] = typer.Option(None, help="Bounding box min_lon,min_lat,max_lon,max_lat"),
+    bbox: str | None = typer.Option(None, help="Bounding box min_lon,min_lat,max_lon,max_lat"),
     output: Path = typer.Option(Path("data/processed/pois.parquet"), help="Output parquet"),
 ) -> None:
     parsed_bbox = _parse_bbox(bbox)
@@ -374,11 +373,11 @@ def cli_aggregate(
     output: Path = typer.Option(
         Path("data/processed/aucs.parquet"), help="Output Parquet for AUCS scores"
     ),
-    explainability_output: Optional[Path] = typer.Option(
+    explainability_output: Path | None = typer.Option(
         None, help="Optional explainability Parquet output"
     ),
-    run_id: Optional[str] = typer.Option(None, help="Run identifier to annotate outputs"),
-    report_path: Optional[Path] = typer.Option(None, help="Optional QA HTML report"),
+    run_id: str | None = typer.Option(None, help="Run identifier to annotate outputs"),
+    report_path: Path | None = typer.Option(None, help="Optional QA HTML report"),
 ) -> None:
     frame = _load_table(subscores, "hex_id")
     weight_config = WeightConfig(_parse_weights(weights))
@@ -463,8 +462,8 @@ def routing_compute_skims(
     destinations_path: Path = typer.Argument(..., help="Destinations table"),
     output_path: Path = typer.Option(Path("data/processed/skims.parquet"), help="Output path"),
     mode: str = typer.Option("car", help="Mode"),
-    period: Optional[str] = typer.Option(None, help="Period label"),
-    osrm_base_url: Optional[str] = typer.Option(None, help="Optional OSRM base URL"),
+    period: str | None = typer.Option(None, help="Period label"),
+    osrm_base_url: str | None = typer.Option(None, help="Optional OSRM base URL"),
 ) -> None:
     origin_coords = _load_coords(origins_path, "id")
     dest_coords = _load_coords(destinations_path, "id")
@@ -487,8 +486,8 @@ def score_ea(
     pois_path: Path = typer.Argument(..., help="POI parquet"),
     accessibility_path: Path = typer.Argument(..., help="Accessibility parquet"),
     output: Path = typer.Option(Path("data/processed/ea_scores.parquet"), help="Output path"),
-    category_output: Optional[Path] = typer.Option(None, help="Optional category scores output"),
-    hex_id: Optional[str] = typer.Option(None, help="Optional hex filter"),
+    category_output: Path | None = typer.Option(None, help="Optional category scores output"),
+    hex_id: str | None = typer.Option(None, help="Optional hex filter"),
 ) -> None:
     pois = pd.read_parquet(pois_path)
     accessibility = pd.read_parquet(accessibility_path)

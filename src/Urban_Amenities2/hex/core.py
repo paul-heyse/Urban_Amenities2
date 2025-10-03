@@ -1,8 +1,8 @@
 """Core utilities for working with H3 hexagons."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from functools import lru_cache
-from typing import Iterable, List, Tuple
 
 import h3
 
@@ -16,7 +16,7 @@ def latlon_to_hex(lat: float, lon: float, resolution: int = RESOLUTION) -> str:
 
 
 @lru_cache(maxsize=65536)
-def hex_centroid(hex_id: str) -> Tuple[float, float]:
+def hex_centroid(hex_id: str) -> tuple[float, float]:
     """Return the centroid latitude/longitude for a given cell."""
 
     lat, lon = h3.cell_to_latlng(hex_id)
@@ -24,7 +24,7 @@ def hex_centroid(hex_id: str) -> Tuple[float, float]:
 
 
 @lru_cache(maxsize=65536)
-def hex_boundary(hex_id: str) -> List[Tuple[float, float]]:
+def hex_boundary(hex_id: str) -> list[tuple[float, float]]:
     """Return the ordered boundary coordinates for a hexagon."""
 
     boundary = h3.cell_to_boundary(hex_id)

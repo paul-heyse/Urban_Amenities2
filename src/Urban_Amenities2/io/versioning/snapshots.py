@@ -5,7 +5,6 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 
 @dataclass
@@ -36,8 +35,8 @@ class SnapshotRegistry:
             handle.write(record.to_json() + "\n")
         return record
 
-    def list_snapshots(self) -> List[SnapshotRecord]:
-        records: List[SnapshotRecord] = []
+    def list_snapshots(self) -> list[SnapshotRecord]:
+        records: list[SnapshotRecord] = []
         with self.path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():
@@ -46,7 +45,7 @@ class SnapshotRegistry:
                 records.append(SnapshotRecord(**payload))
         return records
 
-    def latest_for(self, source: str) -> Optional[SnapshotRecord]:
+    def latest_for(self, source: str) -> SnapshotRecord | None:
         records = [record for record in self.list_snapshots() if record.source == source]
         return records[-1] if records else None
 
@@ -55,7 +54,7 @@ class SnapshotRegistry:
         latest = self.latest_for(source)
         return latest is None or latest.sha256 != sha
 
-    def list_json(self) -> List[dict[str, str]]:
+    def list_json(self) -> list[dict[str, str]]:
         return [record.__dict__ for record in self.list_snapshots()]
 
 

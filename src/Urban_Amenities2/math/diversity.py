@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Dict, Iterable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -68,7 +68,7 @@ def compute_diversity(
     value_column: str,
     group_columns: Iterable[str],
     subtype_column: str,
-    config: Dict[str, DiversityConfig] | None = None,
+    config: dict[str, DiversityConfig] | None = None,
 ) -> pd.DataFrame:
     if value_column not in frame.columns:
         raise KeyError(f"{value_column} column missing from frame")
@@ -77,7 +77,7 @@ def compute_diversity(
     config = config or {}
     records: list[dict[str, object]] = []
     for keys, group in frame.groupby(list(group_columns)):
-        key_dict = dict(zip(group_columns, keys if isinstance(keys, tuple) else (keys,)))
+        key_dict = dict(zip(group_columns, keys if isinstance(keys, tuple) else (keys,), strict=False))
         category = key_dict.get("aucstype") or key_dict.get("category") or "default"
         cfg = config.get(category, DiversityConfig())
         values = group.groupby(subtype_column)[value_column].sum()

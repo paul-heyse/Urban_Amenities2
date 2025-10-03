@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List, Optional
 
-import pandas as pd
 from dash import Input, Output, State, callback_context, dcc, html, no_update
 
 from .components.choropleth import create_choropleth
 from .data_loader import DataContext
-from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
 from .layers import basemap_attribution, build_overlay_payload, resolve_basemap_style
+from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
 
 SUBSCORE_VALUES = [option["value"] for option in SUBSCORE_OPTIONS]
 
 
-def _normalise_filters(values: Iterable[str] | None) -> List[str]:
+def _normalise_filters(values: Iterable[str] | None) -> list[str]:
     if not values:
         return []
     if isinstance(values, str):
@@ -24,7 +23,7 @@ def _normalise_filters(values: Iterable[str] | None) -> List[str]:
     return [value for value in values if value]
 
 
-def _resolution_for_zoom(zoom: Optional[float]) -> int:
+def _resolution_for_zoom(zoom: float | None) -> int:
     if zoom is None:
         return 8
     if zoom <= 5:
@@ -36,7 +35,7 @@ def _resolution_for_zoom(zoom: Optional[float]) -> int:
     return 9
 
 
-def _extract_viewport_bounds(relayout_data, fallback: Optional[tuple[float, float, float, float]]):
+def _extract_viewport_bounds(relayout_data, fallback: tuple[float, float, float, float] | None):
     if not isinstance(relayout_data, dict):
         return fallback
     derived = relayout_data.get("mapbox._derived") if isinstance(relayout_data, dict) else None

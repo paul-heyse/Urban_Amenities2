@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -21,8 +20,8 @@ from Urban_Amenities2.ui.export import (
 @pytest.fixture
 def sample_data():
     """Create sample hex data for export testing."""
-    return pd.DataFrame({
-        "hex_id": ["8928308280fffff", "8928308281fffff"],
+    df = pd.DataFrame({
+        "hex_id": ["8928308280fffff", "8928308280bffff"],  # Valid H3 hex IDs
         "state": ["CO", "CO"],
         "metro": ["Denver", "Denver"],
         "aucs": [75.0, 45.0],
@@ -34,6 +33,9 @@ def sample_data():
         "cte": [60.0, 30.0],
         "sou": [70.0, 40.0],
     })
+    # Ensure hex_id is string type
+    df["hex_id"] = df["hex_id"].astype(str)
+    return df
 
 
 def test_export_csv(sample_data):

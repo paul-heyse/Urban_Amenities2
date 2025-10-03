@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
 
 
 @dataclass
 class Agency:
     name: str
     state: str
-    modes: List[str]
-    static_url: Optional[str]
-    realtime_urls: List[str]
-    license: Optional[str]
+    modes: list[str]
+    static_url: str | None
+    realtime_urls: list[str]
+    license: str | None
     notes: str
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "name": self.name,
             "state": self.state,
@@ -36,11 +36,11 @@ STATE_HEADERS = {
 }
 
 
-def load_registry(path: Path | str = Path("docs/AUCS place category crosswalk")) -> List[Agency]:
+def load_registry(path: Path | str = Path("docs/AUCS place category crosswalk")) -> list[Agency]:
     path = Path(path)
     text = path.read_text(encoding="utf-8")
     footnotes = _parse_footnotes(text)
-    agencies: List[Agency] = []
+    agencies: list[Agency] = []
     state = None
     for line in text.splitlines():
         header_match = re.match(r"^### (.+)$", line.strip())
@@ -70,14 +70,14 @@ def load_registry(path: Path | str = Path("docs/AUCS place category crosswalk"))
     return agencies
 
 
-def _extract_urls(text: str, footnotes: Dict[str, str]) -> tuple[Optional[str], List[str]]:
+def _extract_urls(text: str, footnotes: dict[str, str]) -> tuple[str | None, list[str]]:
     references = re.findall(r"\[(\d+)\]", text)
     urls = [footnotes.get(ref) for ref in references if ref in footnotes]
     static_url = urls[0] if urls else None
     return static_url, urls[1:]
 
 
-def _extract_license(text: str) -> Optional[str]:
+def _extract_license(text: str) -> str | None:
     if "open license" in text.lower():
         return "open"
     if "license" in text.lower():
@@ -85,15 +85,15 @@ def _extract_license(text: str) -> Optional[str]:
     return None
 
 
-def _parse_footnotes(text: str) -> Dict[str, str]:
-    footnotes: Dict[str, str] = {}
+def _parse_footnotes(text: str) -> dict[str, str]:
+    footnotes: dict[str, str] = {}
     pattern = re.compile(r"^\[(\d+)\]:\s*(\S+)", re.MULTILINE)
     for match in pattern.finditer(text):
         footnotes[match.group(1)] = match.group(2)
     return footnotes
 
 
-def filter_by_state(registry: Iterable[Agency], state: str) -> List[Agency]:
+def filter_by_state(registry: Iterable[Agency], state: str) -> list[Agency]:
     state = state.upper()
     return [agency for agency in registry if agency.state == state or agency.state == "Multi"]
 

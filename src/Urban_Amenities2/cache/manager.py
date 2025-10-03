@@ -6,7 +6,6 @@ import gzip
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -199,15 +198,15 @@ class CacheManager:
         Returns:
             Number of keys invalidated
         """
-        pattern = f"{source}:{entity_type or '*'}"
         count = 0
 
         try:
             for key in list(self.cache.iterkeys()):
-                if key.startswith(f"{source}:"):
-                    if entity_type is None or f":{entity_type}:" in key:
-                        self.cache.delete(key)
-                        count += 1
+                if key.startswith(f"{source}:") and (
+                    entity_type is None or f":{entity_type}:" in key
+                ):
+                    self.cache.delete(key)
+                    count += 1
 
             logger.info("cache_invalidated", source=source, entity_type=entity_type, count=count)
             return count

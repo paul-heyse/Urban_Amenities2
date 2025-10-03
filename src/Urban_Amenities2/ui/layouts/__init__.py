@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any
 
 from dash import Dash, dcc, html, page_container
 
@@ -24,9 +23,9 @@ def register_layouts(app: Dash, settings: UISettings) -> None:
     DATA_CONTEXT = data_context
     SETTINGS = settings
 
-    from ..components.navigation import build_sidebar
-    from ..components.header import build_header
     from ..components.footer import build_footer
+    from ..components.header import build_header
+    from ..components.navigation import build_sidebar
 
     app.layout = html.Div(
         className="app-shell",

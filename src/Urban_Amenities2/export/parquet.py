@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 
 import pandas as pd
 
@@ -23,7 +22,7 @@ def write_explainability(frame: pd.DataFrame, path: Path) -> None:
     LOGGER.info("explainability_written", path=str(path), rows=len(frame))
 
 
-def summary_statistics(frame: pd.DataFrame, score_column: str = "aucs") -> Dict[str, float]:
+def summary_statistics(frame: pd.DataFrame, score_column: str = "aucs") -> dict[str, float]:
     series = frame[score_column]
     return {
         "min": float(series.min()),

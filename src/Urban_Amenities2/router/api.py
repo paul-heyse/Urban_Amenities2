@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
@@ -12,20 +11,20 @@ from .otp import OTPClient
 
 @dataclass
 class RouteResult:
-    origin: Tuple[float, float]
-    destination: Tuple[float, float]
+    origin: tuple[float, float]
+    destination: tuple[float, float]
     mode: str
-    period: Optional[str]
+    period: str | None
     duration_min: float
-    distance_m: Optional[float]
+    distance_m: float | None
     metadata: dict
 
 
 class RoutingAPI:
     def __init__(
         self,
-        osrm_clients: Dict[str, OSRMClient],
-        otp_client: Optional[OTPClient] = None,
+        osrm_clients: dict[str, OSRMClient],
+        otp_client: OTPClient | None = None,
     ):
         self.osrm_clients = osrm_clients
         self.otp_client = otp_client
@@ -33,9 +32,9 @@ class RoutingAPI:
     def route(
         self,
         mode: str,
-        origin: Tuple[float, float],
-        destination: Tuple[float, float],
-        period: Optional[str] = None,
+        origin: tuple[float, float],
+        destination: tuple[float, float],
+        period: str | None = None,
     ) -> RouteResult:
         if mode in self.osrm_clients:
             result = self.osrm_clients[mode].route([origin, destination])
@@ -67,16 +66,16 @@ class RoutingAPI:
     def matrix(
         self,
         mode: str,
-        origins: Sequence[Tuple[float, float]],
-        destinations: Sequence[Tuple[float, float]],
-        period: Optional[str] = None,
+        origins: Sequence[tuple[float, float]],
+        destinations: Sequence[tuple[float, float]],
+        period: str | None = None,
     ) -> pd.DataFrame:
         if mode not in self.osrm_clients:
             raise ValueError("Matrix computation currently supported for OSRM-backed modes only")
         result = self.osrm_clients[mode].table(origins, destinations)
         durations = result.get("durations", []) or []
         distances = result.get("distances") or []
-        records: List[dict[str, object]] = []
+        records: list[dict[str, object]] = []
         for i, origin in enumerate(origins):
             for j, destination in enumerate(destinations):
                 duration = durations[i][j] if i < len(durations) and j < len(durations[i]) else None

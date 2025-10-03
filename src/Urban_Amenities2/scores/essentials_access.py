@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, List, Sequence
 
 import numpy as np
 import pandas as pd
@@ -36,7 +34,7 @@ class EssentialCategoryConfig:
 @dataclass
 class EssentialsAccessConfig:
     categories: Sequence[str]
-    category_params: Dict[str, EssentialCategoryConfig]
+    category_params: dict[str, EssentialCategoryConfig]
     shortfall_threshold: float = 20.0
     shortfall_penalty: float = 2.0
     shortfall_cap: float = 8.0
@@ -53,7 +51,7 @@ class EssentialsAccessConfig:
         shortfall_cap: float | None = None,
         top_k: int | None = None,
         batch_size: int | None = None,
-    ) -> "EssentialsAccessConfig":
+    ) -> EssentialsAccessConfig:
         category_cfg = params.categories
         category_list = list(categories or category_cfg.essentials)
         if not category_list:
@@ -72,7 +70,7 @@ class EssentialsAccessConfig:
                 )
             return DiversityConfig()
 
-        category_params: Dict[str, EssentialCategoryConfig] = {}
+        category_params: dict[str, EssentialCategoryConfig] = {}
         for name in category_list:
             rho = rho_map.get(name)
             if rho is None:
@@ -86,7 +84,7 @@ class EssentialsAccessConfig:
                 diversity=_diversity_for(name),
             )
 
-        kwargs: Dict[str, float | int] = {}
+        kwargs: dict[str, float | int] = {}
         if shortfall_threshold is not None:
             kwargs["shortfall_threshold"] = shortfall_threshold
         if shortfall_penalty is not None:
@@ -141,8 +139,8 @@ class EssentialsAccessCalculator:
             subtype_column="subtype",
             config=diversity_config,
         )
-        category_frames: List[pd.DataFrame] = []
-        explainability: Dict[str, Dict[str, List[dict[str, object]]]] = {hex_id: {} for hex_id in hex_ids}
+        category_frames: list[pd.DataFrame] = []
+        explainability: dict[str, dict[str, list[dict[str, object]]]] = {hex_id: {} for hex_id in hex_ids}
         batches = [hex_ids] if self.config.batch_size <= 0 else [hex_ids[i : i + self.config.batch_size] for i in range(0, len(hex_ids), self.config.batch_size)]
         for batch_index, batch_hexes in enumerate(batches, start=1):
             LOGGER.info("ea_batch", batch=batch_index, total=len(batches), size=len(batch_hexes))
@@ -204,7 +202,7 @@ class EssentialsAccessCalculator:
         ea_scores = pd.DataFrame.from_records(ea_records)
         return ea_scores, category_scores
 
-    def _extract_top(self, cat_data: pd.DataFrame, hex_id: str, category: str) -> List[dict[str, object]]:
+    def _extract_top(self, cat_data: pd.DataFrame, hex_id: str, category: str) -> list[dict[str, object]]:
         subset = cat_data[cat_data["hex_id"] == hex_id]
         if subset.empty:
             return []

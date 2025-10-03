@@ -159,8 +159,9 @@ def test_cache_clear(cache_manager):
     # Clear cache
     cache_manager.clear()
 
-    # Verify cache is empty
+    # Verify cache is empty (diskcache may not report 0 immediately after clear)
     assert cache_manager.get("wikipedia", "pageviews", "Q1") is None
     assert cache_manager.get("wikidata", "entity", "Q2") is None
-    assert cache_manager.cache.volume() == 0
+    # DiskCache clear() removes data but disk space may persist
+    assert len(list(cache_manager.cache.iterkeys())) == 0
 

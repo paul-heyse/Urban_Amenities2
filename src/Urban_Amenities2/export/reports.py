@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
 
 import pandas as pd
 
 from .parquet import summary_statistics
 
 
-def build_report(scores: pd.DataFrame, subscores: pd.DataFrame, path: Path) -> Dict[str, float]:
+def build_report(scores: pd.DataFrame, subscores: pd.DataFrame, path: Path) -> dict[str, float]:
     stats = summary_statistics(scores, score_column="aucs")
     path.parent.mkdir(parents=True, exist_ok=True)
     html = ["<html><head><title>AUCS QA Report</title></head><body>"]

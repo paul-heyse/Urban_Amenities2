@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -207,7 +207,7 @@ class LeisureCultureAccessCalculator:
         for category, group in merged.groupby(self.config.category_column):
             rho = self.config.rho_for(category)
 
-            def _aggregate(df: pd.DataFrame) -> float:
+            def _aggregate(df: pd.DataFrame, rho_value: float = rho) -> float:
                 weights = df[self.config.weight_column].to_numpy(dtype=float).clip(0.0)
                 if weights.sum() == 0:
                     return 0.0
@@ -215,11 +215,11 @@ class LeisureCultureAccessCalculator:
                 quality = df["quality_adjusted"].to_numpy(dtype=float).clip(0.0, 100.0) / 100.0
                 if np.all(quality == 0):
                     return 0.0
-                if abs(rho) < 1e-6:
+                if abs(rho_value) < 1e-6:
                     return float(np.exp(np.sum(weights * np.log(np.clip(quality, 1e-12, 1.0)))))
-                if abs(rho - 1.0) < 1e-6:
+                if abs(rho_value - 1.0) < 1e-6:
                     return float(np.sum(weights * quality))
-                return float(np.power(np.sum(weights * np.power(quality, rho)), 1.0 / rho))
+                return float(np.power(np.sum(weights * np.power(quality, rho_value)), 1.0 / rho_value))
 
             intensity = group.groupby(id_column, dropna=False).apply(_aggregate, include_groups=False)
             if intensity.empty:
@@ -227,7 +227,7 @@ class LeisureCultureAccessCalculator:
             exposure = np.maximum(intensity.to_numpy(dtype=float) * self.config.exposure_scale, 0.0)
             kappa = self.config.kappa_for(category)
             saturated = apply_satiation(exposure, kappa)
-            for hex_id, value in zip(intensity.index, saturated):
+            for hex_id, value in zip(intensity.index, saturated, strict=False):
                 scores.append({id_column: hex_id, "category": category, "score": float(np.clip(value, 0.0, 100.0))})
         if not scores:
             return pd.DataFrame({id_column: [], "category": [], "score": []})

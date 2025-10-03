@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
 
 import pandas as pd
 
@@ -10,9 +9,9 @@ from ..config.params import AUCSParams
 
 @dataclass
 class WeightConfig:
-    weights: Dict[str, float]
+    weights: dict[str, float]
 
-    def normalised(self) -> Dict[str, float]:
+    def normalised(self) -> dict[str, float]:
         total = sum(self.weights.values())
         if total == 0:
             raise ValueError("Weights must sum to a positive value")
@@ -21,7 +20,7 @@ class WeightConfig:
 
 def aggregate_scores(frame: pd.DataFrame, value_column: str, weight_config: WeightConfig) -> pd.DataFrame:
     weights = weight_config.normalised()
-    for subscore, weight in weights.items():
+    for subscore, _weight in weights.items():
         if subscore not in frame.columns:
             raise ValueError(f"Subscore {subscore} missing from frame")
     def _aggregate(row: pd.Series) -> float:

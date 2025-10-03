@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -26,7 +26,7 @@ class TransitPath:
     hex_id: str
     hub_id: str
     path_index: int
-    stops: List[str]
+    stops: list[str]
     duration_minutes: float
     transfers: int
     score: float
@@ -44,19 +44,19 @@ class TransitPathIdentifier:
         self._otp = otp_client
         self._config = config
         self._modes = list(modes or ["TRANSIT"])
-        self._cache: OrderedDict[tuple[str, str], List[TransitPath]] = OrderedDict()
+        self._cache: OrderedDict[tuple[str, str], list[TransitPath]] = OrderedDict()
 
     def identify_paths(
         self,
         hex_id: str,
         origin: tuple[float, float],
         metro: str,
-    ) -> List[TransitPath]:
+    ) -> list[TransitPath]:
         hubs = self._config.major_hubs.get(metro.lower(), [])
         if not hubs:
             LOGGER.warning("cte_no_hubs", metro=metro)
             return []
-        paths: List[TransitPath] = []
+        paths: list[TransitPath] = []
         for hub in hubs:
             key = (hex_id, hub.id)
             cached = self._cache.get(key)
@@ -83,7 +83,7 @@ class TransitPathIdentifier:
         )
         return selected
 
-    def coverage(self, hex_ids: Sequence[str], path_map: Mapping[str, List[TransitPath]]) -> float:
+    def coverage(self, hex_ids: Sequence[str], path_map: Mapping[str, list[TransitPath]]) -> float:
         if not hex_ids:
             return 0.0
         covered = sum(1 for hex_id in hex_ids if path_map.get(hex_id))
@@ -94,9 +94,9 @@ class TransitPathIdentifier:
         hex_id: str,
         hub_id: str,
         itineraries: Iterable[dict[str, object]],
-    ) -> List[TransitPath]:
-        paths: List[TransitPath] = []
-        for idx, itinerary in enumerate(itineraries):
+    ) -> list[TransitPath]:
+        paths: list[TransitPath] = []
+        for _idx, itinerary in enumerate(itineraries):
             legs = itinerary.get("legs", [])
             stops = self._extract_stops(legs)
             if len(stops) < self._config.min_stop_count:
@@ -122,8 +122,8 @@ class TransitPathIdentifier:
         return paths[: self._config.max_paths]
 
     @staticmethod
-    def _extract_stops(legs: Iterable[dict[str, object]]) -> List[str]:
-        stops: List[str] = []
+    def _extract_stops(legs: Iterable[dict[str, object]]) -> list[str]:
+        stops: list[str] = []
         for leg in legs:
             name = leg.get("from")
             if isinstance(name, dict):
@@ -138,7 +138,7 @@ class TransitPathIdentifier:
                 stops.append(str(last))
         return stops
 
-    def _store_cache(self, key: tuple[str, str], value: List[TransitPath]) -> None:
+    def _store_cache(self, key: tuple[str, str], value: list[TransitPath]) -> None:
         self._cache[key] = value
         self._cache.move_to_end(key)
         cache_size = max(self._config.cache_size, 1)
@@ -215,7 +215,8 @@ class StopBufferBuilder:
         poi_frame["geometry"] = poi_frame.apply(lambda row: Point(float(row["lon"]), float(row["lat"])), axis=1)
         poi_frame["quality"] = poi_frame.get("quality", pd.Series(50.0, index=poi_frame.index)).fillna(50.0)
 
-        transform_to_m = lambda geom: transform(self._to_m.transform, geom)
+        def transform_to_m(geom):
+            return transform(self._to_m.transform, geom)
         stops["geometry_m"] = stops["geometry"].apply(transform_to_m)
         poi_frame["geometry_m"] = poi_frame["geometry"].apply(transform_to_m)
 
@@ -223,10 +224,10 @@ class StopBufferBuilder:
         for idx, geom in enumerate(poi_frame["geometry_m"]):
             index.insert(idx, geom.bounds)
 
-        records: List[dict[str, object]] = []
+        records: list[dict[str, object]] = []
         stop_lookup = self._build_stop_lookup(stops)
         for path in paths:
-            for position, stop_name in enumerate(path.stops):
+            for _position, stop_name in enumerate(path.stops):
                 stop_record = stop_lookup.get(stop_name)
                 if stop_record is None:
                     continue
@@ -276,8 +277,8 @@ class StopBufferBuilder:
         return mapping.reset_index(drop=True)
 
     @staticmethod
-    def _build_stop_lookup(stops: pd.DataFrame) -> Dict[str, dict[str, object]]:
-        lookup: Dict[str, dict[str, object]] = {}
+    def _build_stop_lookup(stops: pd.DataFrame) -> dict[str, dict[str, object]]:
+        lookup: dict[str, dict[str, object]] = {}
         for _, row in stops.iterrows():
             stop_id = str(row.get("stop_id") or row.get("stop_name"))
             stop_name = str(row.get("stop_name") or row.get("stop_id"))
@@ -309,7 +310,7 @@ class ErrandChainScorer:
         missing = required - set(mapping.columns)
         if missing:
             raise KeyError(f"mapping dataframe missing columns: {sorted(missing)}")
-        records: List[dict[str, object]] = []
+        records: list[dict[str, object]] = []
         for (hex_id, hub_id, path_index), group in mapping.groupby(["hex_id", "hub_id", "path_index"]):
             for pair in self._config.pair_categories:
                 cat_a, cat_b = pair

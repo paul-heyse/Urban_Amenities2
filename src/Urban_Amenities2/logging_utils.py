@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import logging
 import logging.handlers
+from collections.abc import Iterable, Mapping
 from contextlib import contextmanager
-import contextvars
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 import structlog
 from structlog.typing import FilteringBoundLogger

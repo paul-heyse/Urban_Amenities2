@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
 
 import pandas as pd
 
@@ -11,7 +10,7 @@ from ...logging_utils import get_logger
 LOGGER = get_logger("aucs.ingest.education.ipeds")
 
 
-CARNEGIE_WEIGHTS: Dict[str, float] = {
+CARNEGIE_WEIGHTS: dict[str, float] = {
     "R1": 1.0,
     "R2": 0.9,
     "Doctoral": 0.8,

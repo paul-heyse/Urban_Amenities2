@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Dict, Iterable, List, Mapping, Sequence
+
 import pandas as pd
 
 from ..logging_utils import get_logger
@@ -57,7 +58,7 @@ def hex_centroid(hex_id: str) -> tuple[float, float]:
 class HexGeometryCache:
     """Cache hexagon geometries and derived attributes."""
 
-    store: Dict[str, Dict[str, object]] = field(default_factory=dict)
+    store: dict[str, dict[str, object]] = field(default_factory=dict)
 
     def ensure_geometries(self, hex_ids: Sequence[str]) -> pd.DataFrame:
         records = []
@@ -85,7 +86,7 @@ class HexGeometryCache:
             raise ValueError(msg)
 
 
-def build_hex_index(geometries: pd.DataFrame, resolution: int) -> Mapping[str, List[str]]:
+def build_hex_index(geometries: pd.DataFrame, resolution: int) -> Mapping[str, list[str]]:
     """Aggregate fine geometries into coarser resolution buckets."""
 
     h3 = __import__("h3")
@@ -94,7 +95,7 @@ def build_hex_index(geometries: pd.DataFrame, resolution: int) -> Mapping[str, L
     _require_columns = {"hex_id"}
     if not _require_columns.issubset(geometries.columns):
         raise KeyError("Geometries frame must contain hex_id column")
-    coarse_map: Dict[str, List[str]] = {}
+    coarse_map: dict[str, list[str]] = {}
     if "resolution" in geometries.columns:
         geoms = geometries[geometries["resolution"].astype(int) >= int(resolution)]
     else:
@@ -133,10 +134,10 @@ class HexSpatialIndex:
             return
         geometries = [shapely_wkt.loads(wkt) for wkt in self.geometries["geometry_wkt"]]
         self._tree = STRtree(geometries)
-        self._geom_map = dict(zip(geometries, self.geometries["hex_id"]))
+        self._geom_map = dict(zip(geometries, self.geometries["hex_id"], strict=False))
         self._box = box
 
-    def query_bbox(self, lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> List[str]:
+    def query_bbox(self, lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> list[str]:
         if getattr(self, "_tree", None) is None:
             frame = self.geometries
             mask = (
@@ -150,7 +151,7 @@ class HexSpatialIndex:
         matches = self._tree.query(envelope)
         return [self._geom_map[geom] for geom in matches]
 
-    def neighbours(self, hex_id: str, k: int = 1) -> List[str]:
+    def neighbours(self, hex_id: str, k: int = 1) -> list[str]:
         h3 = __import__("h3")
         neighbours = h3.grid_disk(hex_id, k)
         return [cell for cell in neighbours if cell in self.geometries["hex_id"].values]

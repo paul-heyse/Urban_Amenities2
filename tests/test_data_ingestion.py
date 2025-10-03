@@ -111,9 +111,13 @@ def test_gtfs_pipeline(tmp_path: Path) -> None:
     assert {"stops", "routes", "headways"}.issubset(outputs.keys())
 
     # realtime stub
-    from gtfs_realtime_bindings import feedmessage_pb2
+    from google.transit import gtfs_realtime_pb2 as feedmessage_pb2
 
     feed = feedmessage_pb2.FeedMessage()
+    # Set required header field
+    feed.header.gtfs_realtime_version = "2.0"
+    feed.header.timestamp = 1234567890
+
     entity = feed.entity.add()
     entity.id = "1"
     entity.trip_update.trip.trip_id = "T1"
@@ -169,10 +173,17 @@ def test_climate_and_parks(tmp_path: Path) -> None:
     assert "hex_id" in indexed_recreation.columns
 
 
-def test_jobs_and_education(tmp_path: Path) -> None:
+def test_jobs_and_education(tmp_path: Path, monkeypatch) -> None:
+    # Mock the LODES URL to use our test file
     lodes_csv = tmp_path / "co_wac.csv.gz"
     data = "w_geocode,C000,CNS01\n123450000001,10,10\n"
     lodes_csv.write_bytes(gzip.compress(data.encode("utf-8")))
+
+    # Monkey-patch the LODES URL template to point to local file
+    import Urban_Amenities2.io.jobs.lodes as lodes_module
+    original_url = lodes_module.LODES_URL_TEMPLATE
+    monkeypatch.setattr(lodes_module, "LODES_URL_TEMPLATE", str(lodes_csv))
+
     config = LODESConfig(states=["co"])
     ingestor = LODESIngestor(config, registry=SnapshotRegistry(tmp_path / "snap.jsonl"))
     frame = ingestor.fetch_state("co")
@@ -180,6 +191,9 @@ def test_jobs_and_education(tmp_path: Path) -> None:
     geocoded = ingestor.geocode_blocks(frame, geocodes)
     allocated = ingestor.allocate_to_hex(geocoded)
     assert "hex_id" in allocated.columns
+
+    # Restore original
+    monkeypatch.setattr(lodes_module, "LODES_URL_TEMPLATE", original_url)
 
     public = pd.DataFrame({"NCESSCH": ["1"], "SCH_NAME": ["School"], "LAT": [39.0], "LON": [-104.0], "LEVEL": ["High"], "ENR_TOTAL": [100], "TOTFTE": [10]})
     private = pd.DataFrame({"NCESSCH": ["2"], "SCH_NAME": ["Private"], "LAT": [39.1], "LON": [-104.1], "LEVEL": ["High"], "ENR_TOTAL": [50], "TOTFTE": [5]})
