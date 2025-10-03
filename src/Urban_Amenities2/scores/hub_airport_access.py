@@ -11,35 +11,40 @@ from ..logging_utils import get_logger
 
 LOGGER = get_logger("aucs.scores.muhaa")
 
+_DEFAULT_POP_WEIGHT = 0.4
+_DEFAULT_GDP_WEIGHT = 0.3
+_DEFAULT_POI_WEIGHT = 0.2
+_DEFAULT_CULTURE_WEIGHT = 0.1
+
 
 def _minmax(series: pd.Series) -> pd.Series:
     if series.empty:
-        return series
+        return pd.Series(dtype=float, index=series.index)
     lo = series.min()
     hi = series.max()
     if np.isclose(hi, lo):
-        return pd.Series(np.full(len(series), 100.0), index=series.index)
-    scaled = (series - lo) / (hi - lo)
+        return pd.Series(np.full(len(series), 100.0, dtype=float), index=series.index)
+    scaled = (series.astype(float) - float(lo)) / (float(hi) - float(lo))
     return scaled * 100.0
 
 
 @dataclass(slots=True)
 class HubMassWeights:
-    population: float = 0.4
-    gdp: float = 0.3
-    poi: float = 0.2
-    culture: float = 0.1
+    population: float = _DEFAULT_POP_WEIGHT
+    gdp: float = _DEFAULT_GDP_WEIGHT
+    poi: float = _DEFAULT_POI_WEIGHT
+    culture: float = _DEFAULT_CULTURE_WEIGHT
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, float]) -> HubMassWeights:
         return cls(
-            population=float(mapping.get("population", cls.population)),
-            gdp=float(mapping.get("gdp", cls.gdp)),
-            poi=float(mapping.get("poi", cls.poi)),
-            culture=float(mapping.get("culture", cls.culture)),
+            population=float(mapping.get("population", _DEFAULT_POP_WEIGHT)),
+            gdp=float(mapping.get("gdp", _DEFAULT_GDP_WEIGHT)),
+            poi=float(mapping.get("poi", _DEFAULT_POI_WEIGHT)),
+            culture=float(mapping.get("culture", _DEFAULT_CULTURE_WEIGHT)),
         )
 
-    def normalised(self) -> Mapping[str, float]:
+    def normalised(self) -> dict[str, float]:
         weights = {
             "population": self.population,
             "gdp": self.gdp,
@@ -101,11 +106,11 @@ def compute_hub_mass(hubs: pd.DataFrame, weights: HubMassWeights) -> pd.DataFram
         raise KeyError(f"hubs dataframe missing columns: {sorted(missing)}")
     hubs = hubs.copy()
     for column in ("population", "gdp", "poi", "culture"):
-        hubs[f"{column}_scaled"] = _minmax(hubs[column].astype(float))
+        hubs[f"{column}_scaled"] = _minmax(pd.to_numeric(hubs[column], errors="coerce").fillna(0.0))
     weights_norm = weights.normalised()
     hubs["mass"] = sum(hubs[f"{column}_scaled"] * weight for column, weight in weights_norm.items())
     LOGGER.info("hub_mass", hubs=len(hubs))
-    return hubs[["hub_id", "mass"]]
+    return hubs[["hub_id", "mass"]].assign(mass=lambda frame: frame["mass"].astype(float))
 
 
 def _generalised_cost(row: pd.Series, config: AccessibilityConfig) -> float:
@@ -125,10 +130,14 @@ def compute_accessibility(
     merged = travel.merge(masses, left_on=config.destination_column, right_on="hub_id", how="left")
     merged = merged.dropna(subset=["mass"])
     if merged.empty:
-        return pd.DataFrame({config.id_column: [], "accessibility": []})
+        return pd.DataFrame({config.id_column: pd.Series(dtype=str), "accessibility": pd.Series(dtype=float)})
+    merged[config.travel_time_column] = pd.to_numeric(merged[config.travel_time_column], errors="coerce").fillna(0.0)
+    if config.impedance_column and config.impedance_column in merged.columns:
+        merged[config.impedance_column] = pd.to_numeric(merged[config.impedance_column], errors="coerce").fillna(0.0)
+    merged["mass"] = pd.to_numeric(merged["mass"], errors="coerce").fillna(0.0)
     merged["gtc"] = merged.apply(lambda row: _generalised_cost(row, config), axis=1)
     merged["contribution"] = merged["mass"] * np.exp(-alpha * merged["gtc"])
-    aggregated = merged.groupby(config.id_column)["contribution"].sum().reset_index()
+    aggregated = merged.groupby(config.id_column, as_index=False)["contribution"].sum()
     aggregated.rename(columns={"contribution": "accessibility"}, inplace=True)
     aggregated["accessibility"] = _minmax(aggregated["accessibility"])
     return aggregated
@@ -147,15 +156,15 @@ def compute_airport_accessibility(
     if missing:
         raise KeyError(f"airports dataframe missing columns: {sorted(missing)}")
     airports = airports.copy()
-    airports["mass"] = _minmax(airports["enplanements"].astype(float))
+    airports["mass"] = _minmax(pd.to_numeric(airports["enplanements"], errors="coerce").fillna(0.0))
     if airport_weights:
+        weights_lookup = {str(key): float(value) for key, value in airport_weights.items()}
+
         def _lookup(airport_id: str) -> float:
             key = str(airport_id)
-            return float(
-                airport_weights.get(key, airport_weights.get(key.upper(), airport_weights.get(key.lower(), 1.0)))
-            )
+            return weights_lookup.get(key, weights_lookup.get(key.upper(), weights_lookup.get(key.lower(), 1.0)))
 
-        airports["mass"] = airports.apply(lambda row: row["mass"] * _lookup(row["airport_id"]), axis=1)
+        airports["mass"] = airports.apply(lambda row: row["mass"] * float(_lookup(row["airport_id"])), axis=1)
         airports["mass"] = _minmax(airports["mass"])
     airports.rename(columns={"airport_id": "hub_id"}, inplace=True)
     return compute_accessibility(travel, airports[["hub_id", "mass"]], config=config, alpha=alpha)

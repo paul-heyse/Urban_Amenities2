@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 def compute_kappa_from_anchor(target_score: float, target_value: float) -> float:
@@ -8,16 +9,21 @@ def compute_kappa_from_anchor(target_score: float, target_value: float) -> float
         raise ValueError("target_value must be positive")
     if not (0 < target_score < 100):
         raise ValueError("target_score must be between 0 and 100")
-    return -np.log(1 - target_score / 100.0) / target_value
+    result = -np.log(1 - target_score / 100.0) / target_value
+    return float(result)
 
 
-def apply_satiation(values: np.ndarray, kappa: np.ndarray | float) -> np.ndarray:
-    values = np.asarray(values, dtype=float)
-    kappa = np.asarray(kappa, dtype=float)
-    if np.any(kappa <= 0):
+def apply_satiation(
+    values: NDArray[np.float64] | float,
+    kappa: NDArray[np.float64] | float,
+) -> NDArray[np.float64]:
+    values_array = np.asarray(values, dtype=float)
+    kappa_array = np.asarray(kappa, dtype=float)
+    if np.any(kappa_array <= 0):
         raise ValueError("kappa must be positive")
-    scores = 100.0 * (1.0 - np.exp(-kappa * values))
-    return np.clip(scores, 0.0, 100.0)
+    scores = 100.0 * (1.0 - np.exp(-kappa_array * values_array))
+    clipped = np.clip(scores, 0.0, 100.0)
+    return np.asarray(clipped, dtype=float)
 
 
 def resolve_kappa(

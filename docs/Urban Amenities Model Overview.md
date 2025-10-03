@@ -197,6 +197,7 @@ Below is an opinionated stack that balances performance, stability, and ecosyste
   * Scale/clip z‑scores (capacity, size, popularity) with **numpy/scipy**.
   * **Wikidata/Wikipedia** enrichment using **SPARQLWrapper/qwikidata** and **requests** (pageviews).
   * Brand de‑duplication kernel (distance‑weighted) with **numpy**.
+  * **Typing note:** Scoring math/dedupe helpers now emit `NDArray[np.float64]`; reuse `_safe_float`/`_safe_int` adapters when normalising OTP itineraries so `mypy src/Urban_Amenities2/scores --warn-unused-ignores` stays green.
 
 * Compute **within‑category diversity** (Shannon/Hill) for each hex using **numpy** on `Q`‑weighted shares.
 

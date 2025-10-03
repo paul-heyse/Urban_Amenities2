@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from math import exp
 
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 from rapidfuzz import fuzz
 
@@ -21,11 +22,18 @@ class DedupeConfig:
     distance_overrides: dict[str, float] | None = None
 
 
-def ensure_hex_index(frame: pd.DataFrame, lat_col: str = "lat", lon_col: str = "lon", hex_col: str = "hex_id") -> pd.DataFrame:
+def ensure_hex_index(
+    frame: pd.DataFrame,
+    lat_col: str = "lat",
+    lon_col: str = "lon",
+    hex_col: str = "hex_id",
+) -> pd.DataFrame:
     if hex_col in frame.columns:
         return frame
     assigned = frame.copy()
-    assigned[hex_col] = [latlon_to_hex(row[lat_col], row[lon_col]) for _, row in frame.iterrows()]
+    assigned[hex_col] = [
+        latlon_to_hex(float(row[lat_col]), float(row[lon_col])) for _, row in frame.iterrows()
+    ]
     return assigned
 
 
@@ -45,17 +53,21 @@ def deduplicate_pois(
     frame = ensure_hex_index(frame, lat_col=lat_col, lon_col=lon_col, hex_col=hex_col)
     frame = frame.copy()
 
-    weights = np.ones(len(frame), dtype=float)
+    weights: NDArray[np.float64] = np.ones(len(frame), dtype=float)
     drop_indices: set[int] = set()
 
     grouped = frame.reset_index().groupby([hex_col, brand_col], dropna=True)
     for (_, brand), group in grouped:
         if not brand or len(group) == 1:
             continue
-        indices = group["index"].to_numpy()
+        indices = group["index"].to_numpy(dtype=int)
         coords = group[[lat_col, lon_col]].to_numpy(dtype=float)
         distances = _pairwise_distance(coords)
-        base_idx = np.argsort(-group.get(confidence_col, pd.Series(np.ones(len(group)))).to_numpy())
+        confidences = group.get(
+            confidence_col,
+            pd.Series(np.ones(len(group), dtype=float), index=group.index),
+        ).astype(float)
+        base_idx = np.argsort(-confidences.to_numpy(dtype=float))
         for order_position, idx_pos in enumerate(base_idx):
             idx = indices[idx_pos]
             if idx in drop_indices:
@@ -75,10 +87,20 @@ def deduplicate_pois(
     for _hex_value, group in frame.reset_index().groupby(hex_col):
         coords = group[[lat_col, lon_col]].to_numpy(dtype=float)
         distances = _pairwise_distance(coords)
-        names = group[name_col].fillna("").to_list()
-        categories = group.get(category_col, pd.Series([None] * len(group))).to_list()
-        confidences = group.get(confidence_col, pd.Series(np.ones(len(group)))).to_numpy(dtype=float)
-        indices = group["index"].to_numpy()
+        names = group[name_col].fillna("").astype(str).to_list()
+        categories_series = group.get(
+            category_col,
+            pd.Series([None] * len(group), index=group.index),
+        )
+        categories = [
+            value if isinstance(value, str) and value else None
+            for value in categories_series.to_list()
+        ]
+        confidences = group.get(
+            confidence_col,
+            pd.Series(np.ones(len(group), dtype=float), index=group.index),
+        ).to_numpy(dtype=float)
+        indices = group["index"].to_numpy(dtype=int)
         for i in range(len(group)):
             if indices[i] in drop_indices:
                 continue
@@ -108,16 +130,16 @@ def _resolve_threshold(config: DedupeConfig, category: str | None) -> float:
     return config.name_distance_m
 
 
-def _pairwise_distance(coords: np.ndarray) -> np.ndarray:
-    if len(coords) == 0:
-        return np.zeros((0, 0))
+def _pairwise_distance(coords: NDArray[np.float64]) -> NDArray[np.float64]:
+    if coords.size == 0:
+        return np.zeros((0, 0), dtype=float)
     lat = np.radians(coords[:, 0])
     lon = np.radians(coords[:, 1])
-    sin_lat = np.sin(lat[:, None] - lat[None, :]) / 2
-    sin_lon = np.sin(lon[:, None] - lon[None, :]) / 2
+    sin_lat = np.sin((lat[:, None] - lat[None, :]) / 2.0)
+    sin_lon = np.sin((lon[:, None] - lon[None, :]) / 2.0)
     a = sin_lat**2 + np.cos(lat)[:, None] * np.cos(lat)[None, :] * sin_lon**2
     distances = 2 * EARTH_RADIUS_M * np.arcsin(np.clip(np.sqrt(a), 0, 1))
-    return distances
+    return np.asarray(distances, dtype=float)
 
 
 __all__ = ["DedupeConfig", "deduplicate_pois", "ensure_hex_index"]

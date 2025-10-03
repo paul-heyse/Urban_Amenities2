@@ -1,0 +1,2199 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/docs/Urban Amenities Model Overview.md b/docs/Urban Amenities Model Overview.md
+index 5170aadc87cfed9ca69b088ca660b9c88a9a057f..c3ab1e86592519f73f1cc79aadaa04b6d12f876f 100644
+--- a/docs/Urban Amenities Model Overview.md
++++ b/docs/Urban Amenities Model Overview.md
+@@ -175,50 +175,51 @@ Below is an opinionated stack that balances performance, stability, and ecosyste
+ * Build **OTP2** graph (CLI/JVM). From Python, use **gql/httpx** to hit the Transmodel GraphQL endpoint.
+ * Provide a **router client** module that normalizes outputs into a single schema:
+
+   ```text
+   origin_hex | dest_id | mode | period | duration_min | access_walk_min |
+   ivt_min | wait_min | transfers | fare_usd | ok
+   ```
+
+ ### 4.4 Travel-time matrices & nested logsum
+
+ * Fetch **many‑to‑many matrices** (OSRM `/table`) for walk/bike/drive.
+ * Batch OTP2 **trip plans** by OD hex cluster to compute transit generalized times.
+ * Implement the generalized cost and nested logsum kernels in **numpy** (JIT with **numba**), ensuring:
+
+   * Stable **log‑sum‑exp** trick to avoid overflow.
+   * Vectors per mode/time slice for (\theta), (\delta), (\rho), and (\text{VOT}).
+   * Return the final (w_{i,a} = \sum_\tau w_\tau \exp(W_{i,a,\tau})).
+
+ ### 4.5 Amenity quality, diversity & novelty
+
+ * Compute (Q_a) by category:
+
+   * Scale/clip z‑scores (capacity, size, popularity) with **numpy/scipy**.
+   * **Wikidata/Wikipedia** enrichment using **SPARQLWrapper/qwikidata** and **requests** (pageviews).
+   * Brand de‑duplication kernel (distance‑weighted) with **numpy**.
++  * **Typing note:** Scoring math/dedupe helpers now emit `NDArray[np.float64]`; reuse `_safe_float`/`_safe_int` adapters when normalising OTP itineraries so `mypy src/Urban_Amenities2/scores --warn-unused-ignores` stays green.
+
+ * Compute **within‑category diversity** (Shannon/Hill) for each hex using **numpy** on `Q`‑weighted shares.
+
+ ### 4.6 Category CES & satiation
+
+ * Implement **CES** aggregator and **satiation** curve in a vectorized kernel; JIT with **numba** if needed.
+ * Use **pandera** checks to assert monotonicity and range.
+
+ ### 4.7 Subscores
+
+ * **EA/LCA**: apply category rules; for LCA compute CES+satiation per leisure category (restaurants, cafes, bars, cinemas, performing arts, museums/galleries, parks/trails, sports/rec), apply Wikipedia novelty bonus, then cross-category CES using parameters from `params.leisure_cross_category`.
+ * **MUHAA**: build **hub mass** table (BEA/Census + POI + culture) weighted by `params.hubs_airports.hub_mass_weights`; decay by generalized travel cost using mode-best times; weight airports by enplanements × airport-specific multipliers and combine hub/airport access using configurable contributions.
+ * **JEA**: load LODES with **duckdb**, aggregate by hex, then gravity via (w_{i,\text{block}}) matrices.
+ * **MORR**: poll GTFS‑RT with **httpx** for on-time reliability (fallback to schedules when GTFS-RT missing); compute frequency/share of frequent stops, span coverage, redundancy, and micromobility density; aggregate with weights from `params.morr`.
+ * **CTE**: build top 2 paths using OTP2; buffer stops (Shapely), collect corridor POIs, compute small‑detour utility.
+ * **SOU**: compute a base parks/trails accessibility score by applying CES + satiation to weighted park quality (area, amenities, designation) using travel-time weights, then compute (\sigma_{\text{out}}) per time slice from **NOAA** monthly normals and multiply the parks score; log join timings and capture metrics for QA.
+
+ ### 4.8 Normalization & AUCS
+
+ * Use metro‑relative percentiles (5th–95th) computed in **duckdb** to map raw subscores to 0–100.
+ * Compose **AUCS** with the weight vector from the params.
+ * Persist: `aucs.parquet` (hex → all subscores + AUCS + top contributors JSON).
+
+ ### 4.9 Explainability
+
+diff --git a/openspec/changes/update-scoring-type-safety/tasks.md b/openspec/changes/update-scoring-type-safety/tasks.md
+index 49aad115d4d0a895d94f363361eeb2b16ccdf597..a707e5813e9d388771c2085805a98cbe4eae959c 100644
+--- a/openspec/changes/update-scoring-type-safety/tasks.md
++++ b/openspec/changes/update-scoring-type-safety/tasks.md
+@@ -1,7 +1,7 @@
+ ## 1. Scoring pipeline typing
+-- [ ] 1.1 Introduce `numpy.typing.NDArray` helpers for corridor/seasonal scoring math (`math/ces.py`, `quality/dedupe.py`, `dedupe/pois.py`).
+-- [ ] 1.2 Rework corridor enrichment + seasonal outdoors to operate on typed DataFrames/Series and shapely geometries with explicit return types.
+-- [ ] 1.3 Resolve hub/airport and essentials access typing (slots, config constructors, dictionary lookups) to satisfy mypy.
+-- [ ] 1.4 Update quality scoring selectors to avoid ambiguous unions and ensure typed returns.
+-- [ ] 1.5 Add targeted tests (unit/property) verifying typed refactors keep numeric outputs stable.
+-- [ ] 1.6 Run `mypy src/Urban_Amenities2/scores src/Urban_Amenities2/quality src/Urban_Amenities2/dedupe src/Urban_Amenities2/math --warn-unused-ignores` and document new typing patterns.
++- [x] 1.1 Introduce `numpy.typing.NDArray` helpers for corridor/seasonal scoring math (`math/ces.py`, `quality/dedupe.py`, `dedupe/pois.py`).
++- [x] 1.2 Rework corridor enrichment + seasonal outdoors to operate on typed DataFrames/Series and shapely geometries with explicit return types.
++- [x] 1.3 Resolve hub/airport and essentials access typing (slots, config constructors, dictionary lookups) to satisfy mypy.
++- [x] 1.4 Update quality scoring selectors to avoid ambiguous unions and ensure typed returns.
++- [x] 1.5 Add targeted tests (unit/property) verifying typed refactors keep numeric outputs stable.
++- [x] 1.6 Run `mypy src/Urban_Amenities2/scores src/Urban_Amenities2/quality src/Urban_Amenities2/dedupe src/Urban_Amenities2/math --warn-unused-ignores` and document new typing patterns.
+diff --git a/pyproject.toml b/pyproject.toml
+index 24eae025594c5424cc017db3fa2b705f192a5b19..fa338fa70d6f69ff707c83f5315776e05a16ab6f 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -181,30 +181,43 @@ source = [
+   "Urban_Amenities2.utils",
+   "Urban_Amenities2.accessibility",
+ ]
+ omit = ["*/tests/*", "*/test_*.py"]
+ branch = true
+
+ [tool.coverage.report]
+ exclude_lines = [
+   "pragma: no cover",
+   "def __repr__",
+   "raise AssertionError",
+   "raise NotImplementedError",
+   "if __name__ == .__main__.:",
+   "if TYPE_CHECKING:",
+ ]
+ fail_under = 95
+
+ [tool.mypy]
+ python_version = "3.12"
+ strict = true
+ warn_return_any = true
+ warn_unused_configs = true
+ disallow_untyped_defs = false  # Allow gradual typing
+ plugins = ["pydantic.mypy"]
+
++[[tool.mypy.overrides]]
++module = [
++    "pandas",
++    "pandas.*",
++    "shapely",
++    "shapely.*",
++    "rtree",
++    "rtree.*",
++    "numba",
++    "numba.*",
++]
++ignore_missing_imports = true
++
+ [tool.pydantic-mypy]
+ init_forbid_extra = true
+ init_typed = true
+ warn_required_dynamic_aliases = true
+
+diff --git a/src/Urban_Amenities2/dedupe/pois.py b/src/Urban_Amenities2/dedupe/pois.py
+index 5547bdde160881171fa29ef6281ca3edc432e4c9..5f40bc5b76e41e4f9f040091379595e95a301fc0 100644
+--- a/src/Urban_Amenities2/dedupe/pois.py
++++ b/src/Urban_Amenities2/dedupe/pois.py
+@@ -1,123 +1,145 @@
+ from __future__ import annotations
+
+ from dataclasses import dataclass
+ from math import exp
+
+ import numpy as np
++from numpy.typing import NDArray
+ import pandas as pd
+ from rapidfuzz import fuzz
+
+ from ..hex.core import latlon_to_hex
+
+ EARTH_RADIUS_M = 6_371_000.0
+
+
+ @dataclass
+ class DedupeConfig:
+     brand_distance_m: float = 50.0
+     name_distance_m: float = 25.0
+     name_similarity: float = 0.85
+     beta_per_km: float = 3.0
+     distance_overrides: dict[str, float] | None = None
+
+
+-def ensure_hex_index(frame: pd.DataFrame, lat_col: str = "lat", lon_col: str = "lon", hex_col: str = "hex_id") -> pd.DataFrame:
++def ensure_hex_index(
++    frame: pd.DataFrame,
++    lat_col: str = "lat",
++    lon_col: str = "lon",
++    hex_col: str = "hex_id",
++) -> pd.DataFrame:
+     if hex_col in frame.columns:
+         return frame
+     assigned = frame.copy()
+-    assigned[hex_col] = [latlon_to_hex(row[lat_col], row[lon_col]) for _, row in frame.iterrows()]
++    assigned[hex_col] = [
++        latlon_to_hex(float(row[lat_col]), float(row[lon_col])) for _, row in frame.iterrows()
++    ]
+     return assigned
+
+
+ def deduplicate_pois(
+     frame: pd.DataFrame,
+     config: DedupeConfig | None = None,
+     brand_col: str = "brand",
+     name_col: str = "name",
+     hex_col: str = "hex_id",
+     lat_col: str = "lat",
+     lon_col: str = "lon",
+     category_col: str = "aucstype",
+     confidence_col: str = "confidence",
+ ) -> pd.DataFrame:
+     if config is None:
+         config = DedupeConfig()
+     frame = ensure_hex_index(frame, lat_col=lat_col, lon_col=lon_col, hex_col=hex_col)
+     frame = frame.copy()
+
+-    weights = np.ones(len(frame), dtype=float)
++    weights: NDArray[np.float64] = np.ones(len(frame), dtype=float)
+     drop_indices: set[int] = set()
+
+     grouped = frame.reset_index().groupby([hex_col, brand_col], dropna=True)
+     for (_, brand), group in grouped:
+         if not brand or len(group) == 1:
+             continue
+-        indices = group["index"].to_numpy()
++        indices = group["index"].to_numpy(dtype=int)
+         coords = group[[lat_col, lon_col]].to_numpy(dtype=float)
+         distances = _pairwise_distance(coords)
+-        base_idx = np.argsort(-group.get(confidence_col, pd.Series(np.ones(len(group)))).to_numpy())
++        confidences = group.get(
++            confidence_col,
++            pd.Series(np.ones(len(group), dtype=float), index=group.index),
++        ).astype(float)
++        base_idx = np.argsort(-confidences.to_numpy(dtype=float))
+         for order_position, idx_pos in enumerate(base_idx):
+             idx = indices[idx_pos]
+             if idx in drop_indices:
+                 continue
+             close_mask = (distances[idx_pos] <= config.brand_distance_m) & (distances[idx_pos] > 0)
+             neighbours = np.where(close_mask)[0]
+             contribution = 0.0
+             for neighbour in neighbours:
+                 neighbour_idx = indices[neighbour]
+                 if neighbour_idx == idx:
+                     continue
+                 contribution += exp(-config.beta_per_km * (distances[idx_pos, neighbour] / 1000.0))
+                 if neighbour not in base_idx[: order_position + 1]:
+                     drop_indices.add(neighbour_idx)
+             weights[idx] = 1.0 / (1.0 + contribution)
+
+     for _hex_value, group in frame.reset_index().groupby(hex_col):
+         coords = group[[lat_col, lon_col]].to_numpy(dtype=float)
+         distances = _pairwise_distance(coords)
+-        names = group[name_col].fillna("").to_list()
+-        categories = group.get(category_col, pd.Series([None] * len(group))).to_list()
+-        confidences = group.get(confidence_col, pd.Series(np.ones(len(group)))).to_numpy(dtype=float)
+-        indices = group["index"].to_numpy()
++        names = group[name_col].fillna("").astype(str).to_list()
++        categories_series = group.get(
++            category_col,
++            pd.Series([None] * len(group), index=group.index),
++        )
++        categories = [
++            value if isinstance(value, str) and value else None
++            for value in categories_series.to_list()
++        ]
++        confidences = group.get(
++            confidence_col,
++            pd.Series(np.ones(len(group), dtype=float), index=group.index),
++        ).to_numpy(dtype=float)
++        indices = group["index"].to_numpy(dtype=int)
+         for i in range(len(group)):
+             if indices[i] in drop_indices:
+                 continue
+             for j in range(i + 1, len(group)):
+                 if indices[j] in drop_indices:
+                     continue
+                 category = categories[i] or categories[j]
+                 threshold = _resolve_threshold(config, category)
+                 if distances[i, j] > threshold:
+                     continue
+                 similarity = fuzz.token_sort_ratio(names[i], names[j]) / 100.0
+                 if similarity < config.name_similarity:
+                     continue
+                 if confidences[i] >= confidences[j]:
+                     drop_indices.add(indices[j])
+                 else:
+                     drop_indices.add(indices[i])
+
+     deduped = frame.drop(index=list(drop_indices))
+     deduped = deduped.assign(dedupe_weight=[weights[idx] for idx in deduped.index])
+     return deduped
+
+
+ def _resolve_threshold(config: DedupeConfig, category: str | None) -> float:
+     if config.distance_overrides and category and category in config.distance_overrides:
+         return config.distance_overrides[category]
+     return config.name_distance_m
+
+
+-def _pairwise_distance(coords: np.ndarray) -> np.ndarray:
+-    if len(coords) == 0:
+-        return np.zeros((0, 0))
++def _pairwise_distance(coords: NDArray[np.float64]) -> NDArray[np.float64]:
++    if coords.size == 0:
++        return np.zeros((0, 0), dtype=float)
+     lat = np.radians(coords[:, 0])
+     lon = np.radians(coords[:, 1])
+-    sin_lat = np.sin(lat[:, None] - lat[None, :]) / 2
+-    sin_lon = np.sin(lon[:, None] - lon[None, :]) / 2
++    sin_lat = np.sin((lat[:, None] - lat[None, :]) / 2.0)
++    sin_lon = np.sin((lon[:, None] - lon[None, :]) / 2.0)
+     a = sin_lat**2 + np.cos(lat)[:, None] * np.cos(lat)[None, :] * sin_lon**2
+     distances = 2 * EARTH_RADIUS_M * np.arcsin(np.clip(np.sqrt(a), 0, 1))
+-    return distances
++    return np.asarray(distances, dtype=float)
+
+
+ __all__ = ["DedupeConfig", "deduplicate_pois", "ensure_hex_index"]
+diff --git a/src/Urban_Amenities2/math/ces.py b/src/Urban_Amenities2/math/ces.py
+index 97a5af8eae04126d987df5b61df9cf860c50b4e9..21ab821db5c0a8d7bfa943d29e21713a0c1c1fc3 100644
+--- a/src/Urban_Amenities2/math/ces.py
++++ b/src/Urban_Amenities2/math/ces.py
+@@ -1,72 +1,106 @@
+ from __future__ import annotations
+
++from collections.abc import Callable, Sequence
++from typing import TYPE_CHECKING, TypeVar, cast
++
+ import numpy as np
+-from numba import njit
++from numpy.typing import NDArray
++
++if TYPE_CHECKING:  # pragma: no cover - typing helper for numba decorator
++    _F = TypeVar("_F", bound=Callable[..., NDArray[np.float64]])
++
++    def njit(*args: object, **kwargs: object) -> Callable[[_F], _F]:
++        ...
++
++else:
++    from numba import njit  # type: ignore[import-untyped]
+
+ from ..logging_utils import get_logger
+
+ LOGGER = get_logger("aucs.math.ces")
+ EPSILON = 1e-12
+ _LINEAR_TOL = 1e-6
+ _GEOMETRIC_TOL = 1e-6
+
+
+-def _validate_inputs(quality: np.ndarray, accessibility: np.ndarray, rho: float) -> tuple[np.ndarray, np.ndarray]:
+-    quality = np.asarray(quality, dtype=float)
+-    accessibility = np.asarray(accessibility, dtype=float)
+-    if quality.shape != accessibility.shape:
++def _validate_inputs(
++    quality: NDArray[np.float64] | float | Sequence[float],
++    accessibility: NDArray[np.float64] | float | Sequence[float],
++    rho: float,
++) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
++    quality_array = np.asarray(quality, dtype=float)
++    accessibility_array = np.asarray(accessibility, dtype=float)
++    quality_typed: NDArray[np.float64] = quality_array
++    accessibility_typed: NDArray[np.float64] = accessibility_array
++    if quality_array.shape != accessibility_array.shape:
+         raise ValueError("quality and accessibility arrays must have the same shape")
+     if not np.isfinite(rho):
+         raise ValueError("rho must be finite")
+     if rho > 1.0:
+         raise ValueError("rho must be less than or equal to 1 for CES aggregation")
+-    return quality, accessibility
++    return quality_typed, accessibility_typed
+
+
+ @njit(cache=True)
+-def compute_z(quality: np.ndarray, accessibility: np.ndarray, rho: float) -> np.ndarray:
+-    product = np.maximum(quality * accessibility, 0.0)
++def compute_z(
++    quality: NDArray[np.float64],
++    accessibility: NDArray[np.float64],
++    rho: float,
++) -> NDArray[np.float64]:
++    product: NDArray[np.float64] = np.asarray(
++        np.maximum(quality * accessibility, 0.0), dtype=float
++    )
+     if abs(rho - 1.0) < _LINEAR_TOL:
+         return product
+-    return np.power(np.clip(product, 0.0, None), rho)
++    powered: NDArray[np.float64] = np.asarray(
++        np.power(np.clip(product, 0.0, None), rho), dtype=float
++    )
++    return powered
+
+
+-def _geometric_mean(product: np.ndarray, axis: int) -> np.ndarray:
++def _geometric_mean(product: NDArray[np.float64], axis: int) -> NDArray[np.float64]:
+     log_values = np.log(np.clip(product, EPSILON, None))
+-    return np.exp(log_values.mean(axis=axis))
++    return np.asarray(np.exp(log_values.mean(axis=axis)), dtype=float)
+
+
+-def ces_aggregate(quality: np.ndarray, accessibility: np.ndarray, rho: float, axis: int = -1) -> np.ndarray:
+-    quality, accessibility = _validate_inputs(quality, accessibility, rho)
+-    if quality.size == 0:
+-        shape = list(quality.shape)
++def ces_aggregate(
++    quality: NDArray[np.float64] | Sequence[float],
++    accessibility: NDArray[np.float64] | Sequence[float],
++    rho: float,
++    axis: int = -1,
++) -> NDArray[np.float64]:
++    quality_array, accessibility_array = _validate_inputs(quality, accessibility, rho)
++    if quality_array.size == 0:
++        shape = list(quality_array.shape)
+         if axis < 0:
+-            axis = quality.ndim + axis
+-        shape.pop(axis)
+-        return np.zeros(shape, dtype=float)
++            axis = quality_array.ndim + axis
++        if 0 <= axis < len(shape):
++            shape.pop(axis)
++        empty = np.zeros(shape, dtype=float)
++        return empty
+
+-    product = quality * accessibility
++    product = quality_array * accessibility_array
+     if abs(rho) < _GEOMETRIC_TOL:
+         result = _geometric_mean(product, axis)
+     elif abs(rho - 1.0) < _LINEAR_TOL:
+         result = np.sum(product, axis=axis)
+     else:
+-        z = compute_z(quality, accessibility, rho)
++        z = compute_z(quality_array, accessibility_array, rho)
+         summed = np.sum(z, axis=axis)
+         with np.errstate(divide="ignore", invalid="ignore"):
+             result = np.power(np.clip(summed, 0.0, None), 1.0 / rho)
+         result = np.where(np.isfinite(result), result, 0.0)
+
+     LOGGER.debug(
+         "ces_aggregate",
+         rho=float(rho),
+         count=int(product.size),
+         axis=axis,
+         min=float(np.min(result)),
+         max=float(np.max(result)),
+         mean=float(np.mean(result)) if result.size else 0.0,
+     )
+-    return result
++    return np.asarray(result, dtype=float)
+
+
+ __all__ = ["ces_aggregate", "compute_z"]
+diff --git a/src/Urban_Amenities2/math/diversity.py b/src/Urban_Amenities2/math/diversity.py
+index 1dba1609e2c281d77bcef7151b3c0d4e5f915bed..22f5d1b5e18ee33ebe91e706d3b957466f039c1f 100644
+--- a/src/Urban_Amenities2/math/diversity.py
++++ b/src/Urban_Amenities2/math/diversity.py
+@@ -1,83 +1,89 @@
+ from __future__ import annotations
+
+ import math
+ from collections.abc import Iterable, Sequence
++from collections.abc import Iterable, Sequence
+ from dataclasses import dataclass
++import math
+
+ import numpy as np
++from numpy.typing import NDArray
+ import pandas as pd
+
+
+ @dataclass(slots=True)
+ class DiversityConfig:
+     """Configuration for within-category diversity bonuses."""
+
+     weight: float = 0.2
+     min_multiplier: float = 1.0
+     max_multiplier: float = 1.2
+     cap: float | None = None
+
+     def __post_init__(self) -> None:
+         if self.weight < 0:
+             raise ValueError("diversity weight must be non-negative")
+         if self.min_multiplier <= 0:
+             raise ValueError("min_multiplier must be positive")
+         if self.max_multiplier < self.min_multiplier:
+             raise ValueError("max_multiplier must be >= min_multiplier")
+         if self.cap is not None:
+             if self.cap < 0:
+                 raise ValueError("cap must be non-negative")
+             self.max_multiplier = min(self.max_multiplier, self.min_multiplier + self.cap)
+
+
+-def shannon_entropy(values: Sequence[float]) -> float:
++def shannon_entropy(values: Sequence[float] | NDArray[np.float64]) -> float:
+     """Return Shannon entropy for a sequence of non-negative values."""
+
+     array = np.asarray(values, dtype=float)
+     positive = array[array > 0]
+     if positive.size == 0:
+         return 0.0
+     total = positive.sum()
+     probabilities = positive / total
+     entropy = -float(np.sum(probabilities * np.log(probabilities)))
+     return max(entropy, 0.0)
+
+
+-def _normalised_entropy(values: Sequence[float]) -> float:
++def _normalised_entropy(values: Sequence[float] | NDArray[np.float64]) -> float:
+     array = np.asarray(values, dtype=float)
+     positive = array[array > 0]
+     if positive.size <= 1:
+         return 0.0
+     entropy = shannon_entropy(positive)
+     max_entropy = math.log(positive.size)
+     if max_entropy <= 0:
+         return 0.0
+     return float(min(entropy / max_entropy, 1.0))
+
+
+-def diversity_multiplier(values: Sequence[float], config: DiversityConfig | None = None) -> float:
++def diversity_multiplier(
++    values: Sequence[float] | NDArray[np.float64],
++    config: DiversityConfig | None = None,
++) -> float:
+     cfg = config or DiversityConfig()
+     norm_entropy = _normalised_entropy(values)
+     bonus = cfg.weight * norm_entropy
+     multiplier = cfg.min_multiplier + bonus
+     return float(min(max(multiplier, cfg.min_multiplier), cfg.max_multiplier))
+
+
+ def compute_diversity(
+     frame: pd.DataFrame,
+     value_column: str,
+     group_columns: Iterable[str],
+     subtype_column: str,
+     config: dict[str, DiversityConfig] | None = None,
+ ) -> pd.DataFrame:
+     if value_column not in frame.columns:
+         raise KeyError(f"{value_column} column missing from frame")
+     if subtype_column not in frame.columns:
+         raise KeyError(f"{subtype_column} column missing from frame")
+     config = config or {}
+     records: list[dict[str, object]] = []
+     for keys, group in frame.groupby(list(group_columns)):
+         key_dict = dict(zip(group_columns, keys if isinstance(keys, tuple) else (keys,), strict=False))
+         category = key_dict.get("aucstype") or key_dict.get("category") or "default"
+         cfg = config.get(category, DiversityConfig())
+         values = group.groupby(subtype_column)[value_column].sum()
+diff --git a/src/Urban_Amenities2/math/gtc.py b/src/Urban_Amenities2/math/gtc.py
+index e95abd50dbc26bc36c1e15caa2f16293cf6e076c..d263aed3cab8e3fe1df52c1763300f6ff25f2c87 100644
+--- a/src/Urban_Amenities2/math/gtc.py
++++ b/src/Urban_Amenities2/math/gtc.py
+@@ -1,42 +1,49 @@
+ from __future__ import annotations
+
+ from dataclasses import dataclass
+
+ import numpy as np
++from numpy.typing import NDArray
+
+
+-@dataclass
++@dataclass(slots=True)
+ class GTCParameters:
+     theta_iv: float
+     theta_wait: float
+     theta_walk: float
+     transfer_penalty: float
+     reliability_weight: float
+     value_of_time: float
+     carry_penalty: float = 0.0
+
+
+ def generalized_travel_cost(
+-    in_vehicle: np.ndarray,
+-    wait: np.ndarray,
+-    walk: np.ndarray,
+-    transfers: np.ndarray,
+-    reliability: np.ndarray,
+-    fare: np.ndarray,
++    in_vehicle: NDArray[np.float64],
++    wait: NDArray[np.float64],
++    walk: NDArray[np.float64],
++    transfers: NDArray[np.float64],
++    reliability: NDArray[np.float64],
++    fare: NDArray[np.float64],
+     params: GTCParameters,
+-    carry_adjustment: np.ndarray | float = 0.0,
+-) -> np.ndarray:
+-    fare_component = np.divide(fare, params.value_of_time, out=np.zeros_like(fare, dtype=float), where=params.value_of_time > 0)
++    carry_adjustment: NDArray[np.float64] | float = 0.0,
++) -> NDArray[np.float64]:
++    denominator = params.value_of_time if params.value_of_time > 0 else 1.0
++    fare_component = np.divide(
++        fare,
++        denominator,
++        out=np.zeros_like(fare, dtype=float),
++    ).astype(float)
+     result = (
+         params.theta_iv * in_vehicle
+         + params.theta_wait * wait
+         + params.theta_walk * walk
+         + params.transfer_penalty * transfers
+         + params.reliability_weight * reliability
+         + fare_component
+         + params.carry_penalty
+     )
+-    return result + carry_adjustment
++    adjustment = np.asarray(carry_adjustment, dtype=float)
++    return np.asarray(result + adjustment, dtype=float)
+
+
+ __all__ = ["generalized_travel_cost", "GTCParameters"]
+diff --git a/src/Urban_Amenities2/math/logsum.py b/src/Urban_Amenities2/math/logsum.py
+index abf2fdd4f22cdfc2e1a53b1216535b88481a8f3d..e33b86a0b50df7cebadacda2f61a5533b8e3f8f3 100644
+--- a/src/Urban_Amenities2/math/logsum.py
++++ b/src/Urban_Amenities2/math/logsum.py
+@@ -1,44 +1,56 @@
+ from __future__ import annotations
+
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+
+ import numpy as np
++from numpy.typing import NDArray
+
+
+-@dataclass
++@dataclass(slots=True)
+ class ModeUtilityParams:
+     beta0: float
+     alpha: float
+     comfort_weight: float = 0.0
+
+
+-def mode_utility(gtc: np.ndarray, comfort: np.ndarray, params: ModeUtilityParams) -> np.ndarray:
+-    return params.beta0 - params.alpha * gtc + params.comfort_weight * comfort
++def mode_utility(
++    gtc: NDArray[np.float64],
++    comfort: NDArray[np.float64],
++    params: ModeUtilityParams,
++) -> NDArray[np.float64]:
++    result = params.beta0 - params.alpha * gtc + params.comfort_weight * comfort
++    return np.asarray(result, dtype=float)
+
+
+-def nest_inclusive(utilities: np.ndarray, mu: float) -> np.ndarray:
++def nest_inclusive(utilities: NDArray[np.float64], mu: float) -> NDArray[np.float64]:
+     scaled = utilities / mu
+     max_util = np.max(scaled, axis=-1, keepdims=True)
+     stable = scaled - max_util
+     logsum = max_util + np.log(np.sum(np.exp(stable), axis=-1, keepdims=True))
+-    return mu * np.squeeze(logsum, axis=-1)
++    return np.asarray(mu * np.squeeze(logsum, axis=-1), dtype=float)
+
+
+-def top_level_logsum(inclusive_values: np.ndarray, mu_top: float) -> np.ndarray:
++def top_level_logsum(
++    inclusive_values: NDArray[np.float64],
++    mu_top: float,
++) -> NDArray[np.float64]:
+     scaled = inclusive_values / mu_top
+     max_val = np.max(scaled, axis=-1, keepdims=True)
+     stable = scaled - max_val
+     logsum = max_val + np.log(np.sum(np.exp(stable), axis=-1, keepdims=True))
+-    return mu_top * np.squeeze(logsum, axis=-1)
++    return np.asarray(mu_top * np.squeeze(logsum, axis=-1), dtype=float)
+
+
+-def time_weighted_accessibility(utilities: np.ndarray, weights: Sequence[float]) -> np.ndarray:
+-    weights = np.asarray(weights, dtype=float)
++def time_weighted_accessibility(
++    utilities: NDArray[np.float64],
++    weights: Sequence[float],
++) -> NDArray[np.float64]:
++    weights_array = np.asarray(weights, dtype=float)
+     if utilities.shape[-1] != len(weights):
+         raise ValueError("utilities last dimension must match weight vector length")
+     exp_utilities = np.exp(utilities)
+-    return np.tensordot(exp_utilities, weights, axes=([-1], [0]))
++    return np.asarray(np.tensordot(exp_utilities, weights_array, axes=([-1], [0])), dtype=float)
+
+
+ __all__ = ["mode_utility", "nest_inclusive", "top_level_logsum", "ModeUtilityParams", "time_weighted_accessibility"]
+diff --git a/src/Urban_Amenities2/math/satiation.py b/src/Urban_Amenities2/math/satiation.py
+index f6206a9b2ab201031372e21a01a116b54062319b..8718c7424d18b946eafeef032402723fbd0881cb 100644
+--- a/src/Urban_Amenities2/math/satiation.py
++++ b/src/Urban_Amenities2/math/satiation.py
+@@ -1,45 +1,51 @@
+ from __future__ import annotations
+
+ import numpy as np
++from numpy.typing import NDArray
+
+
+ def compute_kappa_from_anchor(target_score: float, target_value: float) -> float:
+     if target_value <= 0:
+         raise ValueError("target_value must be positive")
+     if not (0 < target_score < 100):
+         raise ValueError("target_score must be between 0 and 100")
+-    return -np.log(1 - target_score / 100.0) / target_value
++    result = -np.log(1 - target_score / 100.0) / target_value
++    return float(result)
+
+
+-def apply_satiation(values: np.ndarray, kappa: np.ndarray | float) -> np.ndarray:
+-    values = np.asarray(values, dtype=float)
+-    kappa = np.asarray(kappa, dtype=float)
+-    if np.any(kappa <= 0):
++def apply_satiation(
++    values: NDArray[np.float64] | float,
++    kappa: NDArray[np.float64] | float,
++) -> NDArray[np.float64]:
++    values_array = np.asarray(values, dtype=float)
++    kappa_array = np.asarray(kappa, dtype=float)
++    if np.any(kappa_array <= 0):
+         raise ValueError("kappa must be positive")
+-    scores = 100.0 * (1.0 - np.exp(-kappa * values))
+-    return np.clip(scores, 0.0, 100.0)
++    scores = 100.0 * (1.0 - np.exp(-kappa_array * values_array))
++    clipped = np.clip(scores, 0.0, 100.0)
++    return np.asarray(clipped, dtype=float)
+
+
+ def resolve_kappa(
+     kappa: float | dict[str, float] | None,
+     anchors: dict[str, tuple[float, float]] | None = None,
+ ) -> dict[str, float]:
+     resolved: dict[str, float] = {}
+     if isinstance(kappa, dict):
+         for key, value in kappa.items():
+             if value <= 0:
+                 raise ValueError("kappa values must be positive")
+             resolved[key] = float(value)
+     elif isinstance(kappa, (float, int)):
+         if kappa <= 0:
+             raise ValueError("kappa must be positive")
+         resolved = {"default": float(kappa)}
+     elif kappa is not None:
+         raise TypeError("kappa must be float, dict, or None")
+     if anchors:
+         for key, (target_score, target_value) in anchors.items():
+             resolved[key] = compute_kappa_from_anchor(target_score, target_value)
+     return resolved
+
+
+ __all__ = ["apply_satiation", "compute_kappa_from_anchor", "resolve_kappa"]
+diff --git a/src/Urban_Amenities2/quality/dedupe.py b/src/Urban_Amenities2/quality/dedupe.py
+index 3dd2b41af41d0d53e7c5ecfc2a62b0ad6cec3647..7237f5070612d7b494f7d6fe92b325ee03bc1a05 100644
+--- a/src/Urban_Amenities2/quality/dedupe.py
++++ b/src/Urban_Amenities2/quality/dedupe.py
+@@ -1,116 +1,123 @@
+ from __future__ import annotations
+
+ import logging
+ from dataclasses import dataclass
+
+ import numpy as np
++from numpy.typing import NDArray
+ import pandas as pd
+
+ EARTH_RADIUS_M = 6_371_000.0
+ LOGGER = logging.getLogger("aucs.quality.dedupe")
+
+
+ @dataclass(slots=True)
+ class BrandDedupeConfig:
+     """Parameters for brand proximity deduplication."""
+
+     distance_threshold_m: float = 500.0
+     beta_per_km: float = 1.0
+     brand_column: str = "brand"
+     weight_column: str = "quality"
+     category_column: str = "aucstype"
+     lat_column: str = "lat"
+     lon_column: str = "lon"
+
+
+ def apply_brand_dedupe(
+     pois: pd.DataFrame,
+     config: BrandDedupeConfig | None = None,
+ ) -> tuple[pd.DataFrame, dict[str, float]]:
+     if config is None:
+         config = BrandDedupeConfig()
+     if pois.empty:
+         empty = pois.copy()
+         empty["brand_penalty"] = pd.Series(dtype=float)
+         empty["brand_weight"] = pd.Series(dtype=float)
+         return empty, {"affected_ratio": 0.0}
+     required = [config.brand_column, config.lat_column, config.lon_column]
+     for column in required:
+         if column not in pois.columns:
+             raise ValueError(f"Column '{column}' required for brand deduplication")
+     frame = pois.copy()
+-    base_weights = frame.get(config.weight_column, pd.Series(np.ones(len(frame)), index=frame.index)).astype(float)
+-    penalties = np.ones(len(frame), dtype=float)
+-    affected_mask = np.zeros(len(frame), dtype=bool)
++    base_weights = frame.get(
++        config.weight_column,
++        pd.Series(np.ones(len(frame), dtype=float), index=frame.index),
++    ).astype(float)
++    penalties = pd.Series(np.ones(len(frame), dtype=float), index=frame.index)
++    affected_mask = pd.Series(np.zeros(len(frame), dtype=bool), index=frame.index)
+
+     brand_series = frame[config.brand_column].fillna("").astype(str)
+     valid_brands = brand_series.str.strip() != ""
+     groups = frame[valid_brands].groupby(brand_series[valid_brands])
+
+     for _brand, group in groups:
+         if len(group) < 2:
+             continue
+         coords = group[[config.lat_column, config.lon_column]].to_numpy(dtype=float)
+         distances = _pairwise_distance(coords)
+         nearest = np.where(
+             (distances > 0) & (distances <= config.distance_threshold_m),
+             distances,
+             np.nan,
+         )
+         penalty = np.nanmin(nearest, axis=1)
+         penalty = np.where(np.isfinite(penalty), penalty, np.nan)
+         factors = np.ones(len(group), dtype=float)
+         close_mask = np.isfinite(penalty)
+         if np.any(close_mask):
+             d_km = penalty[close_mask] / 1000.0
+             factors[close_mask] = 1.0 - np.exp(-config.beta_per_km * d_km)
+             factors[close_mask] = np.clip(factors[close_mask], 0.0, 1.0)
+-            penalties[group.index[close_mask]] = factors[close_mask]
+-            affected_mask[group.index[close_mask]] = True
++            penalties.loc[group.index[close_mask]] = factors[close_mask]
++            affected_mask.loc[group.index[close_mask]] = True
+
+     frame["brand_penalty"] = penalties
+     raw_weight = base_weights * penalties
+     frame["brand_weight_raw"] = raw_weight
+
+     # Preserve total weight per category by scaling back to the original sums.
+     category_col = config.category_column
+     if category_col in frame.columns:
+         scaled = raw_weight.copy()
+         for _category, group in frame.groupby(category_col):
+             original_total = base_weights.loc[group.index].sum()
+             dedup_total = raw_weight.loc[group.index].sum()
+             if dedup_total <= 0 or original_total <= 0:
+                 continue
+             scaled.loc[group.index] = raw_weight.loc[group.index] * (original_total / dedup_total)
+         frame["brand_weight"] = scaled
+     else:
+         frame["brand_weight"] = raw_weight
+
+     stats = {
+         "affected_ratio": float(affected_mask.mean()),
+-        "avg_penalty": float(frame.loc[affected_mask, "brand_penalty"].mean()) if affected_mask.any() else 0.0,
++        "avg_penalty": float(frame.loc[affected_mask, "brand_penalty"].mean())
++        if bool(affected_mask.any())
++        else 0.0,
+     }
+     LOGGER.info(
+         "brand_dedupe affected_ratio=%.3f avg_penalty=%.3f count=%d",
+         stats["affected_ratio"],
+         stats["avg_penalty"],
+         int(affected_mask.sum()),
+     )
+     return frame.drop(columns=["brand_weight_raw"]), stats
+
+
+-def _pairwise_distance(coords: np.ndarray) -> np.ndarray:
+-    if len(coords) == 0:
+-        return np.zeros((0, 0))
++def _pairwise_distance(coords: NDArray[np.float64]) -> NDArray[np.float64]:
++    if coords.size == 0:
++        return np.zeros((0, 0), dtype=float)
+     lat = np.radians(coords[:, 0])
+     lon = np.radians(coords[:, 1])
+     delta_lat = lat[:, None] - lat[None, :]
+     delta_lon = lon[:, None] - lon[None, :]
+     a = (
+         np.sin(delta_lat / 2) ** 2
+         + np.cos(lat)[:, None] * np.cos(lat)[None, :] * np.sin(delta_lon / 2) ** 2
+     )
+-    return 2 * EARTH_RADIUS_M * np.arcsin(np.clip(np.sqrt(a), 0, 1))
++    distances = 2 * EARTH_RADIUS_M * np.arcsin(np.clip(np.sqrt(a), 0, 1))
++    return np.asarray(distances, dtype=float)
+
+
+ __all__ = ["BrandDedupeConfig", "apply_brand_dedupe"]
+diff --git a/src/Urban_Amenities2/quality/scoring.py b/src/Urban_Amenities2/quality/scoring.py
+index 1da5300cfd322fc0a381f6601fac1dad25f221d4..a386df390edb86b88022366fd23772a3518e678a 100644
+--- a/src/Urban_Amenities2/quality/scoring.py
++++ b/src/Urban_Amenities2/quality/scoring.py
+@@ -241,118 +241,117 @@ def _compute_heritage_metric(frame: pd.DataFrame) -> pd.Series:
+
+ def _compute_brand_metric(frame: pd.DataFrame) -> pd.Series:
+     base = np.zeros(len(frame), dtype=float)
+     brand_col = frame.get("brand")
+     if brand_col is not None:
+         base += brand_col.fillna("").astype(str).str.len().clip(upper=80) / 80.0
+     for column in ("brand_wd", "wikidata_brand", "brand_qid"):
+         if column in frame.columns:
+             base += frame[column].notna().astype(float) * 1.5
+     if "is_chain" in frame.columns:
+         base += frame["is_chain"].fillna(0).astype(float) * 2.0
+     if "chain_size" in frame.columns:
+         base += np.log1p(pd.to_numeric(frame["chain_size"], errors="coerce").fillna(0.0))
+     return pd.Series(base, index=frame.index)
+
+
+ def _score_component(
+     values: pd.Series,
+     categories: pd.Series,
+     component: str,
+     config: QualityScoringConfig,
+     *,
+     binary: bool = False,
+ ) -> pd.Series:
+     defaults = config.category_defaults or {}
+-
+-    def _score_group(group: pd.Series) -> pd.Series:
+-        default = defaults.get(group.name, {}).get(component) if isinstance(defaults, Mapping) else None
++    scored = pd.Series(np.zeros(len(values), dtype=float), index=values.index)
++    for category, group in values.groupby(categories):
++        default = defaults.get(category, {}).get(component) if isinstance(defaults, Mapping) else None
+         if default is not None:
+             filled = group.fillna(float(default))
+         else:
+             filled = group.fillna(group.median())
+         if filled.isna().all():
+-            return pd.Series(np.full(len(group), 50.0), index=group.index)
+-        if binary:
++            scores = pd.Series(np.full(len(group), 50.0, dtype=float), index=group.index)
++        elif binary:
+             clipped = filled.clip(lower=0.0, upper=1.0)
+-            return clipped * 100.0
+-        mean = filled.mean()
+-        std = filled.std(ddof=0)
+-        if not np.isfinite(std) or std == 0:
+-            return pd.Series(np.full(len(group), 50.0), index=group.index)
+-        z = (filled - mean) / std
+-        z = z.clip(-config.z_clip_abs, config.z_clip_abs)
+-        rescaled = (z + config.z_clip_abs) / (2 * config.z_clip_abs)
+-        return pd.Series(rescaled * 100.0, index=group.index)
+-
+-    scored = values.groupby(categories).transform(_score_group)
+-    if not isinstance(scored, pd.Series):
+-        scored = pd.Series(scored, index=values.index)
++            scores = pd.Series(clipped * 100.0, index=group.index)
++        else:
++            mean = float(filled.mean())
++            std = float(filled.std(ddof=0))
++            if not np.isfinite(std) or std == 0.0:
++                scores = pd.Series(np.full(len(group), 50.0, dtype=float), index=group.index)
++            else:
++                z = (filled - mean) / std
++                z = z.clip(-config.z_clip_abs, config.z_clip_abs)
++                rescaled = (z + config.z_clip_abs) / (2 * config.z_clip_abs)
++                scores = pd.Series(rescaled * 100.0, index=group.index)
++        scored.loc[group.index] = scores
+     return scored.fillna(0.0)
+
+
+ def _classify_hours(
+     frame: pd.DataFrame,
+     categories: pd.Series,
+     defaults: Mapping[str, str] | None,
+ ) -> pd.Series:
+     if "opening_hours_type" in frame.columns:
+         series = frame["opening_hours_type"].fillna("").astype(str)
+         mapped = series.map(
+             {
+                 "24/7": "24_7",
+                 "24_7": "24_7",
+                 "extended": "extended",
+                 "standard": "standard",
+                 "limited": "limited",
+             }
+         )
+     else:
+-        mapped = pd.Series([None] * len(frame), index=frame.index)
++        mapped = pd.Series([None] * len(frame), index=frame.index, dtype=object)
+
+     numeric_hours = None
+     for column in ("hours_per_day", "opening_hours_hours_per_day"):
+         if column in frame.columns:
+             numeric_hours = pd.to_numeric(frame[column], errors="coerce")
+             break
+     if numeric_hours is not None:
+         mapped = mapped.combine_first(numeric_hours.map(_classify_numeric_hours))
+
+     if "opening_hours" in frame.columns:
+         parsed = frame["opening_hours"].astype(str).apply(_parse_hours_string)
+         mapped = mapped.combine_first(parsed.map(_classify_numeric_hours))
+
+     defaults = defaults or {}
+-    result = []
++    result: list[str] = []
+     for idx, category in categories.items():
+         value = mapped.loc[idx]
+         if value:
+             result.append(value)
+             continue
+         fallback = defaults.get(category) or defaults.get("default")
+         result.append(fallback or "standard")
+-    return pd.Series(result, index=frame.index)
++    return pd.Series(result, index=frame.index, dtype=str)
+
+
+ def _classify_numeric_hours(hours: float | None) -> str | None:
+     if hours is None or not np.isfinite(hours):
+         return None
+     if hours >= 23.5:
+         return "24_7"
+     if hours > 12:
+         return "extended"
+     if hours >= 6:
+         return "standard"
+     return "limited"
+
+
+ def _parse_hours_string(value: str) -> float | None:
+     lower = value.lower().strip()
+     if not lower or lower in {"nan", "none"}:
+         return None
+     if "24/7" in lower or "24-7" in lower or "24 hours" in lower:
+         return 24.0
+     import re
+
+     matches = re.findall(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})", lower)
+     if not matches:
+         return None
+diff --git a/src/Urban_Amenities2/scores/corridor_enrichment.py b/src/Urban_Amenities2/scores/corridor_enrichment.py
+index ae6ff05bb44b67c32bb0381d054090e64378d258..7310943b44dcbc027f5e15d8cf16860f3b4269f5 100644
+--- a/src/Urban_Amenities2/scores/corridor_enrichment.py
++++ b/src/Urban_Amenities2/scores/corridor_enrichment.py
+@@ -1,45 +1,100 @@
+ from __future__ import annotations
+
++from collections import OrderedDict
++
+ from collections import OrderedDict
+ from collections.abc import Iterable, Mapping, Sequence
+ from dataclasses import dataclass
++from typing import Any, Final, cast
+
+ import numpy as np
+ import pandas as pd
+ from pyproj import Transformer
+ from rtree.index import Index
+ from shapely.geometry import Point
++from shapely.geometry.base import BaseGeometry
+ from shapely.ops import transform
+
+ from ..config.params import CorridorConfig as CorridorParams
+ from ..logging_utils import get_logger
+ from ..router.otp import OTPClient
+
+ LOGGER = get_logger("aucs.cte")
+ WALKING_SPEED_M_PER_MIN = 80.0  # ≈ 3 mph
+
++_MAPPING_COLUMNS: Final[tuple[str, ...]] = (
++    "hex_id",
++    "hub_id",
++    "path_index",
++    "stop_id",
++    "stop_name",
++    "poi_id",
++    "category",
++    "quality",
++    "distance_m",
++    "walk_minutes",
++)
++
++
++def _empty_mapping_frame() -> pd.DataFrame:
++    return pd.DataFrame(
++        {
++            "hex_id": pd.Series(dtype=str),
++            "hub_id": pd.Series(dtype=str),
++            "path_index": pd.Series(dtype=np.int64),
++            "stop_id": pd.Series(dtype=str),
++            "stop_name": pd.Series(dtype=str),
++            "poi_id": pd.Series(dtype=str),
++            "category": pd.Series(dtype=str),
++            "quality": pd.Series(dtype=float),
++            "distance_m": pd.Series(dtype=float),
++            "walk_minutes": pd.Series(dtype=float),
++        }
++    )
++
++
++@dataclass(slots=True, frozen=True)
++class _StopRecord:
++    stop_id: str
++    stop_name: str
++    geometry_m: BaseGeometry
++
++
++def _safe_float(value: object) -> float | None:
++    try:
++        return float(cast(Any, value))
++    except (TypeError, ValueError):
++        return None
++
++
++def _safe_int(value: object) -> int | None:
++    try:
++        return int(cast(Any, value))
++    except (TypeError, ValueError):
++        return None
++
+
+ @dataclass(slots=True)
+ class TransitPath:
+     """Represents a feasible transit path between a hex and a hub."""
+
+     hex_id: str
+     hub_id: str
+     path_index: int
+     stops: list[str]
+     duration_minutes: float
+     transfers: int
+     score: float
+
+
+ class TransitPathIdentifier:
+     """Identify top transit paths per hex using an OTP client."""
+
+     def __init__(
+         self,
+         otp_client: OTPClient,
+         config: CorridorParams,
+         modes: Sequence[str] | None = None,
+     ) -> None:
+         self._otp = otp_client
+         self._config = config
+@@ -71,245 +126,226 @@ class TransitPathIdentifier:
+             )
+             hub_paths = self._select_paths(hex_id, hub.id, itineraries)
+             self._store_cache(key, hub_paths)
+             paths.extend(hub_paths)
+         paths.sort(key=lambda item: item.score, reverse=True)
+         selected = paths[: self._config.max_paths]
+         LOGGER.debug(
+             "cte_paths",
+             hex_id=hex_id,
+             metro=metro,
+             candidates=len(paths),
+             selected=len(selected),
+         )
+         return selected
+
+     def coverage(self, hex_ids: Sequence[str], path_map: Mapping[str, list[TransitPath]]) -> float:
+         if not hex_ids:
+             return 0.0
+         covered = sum(1 for hex_id in hex_ids if path_map.get(hex_id))
+         return covered / len(hex_ids)
+
+     def _select_paths(
+         self,
+         hex_id: str,
+         hub_id: str,
+-        itineraries: Iterable[dict[str, object]],
++        itineraries: Iterable[Mapping[str, object]],
+     ) -> list[TransitPath]:
+         paths: list[TransitPath] = []
+         for _idx, itinerary in enumerate(itineraries):
+-            legs = itinerary.get("legs", [])
++            if not isinstance(itinerary, Mapping):
++                continue
++            raw_legs = itinerary.get("legs", [])
++            legs: Sequence[Mapping[str, object]]
++            if isinstance(raw_legs, Sequence):
++                legs = [entry for entry in raw_legs if isinstance(entry, Mapping)]
++            elif isinstance(raw_legs, Iterable):
++                legs = [entry for entry in raw_legs if isinstance(entry, Mapping)]
++            else:
++                legs = []
+             stops = self._extract_stops(legs)
+             if len(stops) < self._config.min_stop_count:
+                 continue
+-            duration = float(itinerary.get("duration", 0.0)) / 60.0
+-            transfers = int(itinerary.get("transfers", 0))
++            duration_raw = itinerary.get("duration", 0.0)
++            duration_value = _safe_float(duration_raw)
++            if duration_value is None:
++                continue
++            duration = duration_value / 60.0
++            transfers_raw = itinerary.get("transfers", 0)
++            transfers_value = _safe_int(transfers_raw)
++            transfers = transfers_value if transfers_value is not None else 0
+             if duration <= 0:
+                 continue
+             directness = 1.0 / (1.0 + transfers)
+             score = directness / duration
+             paths.append(
+                 TransitPath(
+                     hex_id=hex_id,
+                     hub_id=hub_id,
+                     path_index=len(paths),
+                     stops=stops,
+                     duration_minutes=duration,
+                     transfers=transfers,
+                     score=score,
+                 )
+             )
+         paths.sort(key=lambda item: item.score, reverse=True)
+         return paths[: self._config.max_paths]
+
+     @staticmethod
+-    def _extract_stops(legs: Iterable[dict[str, object]]) -> list[str]:
++    def _extract_stops(legs: Sequence[Mapping[str, object]]) -> list[str]:
+         stops: list[str] = []
+         for leg in legs:
+             name = leg.get("from")
+             if isinstance(name, dict):
+                 name = name.get("name")
+             if name:
+                 stops.append(str(name))
+         if legs:
+             last = legs[-1].get("to")
+             if isinstance(last, dict):
+                 last = last.get("name")
+             if last:
+                 stops.append(str(last))
+         return stops
+
+     def _store_cache(self, key: tuple[str, str], value: list[TransitPath]) -> None:
+         self._cache[key] = value
+         self._cache.move_to_end(key)
+         cache_size = max(self._config.cache_size, 1)
+         while len(self._cache) > cache_size:
+             self._cache.popitem(last=False)
+
+
+ class StopBufferBuilder:
+     """Buffer stops and collect nearby POIs using spatial indexing."""
+
+     def __init__(
+         self,
+         buffer_m: float,
+         categories: Sequence[str],
+         walk_speed_m_per_min: float = WALKING_SPEED_M_PER_MIN,
+     ) -> None:
+         self._buffer_m = buffer_m
+         self._categories = set(categories)
+         self._walk_speed = walk_speed_m_per_min
+         self._to_m = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+
+     def collect(
+         self,
+         paths: Sequence[TransitPath],
+         stops: pd.DataFrame,
+         pois: pd.DataFrame,
+     ) -> pd.DataFrame:
+         if not paths:
+-            return pd.DataFrame(
+-                columns=
+-                [
+-                    "hex_id",
+-                    "hub_id",
+-                    "path_index",
+-                    "stop_id",
+-                    "stop_name",
+-                    "poi_id",
+-                    "category",
+-                    "quality",
+-                    "distance_m",
+-                    "walk_minutes",
+-                ]
+-            )
++            return _empty_mapping_frame()
+         stops = stops.copy()
+         if "stop_id" not in stops.columns and "stop_name" not in stops.columns:
+             raise KeyError("stops dataframe must include stop_id or stop_name column")
+         if "lon" not in stops.columns or "lat" not in stops.columns:
+             raise KeyError("stops dataframe must include lon and lat columns")
+-        stops["geometry"] = stops.apply(lambda row: Point(float(row["lon"]), float(row["lat"])), axis=1)
++        stop_lon = pd.to_numeric(stops["lon"], errors="coerce").to_numpy(dtype=float)
++        stop_lat = pd.to_numeric(stops["lat"], errors="coerce").to_numpy(dtype=float)
++        stop_geom = [Point(lon, lat) for lon, lat in zip(stop_lon, stop_lat)]
++        stops["geometry"] = stop_geom
+         poi_frame = pois.copy()
+         if "category" not in poi_frame.columns:
+             raise KeyError("pois dataframe must include category column")
+         if "poi_id" not in poi_frame.columns:
+             raise KeyError("pois dataframe must include poi_id column")
+         if "lon" not in poi_frame.columns or "lat" not in poi_frame.columns:
+             raise KeyError("pois dataframe must include lon and lat columns")
+         poi_frame = poi_frame[poi_frame["category"].isin(self._categories)].copy()
+         if poi_frame.empty:
+-            return pd.DataFrame(
+-                columns=
+-                [
+-                    "hex_id",
+-                    "hub_id",
+-                    "path_index",
+-                    "stop_id",
+-                    "stop_name",
+-                    "poi_id",
+-                    "category",
+-                    "quality",
+-                    "distance_m",
+-                    "walk_minutes",
+-                ]
+-            )
+-        poi_frame["geometry"] = poi_frame.apply(lambda row: Point(float(row["lon"]), float(row["lat"])), axis=1)
+-        poi_frame["quality"] = poi_frame.get("quality", pd.Series(50.0, index=poi_frame.index)).fillna(50.0)
++            return _empty_mapping_frame()
++        poi_lon = pd.to_numeric(poi_frame["lon"], errors="coerce").to_numpy(dtype=float)
++        poi_lat = pd.to_numeric(poi_frame["lat"], errors="coerce").to_numpy(dtype=float)
++        poi_geom = [Point(lon, lat) for lon, lat in zip(poi_lon, poi_lat)]
++        poi_frame["geometry"] = poi_geom
++        poi_quality = pd.to_numeric(poi_frame.get("quality", 50.0), errors="coerce").fillna(50.0)
++        poi_frame["quality"] = poi_quality.to_numpy(dtype=float)
+
+-        def transform_to_m(geom):
+-            return transform(self._to_m.transform, geom)
+-        stops["geometry_m"] = stops["geometry"].apply(transform_to_m)
+-        poi_frame["geometry_m"] = poi_frame["geometry"].apply(transform_to_m)
++        transformed_stops = [transform(self._to_m.transform, geom) for geom in stop_geom]
++        stops["geometry_m"] = transformed_stops
++        poi_frame["geometry_m"] = [transform(self._to_m.transform, geom) for geom in poi_geom]
+
+         index = Index()
+-        for idx, geom in enumerate(poi_frame["geometry_m"]):
+-            index.insert(idx, geom.bounds)
++        for idx, geom_m in enumerate(poi_frame["geometry_m"]):
++            index.insert(idx, geom_m.bounds)
+
+         records: list[dict[str, object]] = []
+         stop_lookup = self._build_stop_lookup(stops)
+         for path in paths:
+             for _position, stop_name in enumerate(path.stops):
+                 stop_record = stop_lookup.get(stop_name)
+                 if stop_record is None:
+                     continue
+-                stop_geom = stop_record["geometry_m"]
+-                buffer_geom = stop_geom.buffer(self._buffer_m)
++                stop_geom_m = stop_record.geometry_m
++                buffer_geom = stop_geom_m.buffer(self._buffer_m)
+                 for poi_idx in index.intersection(buffer_geom.bounds):
+                     poi = poi_frame.iloc[poi_idx]
+-                    poi_geom = poi["geometry_m"]
+-                    if not buffer_geom.contains(poi_geom):
++                    poi_geom_m = poi["geometry_m"]
++                    if not buffer_geom.contains(poi_geom_m):
+                         continue
+-                    distance = float(stop_geom.distance(poi_geom))
++                    distance = float(stop_geom_m.distance(poi_geom_m))
+                     walk_minutes = distance / self._walk_speed if self._walk_speed > 0 else 0.0
+                     records.append(
+                         {
+                             "hex_id": path.hex_id,
+                             "hub_id": path.hub_id,
+                             "path_index": path.path_index,
+-                            "stop_id": stop_record["stop_id"],
+-                            "stop_name": stop_record["stop_name"],
+-                            "poi_id": poi["poi_id"],
+-                            "category": poi["category"],
++                            "stop_id": stop_record.stop_id,
++                            "stop_name": stop_record.stop_name,
++                            "poi_id": str(poi["poi_id"]),
++                            "category": str(poi["category"]),
+                             "quality": float(poi["quality"]),
+                             "distance_m": distance,
+                             "walk_minutes": walk_minutes,
+                         }
+                     )
+         if not records:
+-            return pd.DataFrame(
+-                columns=
+-                [
+-                    "hex_id",
+-                    "hub_id",
+-                    "path_index",
+-                    "stop_id",
+-                    "stop_name",
+-                    "poi_id",
+-                    "category",
+-                    "quality",
+-                    "distance_m",
+-                    "walk_minutes",
+-                ]
+-            )
+-        mapping = pd.DataFrame.from_records(records)
++            return _empty_mapping_frame()
++        mapping = pd.DataFrame.from_records(records, columns=_MAPPING_COLUMNS)
+         mapping.sort_values("distance_m", inplace=True)
+         dedup_columns = ["hex_id", "hub_id", "path_index", "poi_id"]
+         mapping = mapping.drop_duplicates(subset=dedup_columns, keep="first")
+         return mapping.reset_index(drop=True)
+
+     @staticmethod
+-    def _build_stop_lookup(stops: pd.DataFrame) -> dict[str, dict[str, object]]:
+-        lookup: dict[str, dict[str, object]] = {}
+-        for _, row in stops.iterrows():
+-            stop_id = str(row.get("stop_id") or row.get("stop_name"))
+-            stop_name = str(row.get("stop_name") or row.get("stop_id"))
+-            lookup[stop_id] = {
+-                "stop_id": stop_id,
+-                "stop_name": stop_name,
+-                "geometry_m": row["geometry_m"],
+-            }
+-            lookup[stop_name] = lookup[stop_id]
++    def _build_stop_lookup(stops: pd.DataFrame) -> dict[str, _StopRecord]:
++        lookup: dict[str, _StopRecord] = {}
++        stop_ids = stops.get("stop_id")
++        stop_names = stops.get("stop_name")
++        geometries = stops["geometry_m"].to_list()
++        for index, geometry in enumerate(geometries):
++            raw_id = stop_ids.iloc[index] if stop_ids is not None else None
++            raw_name = stop_names.iloc[index] if stop_names is not None else None
++            stop_id = str(raw_id or raw_name)
++            stop_name = str(raw_name or raw_id)
++            record = _StopRecord(stop_id=stop_id, stop_name=stop_name, geometry_m=geometry)
++            lookup[stop_id] = record
++            lookup[stop_name] = record
+         return lookup
+
+
+ class ErrandChainScorer:
+     """Compute errand chain opportunities along transit paths."""
+
+     def __init__(self, config: CorridorParams) -> None:
+         self._config = config
+
+     def score(self, mapping: pd.DataFrame) -> pd.DataFrame:
+         required = {
+             "hex_id",
+             "hub_id",
+             "path_index",
+             "stop_id",
+             "category",
+             "quality",
+             "walk_minutes",
+         }
+         missing = required - set(mapping.columns)
+         if missing:
+             raise KeyError(f"mapping dataframe missing columns: {sorted(missing)}")
+         records: list[dict[str, object]] = []
+         for (hex_id, hub_id, path_index), group in mapping.groupby(["hex_id", "hub_id", "path_index"]):
+             for pair in self._config.pair_categories:
+@@ -324,34 +360,35 @@ class ErrandChainScorer:
+                             continue
+                         detour = float(poi_a["walk_minutes"]) + float(poi_b["walk_minutes"])
+                         quality = self._adjust_quality(poi_a) + self._adjust_quality(poi_b)
+                         key = f"{cat_a}+{cat_b}"
+                         weight = self._config.chain_weights.get(key, 1.0)
+                         records.append(
+                             {
+                                 "hex_id": hex_id,
+                                 "hub_id": hub_id,
+                                 "path_index": path_index,
+                                 "quality": quality,
+                                 "likelihood": weight,
+                                 "detour_minutes": detour,
+                                 "category_pair": key,
+                             }
+                         )
+         chains = pd.DataFrame.from_records(records)
+         if chains.empty:
+             return chains
+         valid = chains[chains["detour_minutes"] <= self._config.detour_cap_min].copy()
+         return valid.reset_index(drop=True)
+
+     def _adjust_quality(self, poi: pd.Series) -> float:
+         quality = float(poi.get("quality", 0.0))
+         walk = float(poi.get("walk_minutes", 0.0))
+-        return quality * np.exp(-self._config.walk_decay_alpha * walk)
++        decay = float(np.exp(-self._config.walk_decay_alpha * walk))
++        return quality * decay
+
+
+ __all__ = [
+     "ErrandChainScorer",
+     "StopBufferBuilder",
+     "TransitPath",
+     "TransitPathIdentifier",
+ ]
+diff --git a/src/Urban_Amenities2/scores/essentials_access.py b/src/Urban_Amenities2/scores/essentials_access.py
+index 42a8cbd66593d4ec9d817ecb4112eceb22b30164..78e4502f103ce4ac85c0109de00250cfe93cc92c 100644
+--- a/src/Urban_Amenities2/scores/essentials_access.py
++++ b/src/Urban_Amenities2/scores/essentials_access.py
+@@ -1,196 +1,214 @@
+ from __future__ import annotations
+
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+
+ import numpy as np
+ import pandas as pd
+
+ from ..config.params import AUCSParams, CategoryDiversityConfig
+ from ..logging_utils import get_logger
+ from ..math.ces import compute_z
+ from ..math.diversity import DiversityConfig, compute_diversity
+ from ..math.satiation import apply_satiation
+ from .penalties import shortfall_penalty
+
+ LOGGER = get_logger("aucs.scores.ea")
+
++_DEFAULT_SHORTFALL_THRESHOLD = 20.0
++_DEFAULT_SHORTFALL_PENALTY = 2.0
++_DEFAULT_SHORTFALL_CAP = 8.0
++_DEFAULT_TOP_K = 5
++_DEFAULT_BATCH_SIZE = 512
+
+-@dataclass
++
++@dataclass(slots=True)
+ class EssentialCategoryConfig:
+     rho: float
+     kappa: float
+     diversity: DiversityConfig
+
+     def __post_init__(self) -> None:
+         if not np.isfinite(self.rho):
+             raise ValueError("rho must be finite")
+         if self.rho > 1.0:
+             raise ValueError("rho must be less than or equal to 1")
+         if self.kappa <= 0:
+             raise ValueError("kappa must be positive")
+
+
+-@dataclass
++@dataclass(slots=True)
+ class EssentialsAccessConfig:
+     categories: Sequence[str]
+     category_params: dict[str, EssentialCategoryConfig]
+-    shortfall_threshold: float = 20.0
+-    shortfall_penalty: float = 2.0
+-    shortfall_cap: float = 8.0
+-    top_k: int = 5
+-    batch_size: int = 512
++    shortfall_threshold: float = _DEFAULT_SHORTFALL_THRESHOLD
++    shortfall_penalty: float = _DEFAULT_SHORTFALL_PENALTY
++    shortfall_cap: float = _DEFAULT_SHORTFALL_CAP
++    top_k: int = _DEFAULT_TOP_K
++    batch_size: int = _DEFAULT_BATCH_SIZE
+
+     @classmethod
+     def from_params(
+         cls,
+         params: AUCSParams,
+         categories: Sequence[str] | None = None,
+         shortfall_threshold: float | None = None,
+         shortfall_penalty: float | None = None,
+         shortfall_cap: float | None = None,
+         top_k: int | None = None,
+         batch_size: int | None = None,
+     ) -> EssentialsAccessConfig:
+         category_cfg = params.categories
+         category_list = list(categories or category_cfg.essentials)
+         if not category_list:
+             raise ValueError("At least one category is required for essentials access")
+
+         rho_map = category_cfg.derived_rho(category_list)
+         kappa_map = params.derived_satiation()
+
+         def _diversity_for(category: str) -> DiversityConfig:
+             config = category_cfg.get_diversity(category)
+             if isinstance(config, CategoryDiversityConfig):
+                 return DiversityConfig(
+                     weight=config.weight,
+                     min_multiplier=config.min_multiplier,
+                     max_multiplier=config.max_multiplier,
+                 )
+             return DiversityConfig()
+
+         category_params: dict[str, EssentialCategoryConfig] = {}
+         for name in category_list:
+             rho = rho_map.get(name)
+             if rho is None:
+                 raise ValueError(f"Missing CES rho for category {name}")
+             kappa = kappa_map.get(name)
+             if kappa is None:
+                 raise ValueError(f"Missing satiation kappa for category {name}")
+             category_params[name] = EssentialCategoryConfig(
+                 rho=rho,
+                 kappa=kappa,
+                 diversity=_diversity_for(name),
+             )
+
+-        kwargs: dict[str, float | int] = {}
+-        if shortfall_threshold is not None:
+-            kwargs["shortfall_threshold"] = shortfall_threshold
+-        if shortfall_penalty is not None:
+-            kwargs["shortfall_penalty"] = shortfall_penalty
+-        if shortfall_cap is not None:
+-            kwargs["shortfall_cap"] = shortfall_cap
+-        if top_k is not None:
+-            kwargs["top_k"] = top_k
+-        if batch_size is not None:
+-            kwargs["batch_size"] = batch_size
++        threshold_value = shortfall_threshold if shortfall_threshold is not None else _DEFAULT_SHORTFALL_THRESHOLD
++        penalty_value = shortfall_penalty if shortfall_penalty is not None else _DEFAULT_SHORTFALL_PENALTY
++        cap_value = shortfall_cap if shortfall_cap is not None else _DEFAULT_SHORTFALL_CAP
++        topk_value = top_k if top_k is not None else _DEFAULT_TOP_K
++        batch_value = batch_size if batch_size is not None else _DEFAULT_BATCH_SIZE
+
+-        return cls(categories=category_list, category_params=category_params, **kwargs)
++        return cls(
++            categories=category_list,
++            category_params=category_params,
++            shortfall_threshold=threshold_value,
++            shortfall_penalty=penalty_value,
++            shortfall_cap=cap_value,
++            top_k=topk_value,
++            batch_size=batch_value,
++        )
+
+
+ class EssentialsAccessCalculator:
+     def __init__(self, config: EssentialsAccessConfig):
+         self.config = config
+
+     def _prepare(self, pois: pd.DataFrame, accessibility: pd.DataFrame) -> pd.DataFrame:
+         base_columns = ["poi_id", "aucstype", "quality", "brand", "name"]
+-        optional_columns = [col for col in ("quality_components", "brand_penalty", "brand_weight") if col in pois.columns]
++        optional_columns = [
++            col
++            for col in ("quality_components", "brand_penalty", "brand_weight")
++            if col in pois.columns
++        ]
+         frame = accessibility.merge(
+             pois[base_columns + optional_columns],
+             on="poi_id",
+             how="left",
+         )
+         if "hex_id" not in frame.columns and "origin_hex" in frame.columns:
+             frame = frame.rename(columns={"origin_hex": "hex_id"})
+-        frame["category"] = frame["aucstype"]
+-        frame["subtype"] = frame["brand"].fillna(frame["category"])
++        frame["category"] = frame["aucstype"].astype(str)
++        frame["subtype"] = frame["brand"].fillna(frame["category"]).astype(str)
+         frame["quality_original"] = frame["quality"]
+         if "brand_penalty" in frame.columns:
+-            frame["quality"] = frame["quality"] * frame["brand_penalty"].fillna(1.0)
++            frame["quality"] = frame["quality"].fillna(0.0) * frame["brand_penalty"].fillna(1.0)
++        frame["quality"] = pd.to_numeric(frame["quality"], errors="coerce").fillna(0.0)
++        frame["weight"] = pd.to_numeric(frame["weight"], errors="coerce").fillna(0.0)
+         frame["qw"] = frame["quality"] * frame["weight"]
+         return frame
+
+     def compute(
+         self,
+         pois: pd.DataFrame,
+         accessibility: pd.DataFrame,
+     ) -> tuple[pd.DataFrame, pd.DataFrame]:
+         data = self._prepare(pois, accessibility)
+         hex_ids = data["hex_id"].unique()
+         diversity_config = {}
+         for category in self.config.categories:
+             params = self.config.category_params.get(category, EssentialCategoryConfig(1.0, 1.0, DiversityConfig()))
+             diversity_config[category] = params.diversity
+         diversity = compute_diversity(
+             data,
+             value_column="qw",
+             group_columns=["hex_id", "category"],
+             subtype_column="subtype",
+             config=diversity_config,
+         )
+         category_frames: list[pd.DataFrame] = []
+         explainability: dict[str, dict[str, list[dict[str, object]]]] = {hex_id: {} for hex_id in hex_ids}
+         batches = [hex_ids] if self.config.batch_size <= 0 else [hex_ids[i : i + self.config.batch_size] for i in range(0, len(hex_ids), self.config.batch_size)]
+         for batch_index, batch_hexes in enumerate(batches, start=1):
+             LOGGER.info("ea_batch", batch=batch_index, total=len(batches), size=len(batch_hexes))
+             batch_data = data[data["hex_id"].isin(batch_hexes)]
+             for category in self.config.categories:
+                 params = self.config.category_params.get(category, EssentialCategoryConfig(1.0, 1.0, DiversityConfig()))
+                 cat_data = batch_data[batch_data["category"] == category]
+                 if cat_data.empty:
+                     empty = pd.DataFrame(
+                         {
+                             "hex_id": batch_hexes,
+                             "category": category,
+                             "satiation": 0.0,
+                             "diversity_multiplier": 1.0,
+                             "entropy": 0.0,
+                             "score": 0.0,
+                         }
+                     )
+                     category_frames.append(empty)
+                     for hex_id in batch_hexes:
+                         explainability.setdefault(hex_id, {})[category] = []
+                     continue
+                 rho = params.rho
+-                z_values = compute_z(cat_data["quality"].to_numpy(), cat_data["weight"].to_numpy(), rho)
++                z_values = compute_z(
++                    cat_data["quality"].to_numpy(dtype=float),
++                    cat_data["weight"].to_numpy(dtype=float),
++                    rho,
++                )
+                 cat_data = cat_data.assign(z=z_values)
+                 aggregated = cat_data.groupby("hex_id", as_index=False)["z"].sum()
+                 V = aggregated["z"].pow(1.0 / rho)
+-                satiation_scores = apply_satiation(V.to_numpy(), params.kappa)
++                satiation_scores = apply_satiation(V.to_numpy(dtype=float), params.kappa)
+                 frame = pd.DataFrame(
+                     {
+                         "hex_id": aggregated["hex_id"],
+                         "category": category,
+                         "V": V,
+                         "satiation": satiation_scores,
+                     }
+                 )
+                 frame = frame.merge(diversity[diversity["category"] == category], on=["hex_id", "category"], how="left")
+                 frame["diversity_multiplier"] = frame["diversity_multiplier"].fillna(1.0)
+                 frame["entropy"] = frame["entropy"].fillna(0.0)
+                 frame["score"] = np.clip(frame["satiation"] * frame["diversity_multiplier"], 0, 100)
+                 category_frames.append(frame)
+                 for hex_id in frame["hex_id"]:
+                     explainability.setdefault(hex_id, {})[category] = self._extract_top(cat_data, hex_id, category)
+         category_scores = pd.concat(category_frames, ignore_index=True) if category_frames else pd.DataFrame()
+         ea_records = []
+         for hex_id, group in category_scores.groupby("hex_id"):
+             penalty = shortfall_penalty(group["score"], threshold=self.config.shortfall_threshold, per_miss=self.config.shortfall_penalty, cap=self.config.shortfall_cap)
+             mean_score = group["score"].mean() if not group.empty else 0.0
+             final_score = max(mean_score - penalty, 0.0)
+             ea_records.append(
+                 {
+                     "hex_id": hex_id,
+                     "EA": final_score,
+diff --git a/src/Urban_Amenities2/scores/explainability.py b/src/Urban_Amenities2/scores/explainability.py
+index 231e7939cd89d4046868f7d6d9959c7712ebf2cc..2cb1587a87f9c6dc0b9a69ff5c2b9a7a3efb0f9f 100644
+--- a/src/Urban_Amenities2/scores/explainability.py
++++ b/src/Urban_Amenities2/scores/explainability.py
+@@ -1,33 +1,48 @@
+ from __future__ import annotations
+
++from collections.abc import Mapping, Sequence
++from typing import Any
++
+ import pandas as pd
+
+
++def _normalize_contribution(entry: Mapping[str, Any]) -> float:
++    raw = entry.get("contribution", 0.0)
++    try:
++        return float(raw) if raw is not None else 0.0
++    except (TypeError, ValueError):
++        return 0.0
++
++
+ def top_contributors(ea_frame: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
+     records: list[dict[str, object]] = []
+     for row in ea_frame.itertuples():
+-        contributors: dict[str, list[dict[str, object]]] = getattr(row, "contributors", {}) or {}
+-        # Handle None or empty contributors
+-        if not contributors:
++        raw_contributors = getattr(row, "contributors", {}) or {}
++        if not isinstance(raw_contributors, Mapping):
+             continue
+-        for category, items in contributors.items():
+-            # Handle None items list
+-            if not items:
++        for category, items in raw_contributors.items():
++            if not isinstance(items, Sequence):
+                 continue
+-            for item in sorted(items, key=lambda entry: entry.get("contribution", 0), reverse=True)[:top_n]:
++            sorted_items = sorted(
++                (entry for entry in items if isinstance(entry, Mapping)),
++                key=_normalize_contribution,
++                reverse=True,
++            )[:top_n]
++            for item in sorted_items:
++                item_dict = dict(item)
+                 records.append(
+                     {
+-                        "hex_id": row.hex_id,
++                        "hex_id": getattr(row, "hex_id", None),
+                         "category": category,
+-                        "poi_id": item.get("poi_id"),
+-                        "name": item.get("name"),
+-                        "contribution": item.get("contribution"),
+-                        "quality": item.get("quality"),
+-                        "quality_components": item.get("quality_components"),
+-                        "brand_penalty": item.get("brand_penalty"),
++                        "poi_id": item_dict.get("poi_id"),
++                        "name": item_dict.get("name"),
++                        "contribution": item_dict.get("contribution"),
++                        "quality": item_dict.get("quality"),
++                        "quality_components": item_dict.get("quality_components"),
++                        "brand_penalty": item_dict.get("brand_penalty"),
+                     }
+                 )
+     return pd.DataFrame.from_records(records)
+
+
+ __all__ = ["top_contributors"]
+diff --git a/src/Urban_Amenities2/scores/hub_airport_access.py b/src/Urban_Amenities2/scores/hub_airport_access.py
+index bf231e35ab3048d31767720d1f50323c5b44d31e..e41999550569a78bb02bd2756b0956a105868686 100644
+--- a/src/Urban_Amenities2/scores/hub_airport_access.py
++++ b/src/Urban_Amenities2/scores/hub_airport_access.py
+@@ -1,67 +1,72 @@
+ from __future__ import annotations
+
+ from collections.abc import Mapping
+ from dataclasses import dataclass, field
+
+ import numpy as np
+ import pandas as pd
+
+ from ..config.params import AUCSParams
+ from ..logging_utils import get_logger
+
+ LOGGER = get_logger("aucs.scores.muhaa")
+
++_DEFAULT_POP_WEIGHT = 0.4
++_DEFAULT_GDP_WEIGHT = 0.3
++_DEFAULT_POI_WEIGHT = 0.2
++_DEFAULT_CULTURE_WEIGHT = 0.1
++
+
+ def _minmax(series: pd.Series) -> pd.Series:
+     if series.empty:
+-        return series
++        return pd.Series(dtype=float, index=series.index)
+     lo = series.min()
+     hi = series.max()
+     if np.isclose(hi, lo):
+-        return pd.Series(np.full(len(series), 100.0), index=series.index)
+-    scaled = (series - lo) / (hi - lo)
++        return pd.Series(np.full(len(series), 100.0, dtype=float), index=series.index)
++    scaled = (series.astype(float) - float(lo)) / (float(hi) - float(lo))
+     return scaled * 100.0
+
+
+ @dataclass(slots=True)
+ class HubMassWeights:
+-    population: float = 0.4
+-    gdp: float = 0.3
+-    poi: float = 0.2
+-    culture: float = 0.1
++    population: float = _DEFAULT_POP_WEIGHT
++    gdp: float = _DEFAULT_GDP_WEIGHT
++    poi: float = _DEFAULT_POI_WEIGHT
++    culture: float = _DEFAULT_CULTURE_WEIGHT
+
+     @classmethod
+     def from_mapping(cls, mapping: Mapping[str, float]) -> HubMassWeights:
+         return cls(
+-            population=float(mapping.get("population", cls.population)),
+-            gdp=float(mapping.get("gdp", cls.gdp)),
+-            poi=float(mapping.get("poi", cls.poi)),
+-            culture=float(mapping.get("culture", cls.culture)),
++            population=float(mapping.get("population", _DEFAULT_POP_WEIGHT)),
++            gdp=float(mapping.get("gdp", _DEFAULT_GDP_WEIGHT)),
++            poi=float(mapping.get("poi", _DEFAULT_POI_WEIGHT)),
++            culture=float(mapping.get("culture", _DEFAULT_CULTURE_WEIGHT)),
+         )
+
+-    def normalised(self) -> Mapping[str, float]:
++    def normalised(self) -> dict[str, float]:
+         weights = {
+             "population": self.population,
+             "gdp": self.gdp,
+             "poi": self.poi,
+             "culture": self.culture,
+         }
+         total = sum(weights.values())
+         if total <= 0:
+             raise ValueError("hub mass weights must sum to positive value")
+         return {key: value / total for key, value in weights.items()}
+
+
+ @dataclass(slots=True)
+ class AccessibilityConfig:
+     alpha: float = 0.03
+     travel_time_column: str = "travel_minutes"
+     id_column: str = "hex_id"
+     destination_column: str = "destination_id"
+     impedance_column: str | None = None
+
+
+ @dataclass(slots=True)
+ class MuhAAConfig:
+     hub_weights: HubMassWeights = field(default_factory=HubMassWeights)
+     hub_alpha: float = 0.03
+@@ -79,105 +84,109 @@ class MuhAAConfig:
+             raise ValueError("at least one contribution must be positive")
+         self.hub_contribution /= total
+         self.airport_contribution /= total
+
+     @classmethod
+     def from_params(cls, params: AUCSParams) -> MuhAAConfig:
+         config = params.hubs_airports
+         contributions = config.contributions
+         return cls(
+             hub_weights=HubMassWeights.from_mapping(config.hub_mass_weights),
+             hub_alpha=float(config.hub_decay_alpha),
+             airport_alpha=float(config.airport_decay_alpha),
+             hub_contribution=float(contributions.get("hub", 0.7)),
+             airport_contribution=float(contributions.get("airport", 0.3)),
+             airport_weights=config.airport_weights,
+         )
+
+
+ def compute_hub_mass(hubs: pd.DataFrame, weights: HubMassWeights) -> pd.DataFrame:
+     required = {"hub_id", "population", "gdp", "poi", "culture"}
+     missing = required - set(hubs.columns)
+     if missing:
+         raise KeyError(f"hubs dataframe missing columns: {sorted(missing)}")
+     hubs = hubs.copy()
+     for column in ("population", "gdp", "poi", "culture"):
+-        hubs[f"{column}_scaled"] = _minmax(hubs[column].astype(float))
++        hubs[f"{column}_scaled"] = _minmax(pd.to_numeric(hubs[column], errors="coerce").fillna(0.0))
+     weights_norm = weights.normalised()
+     hubs["mass"] = sum(hubs[f"{column}_scaled"] * weight for column, weight in weights_norm.items())
+     LOGGER.info("hub_mass", hubs=len(hubs))
+-    return hubs[["hub_id", "mass"]]
++    return hubs[["hub_id", "mass"]].assign(mass=lambda frame: frame["mass"].astype(float))
+
+
+ def _generalised_cost(row: pd.Series, config: AccessibilityConfig) -> float:
+     travel = float(row[config.travel_time_column])
+     if config.impedance_column and config.impedance_column in row:
+         travel += float(row[config.impedance_column])
+     return travel
+
+
+ def compute_accessibility(
+     travel: pd.DataFrame,
+     masses: pd.DataFrame,
+     *,
+     config: AccessibilityConfig,
+     alpha: float,
+ ) -> pd.DataFrame:
+     merged = travel.merge(masses, left_on=config.destination_column, right_on="hub_id", how="left")
+     merged = merged.dropna(subset=["mass"])
+     if merged.empty:
+-        return pd.DataFrame({config.id_column: [], "accessibility": []})
++        return pd.DataFrame({config.id_column: pd.Series(dtype=str), "accessibility": pd.Series(dtype=float)})
++    merged[config.travel_time_column] = pd.to_numeric(merged[config.travel_time_column], errors="coerce").fillna(0.0)
++    if config.impedance_column and config.impedance_column in merged.columns:
++        merged[config.impedance_column] = pd.to_numeric(merged[config.impedance_column], errors="coerce").fillna(0.0)
++    merged["mass"] = pd.to_numeric(merged["mass"], errors="coerce").fillna(0.0)
+     merged["gtc"] = merged.apply(lambda row: _generalised_cost(row, config), axis=1)
+     merged["contribution"] = merged["mass"] * np.exp(-alpha * merged["gtc"])
+-    aggregated = merged.groupby(config.id_column)["contribution"].sum().reset_index()
++    aggregated = merged.groupby(config.id_column, as_index=False)["contribution"].sum()
+     aggregated.rename(columns={"contribution": "accessibility"}, inplace=True)
+     aggregated["accessibility"] = _minmax(aggregated["accessibility"])
+     return aggregated
+
+
+ def compute_airport_accessibility(
+     travel: pd.DataFrame,
+     airports: pd.DataFrame,
+     *,
+     config: AccessibilityConfig,
+     alpha: float,
+     airport_weights: Mapping[str, float] | None = None,
+ ) -> pd.DataFrame:
+     required = {"airport_id", "enplanements"}
+     missing = required - set(airports.columns)
+     if missing:
+         raise KeyError(f"airports dataframe missing columns: {sorted(missing)}")
+     airports = airports.copy()
+-    airports["mass"] = _minmax(airports["enplanements"].astype(float))
++    airports["mass"] = _minmax(pd.to_numeric(airports["enplanements"], errors="coerce").fillna(0.0))
+     if airport_weights:
++        weights_lookup = {str(key): float(value) for key, value in airport_weights.items()}
++
+         def _lookup(airport_id: str) -> float:
+             key = str(airport_id)
+-            return float(
+-                airport_weights.get(key, airport_weights.get(key.upper(), airport_weights.get(key.lower(), 1.0)))
+-            )
++            return weights_lookup.get(key, weights_lookup.get(key.upper(), weights_lookup.get(key.lower(), 1.0)))
+
+-        airports["mass"] = airports.apply(lambda row: row["mass"] * _lookup(row["airport_id"]), axis=1)
++        airports["mass"] = airports.apply(lambda row: row["mass"] * float(_lookup(row["airport_id"])), axis=1)
+         airports["mass"] = _minmax(airports["mass"])
+     airports.rename(columns={"airport_id": "hub_id"}, inplace=True)
+     return compute_accessibility(travel, airports[["hub_id", "mass"]], config=config, alpha=alpha)
+
+
+ class MuhAAScore:
+     def __init__(self, config: MuhAAConfig | None = None):
+         self.config = config or MuhAAConfig()
+
+     @classmethod
+     def from_params(cls, params: AUCSParams) -> MuhAAScore:
+         return cls(MuhAAConfig.from_params(params))
+
+     def compute(
+         self,
+         hubs: pd.DataFrame,
+         hub_travel: pd.DataFrame,
+         airports: pd.DataFrame,
+         airport_travel: pd.DataFrame,
+         *,
+         id_column: str = "hex_id",
+     ) -> pd.DataFrame:
+         hub_masses = compute_hub_mass(hubs, self.config.hub_weights)
+         hub_access = compute_accessibility(
+             hub_travel,
+diff --git a/src/Urban_Amenities2/scores/seasonal_outdoors.py b/src/Urban_Amenities2/scores/seasonal_outdoors.py
+index 694c2727762b095e1e85a96b4d6d5b99be4a56ed..3adfab7e9316fc07e82510353b5bf02d1e55967c 100644
+--- a/src/Urban_Amenities2/scores/seasonal_outdoors.py
++++ b/src/Urban_Amenities2/scores/seasonal_outdoors.py
+@@ -11,51 +11,51 @@ from ..monitoring.metrics import METRICS, track_operation
+ from .parks_access import ParksTrailsAccessCalculator, ParksTrailsAccessConfig
+
+ LOGGER = get_logger("aucs.scores.sou")
+
+ MONTH_NAMES = (
+     "jan",
+     "feb",
+     "mar",
+     "apr",
+     "may",
+     "jun",
+     "jul",
+     "aug",
+     "sep",
+     "oct",
+     "nov",
+     "dec",
+ )
+
+
+ @dataclass(slots=True)
+ class ClimateComfortConfig:
+     comfortable_temperature: tuple[float, float] = (50.0, 80.0)
+     precipitation_threshold: float = 0.5
+     wind_threshold: float = 15.0
+-    month_weights: Mapping[str, float] = None  # type: ignore[assignment]
++    month_weights: Mapping[str, float] | None = None
+
+     def __post_init__(self) -> None:
+         if self.month_weights is None:
+             self.month_weights = {
+                 "mar": 1.0,
+                 "apr": 1.1,
+                 "may": 1.2,
+                 "jun": 1.3,
+                 "jul": 1.3,
+                 "aug": 1.2,
+                 "sep": 1.1,
+                 "oct": 1.0,
+                 "nov": 0.6,
+                 "dec": 0.4,
+                 "jan": 0.4,
+                 "feb": 0.5,
+             }
+         if len(self.comfortable_temperature) != 2:
+             raise ValueError("comfortable_temperature must contain (min, max)")
+         lo, hi = self.comfortable_temperature
+         if hi <= lo:
+             raise ValueError("temperature max must exceed min")
+         if self.precipitation_threshold <= 0:
+             raise ValueError("precipitation_threshold must be positive")
+         if self.wind_threshold <= 0:
+@@ -92,99 +92,103 @@ def _precipitation_comfort(precip: float, config: ClimateComfortConfig) -> float
+     delta = precip - config.precipitation_threshold
+     return float(np.clip(1.0 - delta / config.precipitation_threshold, 0.0, 1.0))
+
+
+ def _wind_comfort(wind: float, config: ClimateComfortConfig) -> float:
+     if wind <= config.wind_threshold:
+         return 1.0
+     delta = wind - config.wind_threshold
+     return float(np.clip(1.0 - delta / config.wind_threshold, 0.0, 1.0))
+
+
+ def compute_monthly_comfort(
+     *,
+     temperature: float,
+     precipitation: float,
+     wind: float,
+     config: ClimateComfortConfig,
+ ) -> float:
+     temp = _temperature_comfort(temperature, config)
+     precip = _precipitation_comfort(precipitation, config)
+     wind_score = _wind_comfort(wind, config)
+     return float(np.clip(temp * precip * wind_score, 0.0, 1.0))
+
+
+ def compute_sigma_out(row: pd.Series, config: ClimateComfortConfig) -> float:
+-    weights = []
+-    scores = []
+-    for month, weight in config.month_weights.items():
++    weights: list[float] = []
++    scores: list[float] = []
++    month_weights = dict(config.month_weights or {})
++    for month, weight in month_weights.items():
+         temp = row.get(_column_name("temp", month))
+         precip = row.get(_column_name("precip", month))
+         wind = row.get(_column_name("wind", month))
+         if pd.isna(temp) or pd.isna(precip) or pd.isna(wind):
+             continue
+         comfort = compute_monthly_comfort(
+             temperature=float(temp),
+             precipitation=float(precip),
+             wind=float(wind),
+             config=config,
+         )
+         weights.append(weight)
+         scores.append(comfort)
+     if not scores:
+         return 0.0
+     weighted = float(np.average(scores, weights=weights))
+     return float(np.clip(weighted, 0.0, 1.0))
+
+
+ class SeasonalOutdoorsCalculator:
+     def __init__(self, config: SeasonalOutdoorsConfig | None = None):
+         self.config = config or SeasonalOutdoorsConfig()
+
+     def compute(
+         self,
+         parks: pd.DataFrame,
+         climate: pd.DataFrame,
+         *,
+         id_column: str = "hex_id",
+     ) -> pd.DataFrame:
+         required_columns = {id_column, self.config.parks_column}
+         missing = required_columns - set(parks.columns)
+         if missing:
+             raise KeyError(f"parks dataframe missing columns: {sorted(missing)}")
+         ensure_monthly_columns(climate, ("temp", "precip", "wind"))
+         with track_operation(
+             "sou_join",
+             metrics=METRICS,
+             logger=LOGGER,
+             items=len(parks),
+             extra={"climate_rows": len(climate)},
+         ):
+             joined = parks.merge(climate, on=id_column, how="left", suffixes=(None, "_climate"))
+         LOGGER.info("sou_joined", rows=len(joined))
+-        sigma_values = joined.apply(lambda row: compute_sigma_out(row, self.config.climate), axis=1)
+-        joined["sigma_out"] = sigma_values
++        sigma_values = [
++            compute_sigma_out(row, self.config.climate)
++            for _, row in joined.iterrows()
++        ]
++        joined["sigma_out"] = pd.Series(sigma_values, index=joined.index, dtype=float)
+         joined[self.config.output_column] = (
+             joined[self.config.parks_column].fillna(0.0) * joined["sigma_out"]
+         )
+         joined[self.config.output_column] = joined[self.config.output_column].clip(0.0, 100.0)
+         joined.loc[joined[self.config.parks_column] <= 0, self.config.output_column] = 0.0
+         return joined[[id_column, self.config.output_column, "sigma_out"]]
+
+     def from_parks_data(
+         self,
+         parks: pd.DataFrame,
+         accessibility: pd.DataFrame,
+         climate: pd.DataFrame,
+         *,
+         id_column: str = "hex_id",
+     ) -> pd.DataFrame:
+         calculator = ParksTrailsAccessCalculator(self.config.parks_access)
+         parks_scores = calculator.compute(parks, accessibility, id_column=id_column)
+         if id_column not in climate.columns:
+             raise KeyError(f"climate dataframe missing '{id_column}' column")
+         if parks_scores.empty:
+             parks_scores = pd.DataFrame(
+                 {id_column: climate[id_column].unique(), self.config.parks_column: 0.0}
+             )
+         else:
+             parks_scores = parks_scores.rename(columns={"parks_score": self.config.parks_column})
+diff --git a/tests/test_scoring_type_safety.py b/tests/test_scoring_type_safety.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4fe321bdcb17d38084459efd04ec382ad5671fed
+--- /dev/null
++++ b/tests/test_scoring_type_safety.py
+@@ -0,0 +1,59 @@
++import numpy as np
++import pandas as pd
++
++from Urban_Amenities2.dedupe.pois import DedupeConfig, deduplicate_pois
++from Urban_Amenities2.math.ces import ces_aggregate
++from Urban_Amenities2.quality.dedupe import BrandDedupeConfig, apply_brand_dedupe
++
++
++def test_ces_aggregate_matches_expected_behaviour() -> None:
++    quality = np.array([[1.0, 2.0], [0.5, 1.5]], dtype=float)
++    accessibility = np.array([[0.8, 0.2], [1.0, 0.5]], dtype=float)
++    linear = ces_aggregate(quality, accessibility, rho=1.0, axis=1)
++    assert np.allclose(linear, np.sum(quality * accessibility, axis=1))
++    geometric = ces_aggregate(quality, accessibility, rho=0.0, axis=1)
++    manual_geo = np.exp(np.log(np.maximum(quality * accessibility, 1e-12)).mean(axis=1))
++    assert np.allclose(geometric, manual_geo)
++    rho = 0.5
++    ces = ces_aggregate(quality, accessibility, rho=rho, axis=1)
++    assert np.all(ces >= 0)
++
++
++def test_brand_dedupe_penalises_close_stores() -> None:
++    pois = pd.DataFrame(
++        {
++            "poi_id": ["a", "b"],
++            "brand": ["Chain", "Chain"],
++            "aucstype": ["grocery", "grocery"],
++            "lat": [39.0, 39.0002],
++            "lon": [-104.0, -104.0002],
++            "quality": [80.0, 70.0],
++        }
++    )
++    config = BrandDedupeConfig(distance_threshold_m=50.0, beta_per_km=1.0)
++    deduped, stats = apply_brand_dedupe(pois, config)
++    assert {"brand_penalty", "brand_weight"} <= set(deduped.columns)
++    assert stats["affected_ratio"] > 0
++    assert deduped["brand_penalty"].between(0.0, 1.0).all()
++
++
++def test_deduplicate_pois_removes_nearby_duplicates() -> None:
++    frame = pd.DataFrame(
++        {
++            "poi_id": ["p1", "p2", "p3"],
++            "hex_id": ["h1", "h1", "h2"],
++            "brand": ["Chain", "Chain", "Solo"],
++            "name": ["Chain One", "Chain Two", "Solo"],
++            "lat": [39.0, 39.0001, 39.1],
++            "lon": [-104.0, -104.0001, -104.2],
++            "aucstype": ["grocery", "grocery", "grocery"],
++            "confidence": [0.9, 0.8, 0.95],
++        }
++    )
++    config = DedupeConfig()
++    result = deduplicate_pois(frame, config=config)
++    remaining = set(result["poi_id"])
++    assert remaining == {"p1", "p3"}
++    assert "dedupe_weight" in result.columns
++    weight_p1 = float(result.loc[result["poi_id"] == "p1", "dedupe_weight"].iloc[0])
++    assert weight_p1 <= 1.0
+
+EOF
+)

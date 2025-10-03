@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 
 EARTH_RADIUS_M = 6_371_000.0
@@ -39,9 +40,12 @@ def apply_brand_dedupe(
         if column not in pois.columns:
             raise ValueError(f"Column '{column}' required for brand deduplication")
     frame = pois.copy()
-    base_weights = frame.get(config.weight_column, pd.Series(np.ones(len(frame)), index=frame.index)).astype(float)
-    penalties = np.ones(len(frame), dtype=float)
-    affected_mask = np.zeros(len(frame), dtype=bool)
+    base_weights = frame.get(
+        config.weight_column,
+        pd.Series(np.ones(len(frame), dtype=float), index=frame.index),
+    ).astype(float)
+    penalties = pd.Series(np.ones(len(frame), dtype=float), index=frame.index)
+    affected_mask = pd.Series(np.zeros(len(frame), dtype=bool), index=frame.index)
 
     brand_series = frame[config.brand_column].fillna("").astype(str)
     valid_brands = brand_series.str.strip() != ""
@@ -65,8 +69,8 @@ def apply_brand_dedupe(
             d_km = penalty[close_mask] / 1000.0
             factors[close_mask] = 1.0 - np.exp(-config.beta_per_km * d_km)
             factors[close_mask] = np.clip(factors[close_mask], 0.0, 1.0)
-            penalties[group.index[close_mask]] = factors[close_mask]
-            affected_mask[group.index[close_mask]] = True
+            penalties.loc[group.index[close_mask]] = factors[close_mask]
+            affected_mask.loc[group.index[close_mask]] = True
 
     frame["brand_penalty"] = penalties
     raw_weight = base_weights * penalties
@@ -88,7 +92,9 @@ def apply_brand_dedupe(
 
     stats = {
         "affected_ratio": float(affected_mask.mean()),
-        "avg_penalty": float(frame.loc[affected_mask, "brand_penalty"].mean()) if affected_mask.any() else 0.0,
+        "avg_penalty": float(frame.loc[affected_mask, "brand_penalty"].mean())
+        if bool(affected_mask.any())
+        else 0.0,
     }
     LOGGER.info(
         "brand_dedupe affected_ratio=%.3f avg_penalty=%.3f count=%d",
@@ -99,9 +105,9 @@ def apply_brand_dedupe(
     return frame.drop(columns=["brand_weight_raw"]), stats
 
 
-def _pairwise_distance(coords: np.ndarray) -> np.ndarray:
-    if len(coords) == 0:
-        return np.zeros((0, 0))
+def _pairwise_distance(coords: NDArray[np.float64]) -> NDArray[np.float64]:
+    if coords.size == 0:
+        return np.zeros((0, 0), dtype=float)
     lat = np.radians(coords[:, 0])
     lon = np.radians(coords[:, 1])
     delta_lat = lat[:, None] - lat[None, :]
@@ -110,7 +116,8 @@ def _pairwise_distance(coords: np.ndarray) -> np.ndarray:
         np.sin(delta_lat / 2) ** 2
         + np.cos(lat)[:, None] * np.cos(lat)[None, :] * np.sin(delta_lon / 2) ** 2
     )
-    return 2 * EARTH_RADIUS_M * np.arcsin(np.clip(np.sqrt(a), 0, 1))
+    distances = 2 * EARTH_RADIUS_M * np.arcsin(np.clip(np.sqrt(a), 0, 1))
+    return np.asarray(distances, dtype=float)
 
 
 __all__ = ["BrandDedupeConfig", "apply_brand_dedupe"]

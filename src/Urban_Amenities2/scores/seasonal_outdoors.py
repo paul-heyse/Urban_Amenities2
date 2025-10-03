@@ -33,7 +33,7 @@ class ClimateComfortConfig:
     comfortable_temperature: tuple[float, float] = (50.0, 80.0)
     precipitation_threshold: float = 0.5
     wind_threshold: float = 15.0
-    month_weights: Mapping[str, float] = None  # type: ignore[assignment]
+    month_weights: Mapping[str, float] | None = None
 
     def __post_init__(self) -> None:
         if self.month_weights is None:
@@ -114,9 +114,10 @@ def compute_monthly_comfort(
 
 
 def compute_sigma_out(row: pd.Series, config: ClimateComfortConfig) -> float:
-    weights = []
-    scores = []
-    for month, weight in config.month_weights.items():
+    weights: list[float] = []
+    scores: list[float] = []
+    month_weights = dict(config.month_weights or {})
+    for month, weight in month_weights.items():
         temp = row.get(_column_name("temp", month))
         precip = row.get(_column_name("precip", month))
         wind = row.get(_column_name("wind", month))
@@ -161,8 +162,11 @@ class SeasonalOutdoorsCalculator:
         ):
             joined = parks.merge(climate, on=id_column, how="left", suffixes=(None, "_climate"))
         LOGGER.info("sou_joined", rows=len(joined))
-        sigma_values = joined.apply(lambda row: compute_sigma_out(row, self.config.climate), axis=1)
-        joined["sigma_out"] = sigma_values
+        sigma_values = [
+            compute_sigma_out(row, self.config.climate)
+            for _, row in joined.iterrows()
+        ]
+        joined["sigma_out"] = pd.Series(sigma_values, index=joined.index, dtype=float)
         joined[self.config.output_column] = (
             joined[self.config.parks_column].fillna(0.0) * joined["sigma_out"]
         )

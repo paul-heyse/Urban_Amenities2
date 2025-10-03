@@ -15,8 +15,14 @@ from .penalties import shortfall_penalty
 
 LOGGER = get_logger("aucs.scores.ea")
 
+_DEFAULT_SHORTFALL_THRESHOLD = 20.0
+_DEFAULT_SHORTFALL_PENALTY = 2.0
+_DEFAULT_SHORTFALL_CAP = 8.0
+_DEFAULT_TOP_K = 5
+_DEFAULT_BATCH_SIZE = 512
 
-@dataclass
+
+@dataclass(slots=True)
 class EssentialCategoryConfig:
     rho: float
     kappa: float
@@ -31,15 +37,15 @@ class EssentialCategoryConfig:
             raise ValueError("kappa must be positive")
 
 
-@dataclass
+@dataclass(slots=True)
 class EssentialsAccessConfig:
     categories: Sequence[str]
     category_params: dict[str, EssentialCategoryConfig]
-    shortfall_threshold: float = 20.0
-    shortfall_penalty: float = 2.0
-    shortfall_cap: float = 8.0
-    top_k: int = 5
-    batch_size: int = 512
+    shortfall_threshold: float = _DEFAULT_SHORTFALL_THRESHOLD
+    shortfall_penalty: float = _DEFAULT_SHORTFALL_PENALTY
+    shortfall_cap: float = _DEFAULT_SHORTFALL_CAP
+    top_k: int = _DEFAULT_TOP_K
+    batch_size: int = _DEFAULT_BATCH_SIZE
 
     @classmethod
     def from_params(
@@ -84,19 +90,21 @@ class EssentialsAccessConfig:
                 diversity=_diversity_for(name),
             )
 
-        kwargs: dict[str, float | int] = {}
-        if shortfall_threshold is not None:
-            kwargs["shortfall_threshold"] = shortfall_threshold
-        if shortfall_penalty is not None:
-            kwargs["shortfall_penalty"] = shortfall_penalty
-        if shortfall_cap is not None:
-            kwargs["shortfall_cap"] = shortfall_cap
-        if top_k is not None:
-            kwargs["top_k"] = top_k
-        if batch_size is not None:
-            kwargs["batch_size"] = batch_size
+        threshold_value = shortfall_threshold if shortfall_threshold is not None else _DEFAULT_SHORTFALL_THRESHOLD
+        penalty_value = shortfall_penalty if shortfall_penalty is not None else _DEFAULT_SHORTFALL_PENALTY
+        cap_value = shortfall_cap if shortfall_cap is not None else _DEFAULT_SHORTFALL_CAP
+        topk_value = top_k if top_k is not None else _DEFAULT_TOP_K
+        batch_value = batch_size if batch_size is not None else _DEFAULT_BATCH_SIZE
 
-        return cls(categories=category_list, category_params=category_params, **kwargs)
+        return cls(
+            categories=category_list,
+            category_params=category_params,
+            shortfall_threshold=threshold_value,
+            shortfall_penalty=penalty_value,
+            shortfall_cap=cap_value,
+            top_k=topk_value,
+            batch_size=batch_value,
+        )
 
 
 class EssentialsAccessCalculator:
@@ -105,7 +113,11 @@ class EssentialsAccessCalculator:
 
     def _prepare(self, pois: pd.DataFrame, accessibility: pd.DataFrame) -> pd.DataFrame:
         base_columns = ["poi_id", "aucstype", "quality", "brand", "name"]
-        optional_columns = [col for col in ("quality_components", "brand_penalty", "brand_weight") if col in pois.columns]
+        optional_columns = [
+            col
+            for col in ("quality_components", "brand_penalty", "brand_weight")
+            if col in pois.columns
+        ]
         frame = accessibility.merge(
             pois[base_columns + optional_columns],
             on="poi_id",
@@ -113,11 +125,13 @@ class EssentialsAccessCalculator:
         )
         if "hex_id" not in frame.columns and "origin_hex" in frame.columns:
             frame = frame.rename(columns={"origin_hex": "hex_id"})
-        frame["category"] = frame["aucstype"]
-        frame["subtype"] = frame["brand"].fillna(frame["category"])
+        frame["category"] = frame["aucstype"].astype(str)
+        frame["subtype"] = frame["brand"].fillna(frame["category"]).astype(str)
         frame["quality_original"] = frame["quality"]
         if "brand_penalty" in frame.columns:
-            frame["quality"] = frame["quality"] * frame["brand_penalty"].fillna(1.0)
+            frame["quality"] = frame["quality"].fillna(0.0) * frame["brand_penalty"].fillna(1.0)
+        frame["quality"] = pd.to_numeric(frame["quality"], errors="coerce").fillna(0.0)
+        frame["weight"] = pd.to_numeric(frame["weight"], errors="coerce").fillna(0.0)
         frame["qw"] = frame["quality"] * frame["weight"]
         return frame
 
@@ -164,11 +178,15 @@ class EssentialsAccessCalculator:
                         explainability.setdefault(hex_id, {})[category] = []
                     continue
                 rho = params.rho
-                z_values = compute_z(cat_data["quality"].to_numpy(), cat_data["weight"].to_numpy(), rho)
+                z_values = compute_z(
+                    cat_data["quality"].to_numpy(dtype=float),
+                    cat_data["weight"].to_numpy(dtype=float),
+                    rho,
+                )
                 cat_data = cat_data.assign(z=z_values)
                 aggregated = cat_data.groupby("hex_id", as_index=False)["z"].sum()
                 V = aggregated["z"].pow(1.0 / rho)
-                satiation_scores = apply_satiation(V.to_numpy(), params.kappa)
+                satiation_scores = apply_satiation(V.to_numpy(dtype=float), params.kappa)
                 frame = pd.DataFrame(
                     {
                         "hex_id": aggregated["hex_id"],

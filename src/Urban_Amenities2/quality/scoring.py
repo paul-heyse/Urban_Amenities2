@@ -263,30 +263,29 @@ def _score_component(
     binary: bool = False,
 ) -> pd.Series:
     defaults = config.category_defaults or {}
-
-    def _score_group(group: pd.Series) -> pd.Series:
-        default = defaults.get(group.name, {}).get(component) if isinstance(defaults, Mapping) else None
+    scored = pd.Series(np.zeros(len(values), dtype=float), index=values.index)
+    for category, group in values.groupby(categories):
+        default = defaults.get(category, {}).get(component) if isinstance(defaults, Mapping) else None
         if default is not None:
             filled = group.fillna(float(default))
         else:
             filled = group.fillna(group.median())
         if filled.isna().all():
-            return pd.Series(np.full(len(group), 50.0), index=group.index)
-        if binary:
+            scores = pd.Series(np.full(len(group), 50.0, dtype=float), index=group.index)
+        elif binary:
             clipped = filled.clip(lower=0.0, upper=1.0)
-            return clipped * 100.0
-        mean = filled.mean()
-        std = filled.std(ddof=0)
-        if not np.isfinite(std) or std == 0:
-            return pd.Series(np.full(len(group), 50.0), index=group.index)
-        z = (filled - mean) / std
-        z = z.clip(-config.z_clip_abs, config.z_clip_abs)
-        rescaled = (z + config.z_clip_abs) / (2 * config.z_clip_abs)
-        return pd.Series(rescaled * 100.0, index=group.index)
-
-    scored = values.groupby(categories).transform(_score_group)
-    if not isinstance(scored, pd.Series):
-        scored = pd.Series(scored, index=values.index)
+            scores = pd.Series(clipped * 100.0, index=group.index)
+        else:
+            mean = float(filled.mean())
+            std = float(filled.std(ddof=0))
+            if not np.isfinite(std) or std == 0.0:
+                scores = pd.Series(np.full(len(group), 50.0, dtype=float), index=group.index)
+            else:
+                z = (filled - mean) / std
+                z = z.clip(-config.z_clip_abs, config.z_clip_abs)
+                rescaled = (z + config.z_clip_abs) / (2 * config.z_clip_abs)
+                scores = pd.Series(rescaled * 100.0, index=group.index)
+        scored.loc[group.index] = scores
     return scored.fillna(0.0)
 
 
@@ -307,7 +306,7 @@ def _classify_hours(
             }
         )
     else:
-        mapped = pd.Series([None] * len(frame), index=frame.index)
+        mapped = pd.Series([None] * len(frame), index=frame.index, dtype=object)
 
     numeric_hours = None
     for column in ("hours_per_day", "opening_hours_hours_per_day"):
@@ -322,7 +321,7 @@ def _classify_hours(
         mapped = mapped.combine_first(parsed.map(_classify_numeric_hours))
 
     defaults = defaults or {}
-    result = []
+    result: list[str] = []
     for idx, category in categories.items():
         value = mapped.loc[idx]
         if value:
@@ -330,7 +329,7 @@ def _classify_hours(
             continue
         fallback = defaults.get(category) or defaults.get("default")
         result.append(fallback or "standard")
-    return pd.Series(result, index=frame.index)
+    return pd.Series(result, index=frame.index, dtype=str)
 
 
 def _classify_numeric_hours(hours: float | None) -> str | None:

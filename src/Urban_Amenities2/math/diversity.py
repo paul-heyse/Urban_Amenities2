@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+import math
 
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 
 
@@ -30,7 +33,7 @@ class DiversityConfig:
             self.max_multiplier = min(self.max_multiplier, self.min_multiplier + self.cap)
 
 
-def shannon_entropy(values: Sequence[float]) -> float:
+def shannon_entropy(values: Sequence[float] | NDArray[np.float64]) -> float:
     """Return Shannon entropy for a sequence of non-negative values."""
 
     array = np.asarray(values, dtype=float)
@@ -43,7 +46,7 @@ def shannon_entropy(values: Sequence[float]) -> float:
     return max(entropy, 0.0)
 
 
-def _normalised_entropy(values: Sequence[float]) -> float:
+def _normalised_entropy(values: Sequence[float] | NDArray[np.float64]) -> float:
     array = np.asarray(values, dtype=float)
     positive = array[array > 0]
     if positive.size <= 1:
@@ -55,7 +58,10 @@ def _normalised_entropy(values: Sequence[float]) -> float:
     return float(min(entropy / max_entropy, 1.0))
 
 
-def diversity_multiplier(values: Sequence[float], config: DiversityConfig | None = None) -> float:
+def diversity_multiplier(
+    values: Sequence[float] | NDArray[np.float64],
+    config: DiversityConfig | None = None,
+) -> float:
     cfg = config or DiversityConfig()
     norm_entropy = _normalised_entropy(values)
     bonus = cfg.weight * norm_entropy

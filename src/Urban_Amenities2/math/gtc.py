@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import NDArray
 
 
-@dataclass
+@dataclass(slots=True)
 class GTCParameters:
     theta_iv: float
     theta_wait: float
@@ -17,16 +18,21 @@ class GTCParameters:
 
 
 def generalized_travel_cost(
-    in_vehicle: np.ndarray,
-    wait: np.ndarray,
-    walk: np.ndarray,
-    transfers: np.ndarray,
-    reliability: np.ndarray,
-    fare: np.ndarray,
+    in_vehicle: NDArray[np.float64],
+    wait: NDArray[np.float64],
+    walk: NDArray[np.float64],
+    transfers: NDArray[np.float64],
+    reliability: NDArray[np.float64],
+    fare: NDArray[np.float64],
     params: GTCParameters,
-    carry_adjustment: np.ndarray | float = 0.0,
-) -> np.ndarray:
-    fare_component = np.divide(fare, params.value_of_time, out=np.zeros_like(fare, dtype=float), where=params.value_of_time > 0)
+    carry_adjustment: NDArray[np.float64] | float = 0.0,
+) -> NDArray[np.float64]:
+    denominator = params.value_of_time if params.value_of_time > 0 else 1.0
+    fare_component = np.divide(
+        fare,
+        denominator,
+        out=np.zeros_like(fare, dtype=float),
+    ).astype(float)
     result = (
         params.theta_iv * in_vehicle
         + params.theta_wait * wait
@@ -36,7 +42,8 @@ def generalized_travel_cost(
         + fare_component
         + params.carry_penalty
     )
-    return result + carry_adjustment
+    adjustment = np.asarray(carry_adjustment, dtype=float)
+    return np.asarray(result + adjustment, dtype=float)
 
 
 __all__ = ["generalized_travel_cost", "GTCParameters"]
