@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+from pathlib import Path
+
+import pytest
 from dash import dcc, html
 
 from Urban_Amenities2.ui.components.footer import build_footer
@@ -13,6 +17,8 @@ from Urban_Amenities2.ui.components.overlay_controls import (
     build_overlay_panel,
 )
 from Urban_Amenities2.ui.config import UISettings
+from Urban_Amenities2.ui.downloads import build_file_download, send_file
+from Urban_Amenities2.ui.performance import PerformanceMonitor, profile_function, timer
 
 
 def test_build_header_uses_settings(ui_settings: UISettings) -> None:
@@ -85,3 +91,88 @@ def test_filter_and_parameter_panels() -> None:
                 assert tooltip.get("always_visible") is False
                 slider_components.append(slider)
     assert slider_components
+
+
+def test_performance_timer_logs(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _Recorder:
+        def info(self, event: str, **kwargs: object) -> None:
+            events.append((event, kwargs))
+
+    monkeypatch.setattr("Urban_Amenities2.ui.performance.logger", _Recorder())
+    with timer("load-data"):
+        pass
+
+    assert events and events[0][0] == "operation_timed"
+    payload = events[0][1]
+    assert payload["operation"] == "load-data"
+    assert payload["elapsed_ms"] >= 0.0
+
+
+def test_profile_function_records_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _Recorder:
+        def info(self, event: str, **kwargs: object) -> None:
+            events.append((event, kwargs))
+
+    monkeypatch.setattr("Urban_Amenities2.ui.performance.logger", _Recorder())
+
+    @profile_function
+    def _sample(value: int) -> int:
+        return value * 2
+
+    assert _sample(3) == 6
+    assert events and events[0][0] == "function_profiled"
+    assert events[0][1]["function"] == "_sample"
+
+
+def test_performance_monitor_stats() -> None:
+    monitor = PerformanceMonitor()
+    for value in [5.0, 15.0, 25.0]:
+        monitor.record("render", value)
+
+    stats = monitor.get_stats("render")
+    assert stats is not None
+    assert stats["min"] == 5.0
+    assert stats["max"] == 25.0
+    assert stats["count"] == 3
+
+    aggregate = monitor.get_all_stats()
+    assert "render" in aggregate
+    assert aggregate["render"]["p50"] >= 5.0
+
+
+def test_build_file_download_encodes_content(tmp_path: Path) -> None:
+    path = tmp_path / "report.txt"
+    path.write_text("hello world", encoding="utf-8")
+
+    payload = build_file_download(path, filename="metrics.txt", mimetype="text/plain")
+    assert payload["filename"] == "metrics.txt"
+    assert payload["type"] == "text/plain"
+    decoded = base64.b64decode(payload["content"].encode("ascii"))
+    assert decoded == b"hello world"
+
+
+def test_send_file_delegates_to_dash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "data.csv"
+    path.write_text("value", encoding="utf-8")
+
+    captured: dict[str, object] = {}
+
+    def _fake_send_file(path_str: str, *, filename: str | None, type: str | None) -> dict[str, object]:
+        captured["path"] = path_str
+        captured["filename"] = filename
+        captured["type"] = type
+        return {"content": "ok"}
+
+    monkeypatch.setattr("Urban_Amenities2.ui.downloads.dcc.send_file", _fake_send_file)
+
+    payload = send_file(path, filename="data.csv", content_type="text/csv")
+    assert payload == {"content": "ok"}
+    assert captured == {
+        "path": str(path),
+        "filename": "data.csv",
+        "type": "text/csv",
+    }

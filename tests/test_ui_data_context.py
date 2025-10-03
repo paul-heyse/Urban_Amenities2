@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +10,7 @@ import pytest
 from Urban_Amenities2.ui.config import UISettings
 from Urban_Amenities2.ui.data_loader import DataContext
 from Urban_Amenities2.ui.hexes import HexGeometryCache
+from tests.ui_factories import write_overlay_file, write_ui_dataset
 
 
 def test_hex_geometry_cache_caches_entries() -> None:
@@ -140,66 +140,19 @@ def test_data_context_summary_returns_expected_columns() -> None:
     assert {"min", "max", "mean"}.issubset(summary.columns)
 
 
-def _write_dataset(
-    base_path: Path,
-    identifier: str,
-    hex_ids: list[str],
-    states: list[str],
-    timestamp: datetime,
-    *,
-    nested: bool = False,
-) -> None:
-    scores = pd.DataFrame(
-        {
-            "hex_id": hex_ids,
-            "aucs": [float(60 + index * 5) for index in range(len(hex_ids))],
-            "EA": [float(50 + index) for index in range(len(hex_ids))],
-            "LCA": [float(48 + index) for index in range(len(hex_ids))],
-            "MUHAA": [float(47 + index) for index in range(len(hex_ids))],
-            "JEA": [float(46 + index) for index in range(len(hex_ids))],
-            "MORR": [float(45 + index) for index in range(len(hex_ids))],
-            "CTE": [float(44 + index) for index in range(len(hex_ids))],
-            "SOU": [float(43 + index) for index in range(len(hex_ids))],
-        }
-    )
-    scores["hex_id"] = scores["hex_id"].astype(str)
-    if nested:
-        run_dir = base_path / identifier
-        run_dir.mkdir(parents=True, exist_ok=True)
-        scores_path = run_dir / "scores.parquet"
-        metadata_path = run_dir / "metadata.parquet"
-    else:
-        scores_path = base_path / f"{identifier}_scores.parquet"
-        metadata_path = base_path / f"{identifier}_metadata.parquet"
-    scores.to_parquet(scores_path)
-    metadata = pd.DataFrame(
-        {
-            "hex_id": hex_ids,
-            "state": states,
-            "metro": [f"Metro {identifier}"] * len(hex_ids),
-            "county": [f"County {identifier}"] * len(hex_ids),
-        }
-    )
-    metadata["hex_id"] = metadata["hex_id"].astype(str)
-    metadata.to_parquet(metadata_path)
-    epoch = timestamp.timestamp()
-    os.utime(scores_path, (epoch, epoch))
-    os.utime(metadata_path, (epoch, epoch))
-
-
 def test_data_context_lists_versions_and_switches(
     tmp_path: Path, sample_hex_ids: list[str]
 ) -> None:
     data_path = tmp_path / "ui-data"
     data_path.mkdir()
-    _write_dataset(
+    write_ui_dataset(
         data_path,
         "20240101",
         sample_hex_ids,
         ["CO", "NE", "CA"],
         datetime(2024, 1, 1, 12, 0, 0),
     )
-    _write_dataset(
+    write_ui_dataset(
         data_path,
         "20240201",
         sample_hex_ids,
@@ -228,7 +181,7 @@ def test_data_context_prefers_version_specific_overlays(
 ) -> None:
     data_path = tmp_path / "ui-data"
     data_path.mkdir()
-    _write_dataset(
+    write_ui_dataset(
         data_path,
         "20240101",
         sample_hex_ids,
@@ -239,44 +192,10 @@ def test_data_context_prefers_version_specific_overlays(
 
     version_dir = data_path / "20240101"
     version_overlays = version_dir / "overlays"
-    version_overlays.mkdir(parents=True, exist_ok=True)
-    (version_overlays / "parks.geojson").write_text(
-        json.dumps(
-            {
-                "type": "FeatureCollection",
-                "features": [
-                    {
-                        "type": "Feature",
-                        "geometry": {
-                            "type": "Polygon",
-                            "coordinates": [[[-104.0, 39.7], [-104.0, 39.8], [-104.1, 39.8], [-104.1, 39.7], [-104.0, 39.7]]],
-                        },
-                        "properties": {"label": "Version parks"},
-                    }
-                ],
-            }
-        )
-    )
+    write_overlay_file(version_overlays, "parks", "Version parks")
 
     global_overlays = data_path / "overlays"
-    global_overlays.mkdir(parents=True, exist_ok=True)
-    (global_overlays / "parks.geojson").write_text(
-        json.dumps(
-            {
-                "type": "FeatureCollection",
-                "features": [
-                    {
-                        "type": "Feature",
-                        "geometry": {
-                            "type": "Polygon",
-                            "coordinates": [[[-105.0, 40.7], [-105.0, 40.8], [-105.1, 40.8], [-105.1, 40.7], [-105.0, 40.7]]],
-                        },
-                        "properties": {"label": "Global parks"},
-                    }
-                ],
-            }
-        )
-    )
+    write_overlay_file(global_overlays, "parks", "Global parks")
 
     settings = UISettings(data_path=data_path)
     context = DataContext.from_settings(settings)

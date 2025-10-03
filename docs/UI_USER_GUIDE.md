@@ -271,6 +271,16 @@ Enable in Settings → Accessibility → High Contrast Mode
 - Dash components and callbacks use the contracts in `Urban_Amenities2.ui.contracts`. Wrap new callbacks with `Urban_Amenities2.ui.dash_wrappers.register_callback` so handler signatures remain typed, and prefer `Urban_Amenities2.ui.downloads.build_file_download` over `dcc.send_file` to emit typed download payloads.
 - Run `mypy src/Urban_Amenities2/ui --warn-unused-ignores` after modifying UI data loaders or components to confirm TypedDict updates remain in sync.
 
+### UI Regression Testing
+
+Run the regression-focused UI suites before shipping layout or data loader changes:
+
+- `pytest tests/test_ui_data_loader.py -q` ensures dataset discovery, metadata fallbacks, and overlay builders remain stable.
+- `pytest tests/test_ui_layouts.py -q` validates page registration and the map callback integration contract.
+- `pytest tests/test_ui_components_structure.py tests/test_ui_export.py -q` covers component factories, download helpers, and GeoJSON export behaviour.
+
+These suites exercise the shapely-optional paths and Dash callbacks without requiring a running server, making them safe to execute in CI pipelines.
+
 ## Support
 
 For questions, issues, or feedback:
