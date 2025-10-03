@@ -47,15 +47,13 @@ def compute_z(
     accessibility: NDArray[np.float64],
     rho: float,
 ) -> NDArray[np.float64]:
-    product: NDArray[np.float64] = np.asarray(
-        np.maximum(quality * accessibility, 0.0), dtype=float
-    )
+    product = quality * accessibility
+    non_negative = np.maximum(product, 0.0)
+    product64 = non_negative.astype(np.float64)
     if abs(rho - 1.0) < _LINEAR_TOL:
-        return product
-    powered: NDArray[np.float64] = np.asarray(
-        np.power(np.clip(product, 0.0, None), rho), dtype=float
-    )
-    return powered
+        return product64
+    powered = np.power(product64, rho)
+    return powered.astype(np.float64)
 
 
 def _geometric_mean(product: NDArray[np.float64], axis: int) -> NDArray[np.float64]:
