@@ -30,7 +30,11 @@ def validity_check(pois: pd.DataFrame, lat_col: str = "lat", lon_col: str = "lon
 
 
 def consistency_check(pois: pd.DataFrame, enrichment: pd.DataFrame | None = None) -> dict[str, float]:
-    metrics: dict[str, float] = {"dedupe_weight_non_null": float(pois.get("dedupe_weight", pd.Series([1])).notna().mean())}
+    metrics: dict[str, float] = {
+        "dedupe_weight_non_null": float(
+            pois.get("dedupe_weight", pd.Series([1], dtype=float)).notna().mean()
+        )
+    }
     if enrichment is not None and "poi_id" in pois.columns and "poi_id" in enrichment.columns:
         joined = pois.merge(enrichment, on="poi_id", how="left", indicator=True)
         metrics["enrichment_join_rate"] = float((joined["_merge"] == "both").mean())

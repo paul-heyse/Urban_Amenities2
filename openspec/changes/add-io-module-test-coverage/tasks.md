@@ -2,10 +2,10 @@
 
 ## 1. Test Infrastructure Setup
 
-- [ ] 1.1 Create `tests/io/` directory structure mirroring `src/Urban_Amenities2/io/`
+- [x] 1.1 Create `tests/io/` directory structure mirroring `src/Urban_Amenities2/io/`
 - [ ] 1.2 Install `responses` library for HTTP mocking: `micromamba install -p ./.venv -c conda-forge responses`
-- [ ] 1.3 Create `tests/fixtures/io_samples/` for sample API responses
-- [ ] 1.4 Define shared fixtures in `tests/io/conftest.py` (mock sessions, sample geometries, etc.)
+- [x] 1.3 Create `tests/fixtures/io_samples/` for sample API responses
+- [x] 1.4 Define shared fixtures in `tests/io/conftest.py` (mock sessions, sample geometries, etc.)
 
 ## 2. Overture Maps Testing (High Priority)
 
@@ -42,28 +42,28 @@
 
 ## 4. Climate Data Testing (High Priority)
 
-- [ ] 4.1 Create `tests/io/climate/test_noaa.py`
+- [x] 4.1 Create `tests/io/climate/test_noaa.py`
   - [ ] Test station selection by geographic bounding box
-  - [ ] Test monthly normals parsing for all 12 months
-  - [ ] Test handling of missing data with interpolation fallbacks
-  - [ ] Test temperature and precipitation unit conversions
+  - [x] Test monthly normals parsing for all 12 months
+  - [x] Test handling of missing data with interpolation fallbacks
+  - [x] Test temperature and precipitation unit conversions
   - [ ] Test cache invalidation after staleness threshold
   - [ ] Test parallel station data fetching
 
 ## 5. Enrichment Testing (High Priority)
 
-- [ ] 5.1 Create `tests/io/enrichment/test_wikidata.py`
-  - [ ] Test SPARQL query construction for entity resolution
-  - [ ] Test parsing of Wikidata JSON responses
-  - [ ] Test handling of entities with no English labels
+- [x] 5.1 Create `tests/io/enrichment/test_wikidata.py`
+  - [x] Test SPARQL query construction for entity resolution
+  - [x] Test parsing of Wikidata JSON responses
+  - [x] Test handling of entities with no English labels
   - [ ] Test timeout and retry logic for slow queries
   - [ ] Test batch querying for multiple entities
-- [ ] 5.2 Create `tests/io/enrichment/test_wikipedia.py`
-  - [ ] Test pageview API requests with date ranges
+- [x] 5.2 Create `tests/io/enrichment/test_wikipedia.py`
+  - [x] Test pageview API requests with date ranges
   - [ ] Test handling of redirects and disambiguation pages
-  - [ ] Test rate limiting with exponential backoff
-  - [ ] Test caching of pageview statistics
-  - [ ] Test fallback to zero pageviews when API unavailable
+  - [x] Test rate limiting with exponential backoff
+  - [x] Test caching of pageview statistics
+  - [x] Test fallback to zero pageviews when API unavailable
 
 ## 6. Education & Jobs Testing (Medium Priority)
 
@@ -85,11 +85,11 @@
 
 ## 7. Quality Checks Testing (High Priority)
 
-- [ ] 7.1 Create `tests/io/quality/test_checks.py`
+- [x] 7.1 Create `tests/io/quality/test_checks.py`
   - [ ] Test schema validation with Pandera schemas
-  - [ ] Test completeness checks for required columns
+  - [x] Test completeness checks for required columns
   - [ ] Test outlier detection for numeric fields
-  - [ ] Test duplicate detection across multiple columns
+  - [x] Test duplicate detection across multiple columns
   - [ ] Test comprehensive error message formatting
 
 ## 8. Airports Testing (Medium Priority)
