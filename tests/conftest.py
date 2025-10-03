@@ -8,9 +8,11 @@ import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pandas as pd
 import pytest
+from requests import HTTPError
 
 from Urban_Amenities2.cache.manager import CacheConfig, CacheManager
 from Urban_Amenities2.ui.config import UISettings
@@ -236,32 +238,75 @@ def timestamp() -> datetime:
 
 
 class StubResponse:
-    def __init__(self, payload: dict):
+    """Minimal response stub compatible with ``requests``."""
+
+    def __init__(self, payload: object, status_code: int = 200):
         self._payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self) -> None:
-        return None
+        if self.status_code >= 400:
+            raise HTTPError(f"Stub response returned status {self.status_code}")
 
-    def json(self) -> dict:
+    def json(self) -> object:
         return self._payload
 
 
 class StubSession:
     """Simple HTTP session stub returning canned responses."""
 
-    def __init__(self, responses: dict[str, dict]):
+    def __init__(self, responses: dict):
         self.responses = responses
         self.calls: list[str] = []
+        self.requests: list[dict[str, object]] = []
+
+    def _lookup(self, method: str, url: str) -> object:
+        parsed = urlparse(url)
+        path = parsed.path
+        candidates: list[object] = [
+            (method.upper(), url),
+            (method.upper(), path),
+            (method.upper(), path.rsplit("/", 1)[-1]),
+            method.lower(),
+            path,
+        ]
+        for candidate in candidates:
+            if candidate in self.responses:
+                return self.responses[candidate]
+        for key in self.responses:
+            if isinstance(key, str) and key in url:
+                return self.responses[key]
+        if method.upper() == "GET":
+            if "route" in url and "route" in self.responses:
+                return self.responses["route"]
+            if "table" in url and "table" in self.responses:
+                return self.responses["table"]
+        if method.upper() == "POST" and "post" in self.responses:
+            return self.responses["post"]
+        return {}
+
+    def _make_response(self, payload: object) -> StubResponse:
+        if isinstance(payload, StubResponse):
+            return payload
+        status = 200
+        body = payload
+        if isinstance(payload, tuple) and len(payload) == 2 and isinstance(payload[1], int):
+            body, status = payload
+        return StubResponse(body, status)
 
     def get(self, url: str, params=None, timeout: int | None = None):
         self.calls.append(url)
-        if "route" in url:
-            return StubResponse(self.responses.get("route", {}))
-        return StubResponse(self.responses.get("table", {}))
+        record = {"method": "GET", "url": url, "params": params or {}, "timeout": timeout}
+        self.requests.append(record)
+        payload = self._lookup("GET", url)
+        return self._make_response(payload)
 
     def post(self, url: str, json=None, timeout: int | None = None):
         self.calls.append(url)
-        return StubResponse(self.responses.get("post", {}))
+        record = {"method": "POST", "url": url, "json": json or {}, "timeout": timeout}
+        self.requests.append(record)
+        payload = self._lookup("POST", url)
+        return self._make_response(payload)
 
 
 @pytest.fixture

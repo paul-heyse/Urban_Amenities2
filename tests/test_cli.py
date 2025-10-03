@@ -2,17 +2,25 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from typer.testing import CliRunner
 
 from Urban_Amenities2.cli.main import app
+from Urban_Amenities2.router.batch import BatchConfig
+from Urban_Amenities2.router.osrm import OSRMTable
 
 
-def test_routing_compute_skims_cli(tmp_path: Path) -> None:
+def test_routing_compute_skims_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     origins = tmp_path / "origins.csv"
     origins.write_text("id,lat,lon\nA,39.0,-104.0\n", encoding="utf-8")
     destinations = tmp_path / "destinations.csv"
     destinations.write_text("id,lat,lon\nB,39.1,-104.1\n", encoding="utf-8")
     output = tmp_path / "skims.parquet"
+
+    def fake_batch_config(*, mode="car", period=None) -> BatchConfig:
+        return BatchConfig(cache_dir=tmp_path / "cache", mode=mode, period=period)
+
+    monkeypatch.setattr("Urban_Amenities2.cli.main.BatchConfig", fake_batch_config)
 
     runner = CliRunner()
     result = runner.invoke(
@@ -28,6 +36,71 @@ def test_routing_compute_skims_cli(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert output.exists()
+
+
+def test_routing_compute_skims_cli_with_osrm_base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    origins = tmp_path / "origins.csv"
+    origins.write_text("id,lat,lon\nA,39.0,-104.0\n", encoding="utf-8")
+    destinations = tmp_path / "destinations.csv"
+    destinations.write_text("id,lat,lon\nB,39.1,-104.1\n", encoding="utf-8")
+    output = tmp_path / "skims_osrm.parquet"
+
+    created_clients: list[object] = []
+
+    def fake_batch_config(*, mode="car", period=None) -> BatchConfig:
+        return BatchConfig(cache_dir=tmp_path / "cache", mode=mode, period=period)
+
+    class StubOSRMClient:
+        def __init__(self, config, session=None):  # type: ignore[no-untyped-def]
+            self.config = config
+            created_clients.append(self)
+
+        def table(self, sources, destinations):  # type: ignore[no-untyped-def]
+            return OSRMTable(durations=[[120.0]], distances=[[1000.0]])
+
+    monkeypatch.setattr("Urban_Amenities2.cli.main.OSRMClient", StubOSRMClient)
+    monkeypatch.setattr("Urban_Amenities2.cli.main.BatchConfig", fake_batch_config)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "routing",
+            "compute-skims",
+            str(origins),
+            str(destinations),
+            "--output-path",
+            str(output),
+            "--osrm-base-url",
+            "http://stub",  # ensures OSRM client branch executes
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert output.exists()
+    assert created_clients, "OSRMClient should be instantiated"
+    frame = pd.read_parquet(output)
+    assert pytest.approx(1000.0) == frame.loc[0, "distance_m"]
+
+
+def test_routing_compute_skims_cli_missing_column(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    origins = tmp_path / "origins.csv"
+    origins.write_text("id,lat\nA,39.0\n", encoding="utf-8")
+    destinations = tmp_path / "destinations.csv"
+    destinations.write_text("id,lat,lon\nB,39.1,-104.1\n", encoding="utf-8")
+
+    def fake_batch_config(*, mode="car", period=None) -> BatchConfig:
+        return BatchConfig(cache_dir=tmp_path / "cache", mode=mode, period=period)
+
+    monkeypatch.setattr("Urban_Amenities2.cli.main.BatchConfig", fake_batch_config)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["routing", "compute-skims", str(origins), str(destinations)],
+    )
+    assert result.exit_code != 0
+    assert isinstance(result.exception, KeyError)
+    assert "lon" in str(result.exception)
 
 
 def test_data_list_snapshots_cli(tmp_path: Path) -> None:
@@ -82,6 +155,49 @@ def test_score_ea_cli(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert output.exists()
+
+
+def test_score_ea_cli_missing_hex_exits(tmp_path: Path) -> None:
+    pois = pd.DataFrame(
+        {
+            "poi_id": ["p1"],
+            "aucstype": ["grocery"],
+            "quality": [1.0],
+        }
+    )
+    pois_path = tmp_path / "pois.parquet"
+    pois.to_parquet(pois_path)
+
+    accessibility = pd.DataFrame(
+        {
+            "poi_id": ["p1"],
+            "origin_hex": ["hex1"],
+            "weight": [1.0],
+            "mode": ["car"],
+            "period": ["AM"],
+        }
+    )
+    accessibility_path = tmp_path / "access.parquet"
+    accessibility.to_parquet(accessibility_path)
+
+    output = tmp_path / "ea.parquet"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "score",
+            "ea",
+            str(pois_path),
+            str(accessibility_path),
+            "--output",
+            str(output),
+            "--hex-id",
+            "missing",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "No accessibility records" in result.output
 
 
 def test_aggregate_and_export_cli(tmp_path: Path) -> None:
