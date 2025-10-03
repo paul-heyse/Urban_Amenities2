@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/explainability.py
+# hypothesis_version: 6.140.2
+
+[0.0, 'brand_penalty', 'category', 'contribution', 'contributors', 'hex_id', 'name', 'poi_id', 'quality', 'quality_components', 'top_contributors']

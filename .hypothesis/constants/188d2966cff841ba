@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/quality/dedupe.py
+# hypothesis_version: 6.140.2
+
+[0.0, 1.0, 500.0, 1000.0, 6371000.0, 'BrandDedupeConfig', 'affected_ratio', 'apply_brand_dedupe', 'aucs.quality.dedupe', 'aucstype', 'avg_penalty', 'brand', 'brand_penalty', 'brand_weight', 'brand_weight_raw', 'lat', 'lon', 'quality']

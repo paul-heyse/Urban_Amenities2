@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/components/navigation.py
+# hypothesis_version: 6.140.2
+
+['/', '/data', '/map', '/settings', 'Data', 'Map Explorer', 'Overview', 'Settings', 'app-sidebar', 'build_sidebar', 'fa fa-chart-line', 'fa fa-database', 'fa fa-map', 'fa fa-sliders-h', 'icon', 'label', 'nav-link', 'path']

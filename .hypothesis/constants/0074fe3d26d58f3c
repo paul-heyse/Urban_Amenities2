@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/router/api.py
+# hypothesis_version: 6.140.2
+
+[0.0, 60.0, 'RouteResult', 'RoutingAPI', 'TRANSIT', 'WALK', 'destination', 'destination_index', 'distance', 'distance_m', 'duration', 'duration_min', 'inf', 'legs', 'mode', 'origin', 'origin_index', 'period', 'transit']

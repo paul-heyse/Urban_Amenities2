@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/components/choropleth.py
+# hypothesis_version: 6.140.2
+
+[-111.0, 0.85, 6.0, 39.5, 350, '#4b5563', '<br>', 'Blues', 'CTE', 'EA', 'Greens', 'JEA', 'LCA', 'MORR', 'MUHAA', 'OrRd', 'Plasma', 'PuRd', 'SOU', 'Turbo', 'Viridis', 'YlGn', 'accesstoken', 'aucs', 'bgcolor', 'borderpad', 'bottom', 'carto-positron', 'center', 'choroplethmapbox', 'color', 'create_choropleth', 'cubic-in-out', 'font', 'hex-map', 'hex_id', 'lat', 'layers', 'left', 'line', 'lon', 'mapbox://', 'open-street-map', 'paper', 'showarrow', 'size', 'style', 'text', 'type', 'width', 'x', 'xanchor', 'xref', 'y', 'yanchor', 'yref', 'zoom']

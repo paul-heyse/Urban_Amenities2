@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/math/diversity.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.2, 1.0, 1.2, 'DiversityConfig', 'aucstype', 'category', 'compute_diversity', 'default', 'diversity_bonus', 'diversity_multiplier', 'entropy', 'shannon_entropy']

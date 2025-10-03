@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/contracts.py
+# hypothesis_version: 6.140.2
+
+['BasemapOption', 'CTE', 'DownloadPayload', 'EA', 'JEA', 'LCA', 'MORR', 'MUHAA', 'MapboxLayer', 'OverlayId', 'OverlayOption', 'SOU', 'ScoreboardEntry', 'SubscoreCode', 'SubscoreOption', 'aucs', 'city_labels', 'counties', 'landmark_labels', 'metros', 'parks', 'states', 'transit_lines', 'transit_stops']

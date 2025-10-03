@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/hexes.py
+# hypothesis_version: 6.140.2
+
+[10000, ',', 'HexGeometryCache', 'HexSpatialIndex', 'Polygon', 'build_hex_index', 'centroid_lat', 'centroid_lon', 'coordinates', 'geometry_wkt', 'h3', 'hex_centroid', 'hex_id', 'hex_to_geojson', 'hex_to_wkt', 'resolution', 'shapely_missing', 'type', 'ui.hexes']

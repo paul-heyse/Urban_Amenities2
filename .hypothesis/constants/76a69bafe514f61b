@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/enrichment/wikidata.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.25, 0.5, 1.0, 4.0, 60.0, 1024, '/', 'WikidataClient', 'WikidataEnricher', 'bindings', 'build_query', 'cache/api/wikidata', 'capacity', 'heritage', 'heritage_status', 'item', 'lat', 'lon', 'name', 'poi_id', 'results', 'utf-8', 'value', 'wikidata_qid']

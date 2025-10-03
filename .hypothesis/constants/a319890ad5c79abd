@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/components/overlay_controls.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.05, 0.35, 1.0, 'City labels', 'County boundaries', 'DEFAULT_OVERLAYS', 'Landmarks', 'Map layers', 'Metro areas', 'OVERLAY_OPTIONS', 'Overlay opacity', 'Parks & trails', 'State boundaries', 'Transit lines', 'Transit stops', 'build_overlay_panel', 'city_labels', 'counties', 'label', 'landmark_labels', 'map-attribution', 'metros', 'overlay-hint', 'overlay-input', 'overlay-label', 'overlay-layers', 'overlay-opacity', 'overlay-panel', 'parks', 'states', 'transit_lines', 'transit_stops', 'value']

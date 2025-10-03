@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/normalization.py
+# hypothesis_version: 6.140.2
+
+[0.0, 5.0, 95.0, 100, 'NormalizationConfig', 'normalize_scores', 'percentile', 'standard']

@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/parks_access.py
+# hypothesis_version: 6.140.2
+
+[0.0, 1e-12, 1e-06, 0.25, 0.35, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 2.0, 8.0, 20.0, 100.0, 500.0, 'ParkQualityConfig', 'ParkQualityWeights', 'amenities', 'area_acres', 'aucs.scores.parks', 'city_park', 'designation', 'hex_id', 'inner', 'national_park', 'open_space', 'origin_hex', 'parks_access_merge', 'parks_accessibility', 'parks_score', 'poi_id', 'quality', 'quality_score', 'regional_park', 'state_park', 'trailhead', 'weight']

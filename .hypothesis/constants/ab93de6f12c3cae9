@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/climate/noaa.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.4, 1.0, 8.0, 10.0, 27.0, 100.0, ',', '1', 'MLY-PRCP-PRB', 'MLY-TAVG-NORMAL', 'MLY-WSF2-NORMAL', 'NOAAConfig', 'NoaaNormalsIngestor', 'data/snapshots.jsonl', 'dataTypes', 'dataset', 'format', 'hex_id', 'includeStationName', 'json', 'latitude', 'longitude', 'metric', 'month', 'precip_probability', 'sigma_out', 'state', 'tavg_c', 'token', 'units', 'wind_mps']

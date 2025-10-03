@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/penalties.py
+# hypothesis_version: 6.140.2
+
+[2.0, 8.0, 20.0, 'shortfall_penalty']

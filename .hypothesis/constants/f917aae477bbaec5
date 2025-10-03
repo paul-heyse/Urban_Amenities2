@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/dedupe/pois.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.85, 1.0, 2.0, 3.0, 25.0, 50.0, 100.0, 1000.0, 6371000.0, 'DedupeConfig', 'aucstype', 'brand', 'confidence', 'deduplicate_pois', 'ensure_hex_index', 'hex_id', 'index', 'lat', 'lon', 'name']

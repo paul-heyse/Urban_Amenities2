@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/__init__.py
+# hypothesis_version: 6.140.2
+
+[200, '/*', '/health', 'OK', 'SECRET_KEY', 'SERVER_NAME', 'UISettings', 'create_app', 'dash', 'external_stylesheets', 'flask_cors', 'gunicorn.error', 'origins', 'text/plain']

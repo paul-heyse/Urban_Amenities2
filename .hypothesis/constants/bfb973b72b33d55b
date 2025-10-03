@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/parks/ridb.py
+# hypothesis_version: 6.140.2
+
+[0.0, 200, 'RECDATA', 'RIDBConfig', 'RIDBIngestor', 'RecAreaID', 'RecAreaLatitude', 'RecAreaLongitude', 'RecAreaName', 'RecAreaState', 'apikey', 'data/snapshots.jsonl', 'fetching_ridb', 'hex_id', 'lat', 'limit', 'lon', 'name', 'offset', 'recarea_id', 'state', 'states']

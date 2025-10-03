@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/cache/manager.py
+# hypothesis_version: 6.140.2
+
+[0.0, 100, 365, 1024, 86400, '.cache', 'cache_cleared', 'cache_get_error', 'cache_hit', 'cache_invalidated', 'cache_miss', 'cache_set', 'cache_set_error', 'cache_warmed', 'disk', 'entry_count', 'evictions', 'faa', 'hit_rate', 'hits', 'least-recently-used', 'misses', 'noaa', 'osrm', 'otp', 'overture', 'redis', 'sets', 'total_size', 'transitland', 'utf-8', 'wikidata', 'wikipedia']

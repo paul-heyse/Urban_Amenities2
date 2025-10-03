@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/enrichment/__init__.py
+# hypothesis_version: 6.140.2
+
+['brand_wd', 'capacity', 'heritage_status', 'iqr', 'left', 'median_views', 'merge_enrichment', 'poi_id', 'popularity_z', 'quality_attrs', 'wikidata_qid']

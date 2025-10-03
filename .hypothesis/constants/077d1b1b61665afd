@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/logging_utils.py
+# hypothesis_version: 6.140.2
+
+[100, 1024, '%(message)s', '***', 'INFO', '_token', 'api_key', 'aucs', 'bind_context', 'configure_logging', 'coords', 'get_logger', 'iso', 'lat', 'latitude', 'log_duration', 'lon', 'longitude', 'request_context', 'request_id', 'timing_decorator', 'user', 'user_id', 'utf-8']

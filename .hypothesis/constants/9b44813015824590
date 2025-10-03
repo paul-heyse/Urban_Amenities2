@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/overture/transportation.py
+# hypothesis_version: 6.140.2
+
+[' OR ', 'EPSG:4326', 'GeoJSON', 'bike', 'car', 'class', 'cycleway', 'data/processed', 'determine_modes', 'empty_network_export', 'export_networks', 'foot', 'footway', 'geometry', 'hex_id', 'index_segments', 'mode_bike', 'mode_car', 'mode_foot', 'network_bike.geojson', 'network_car.geojson', 'network_foot.geojson', 'parse_geometry', 'rb', 'road']

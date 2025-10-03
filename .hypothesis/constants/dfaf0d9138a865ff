@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/types.py
+# hypothesis_version: 6.140.2
+
+['AggregationCacheKey', 'AmenityEntry', 'Bounds', 'Feature', 'FeatureCollection', 'GeoJSONFeature', 'GeoJSONGeometry', 'GeometryCacheEntry', 'MetadataRecord', 'ModeShareMap', 'OVERLAY_NAMES', 'OverlayFeature', 'OverlayMap', 'OverlayProperties', 'ScoreRecord', 'SummaryRow', 'centroid_lat', 'centroid_lon', 'counties', 'features', 'geometry', 'geometry_wkt', 'hex_id', 'metros', 'parks', 'resolution', 'states', 'transit_lines', 'transit_stops', 'type']

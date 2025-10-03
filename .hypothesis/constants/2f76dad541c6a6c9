@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/xwalk/overture_aucs.py
+# hypothesis_version: 6.140.2
+
+['.', '>', 'CategoryMatch', 'CategoryMatcher', '_', '```', '```yaml', 'aucscrosswalk', 'aucstype', 'categories', 'exclude', 'include', 'load_crosswalk', 'notes', 'prefix', 'primary_category', 'safe', 'utf-8', '|']

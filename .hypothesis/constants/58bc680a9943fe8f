@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/gtfs/static.py
+# hypothesis_version: 6.140.2
+
+[60.0, '-', '/', ':', 'GTFSCache', 'GTFSStaticIngestor', '_', 'arrival_time', 'cached_gtfs_static', 'calendar.txt', 'data/cache/gtfs', 'data/processed', 'data/snapshots.jsonl', 'gtfs_routes.parquet', 'gtfs_stops.parquet', 'headways', 'hex_id', 'left', 'mean_headway_min', 'rb', 'route_id', 'routes', 'routes.txt', 'seconds', 'service_end_min', 'service_span_min', 'stop_lat', 'stop_lon', 'stop_times', 'stop_times.txt', 'stops', 'stops.txt', 'trip_id', 'trips', 'trips.txt', 'utf-8']

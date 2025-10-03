@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/corridor_trip_chaining.py
+# hypothesis_version: 6.140.2
+
+[0.0, 1.0, 5.0, 10.0, 100.0, 'CTE', 'CorridorConfig', 'CorridorTripChaining', 'adjusted_quality', 'detour_minutes', 'hex_id', 'likelihood', 'quality', 'score_component', 'weight']

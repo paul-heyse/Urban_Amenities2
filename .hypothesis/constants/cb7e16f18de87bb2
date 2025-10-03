@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/gtfs/registry.py
+# hypothesis_version: 6.140.2
+
+[',', 'Agency', 'CO', 'Colorado', 'ID', 'Idaho', 'Multi', 'UT', 'Utah', '\\[(\\d+)\\]', '^### (.+)$', '^\\[(\\d+)\\]:\\s*(\\S+)', 'filter_by_state', 'license', 'load_registry', 'modes', 'name', 'notes', 'open', 'open license', 'realtime_urls', 'restricted', 'state', 'static_url', 'utf-8']

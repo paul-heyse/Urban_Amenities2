@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/airports/faa.py
+# hypothesis_version: 6.140.2
+
+[0.0, '.csv', 'ENPLANEMENTS', 'LAT', 'LON', 'STATE', 'compute_weights', 'filter_states', 'hex_id', 'index_airports', 'ingest_airports', 'lat', 'load_enplanements', 'lon', 'weight']

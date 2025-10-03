@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/enrichment/wikipedia.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.25, 0.75, 1.0, 4.0, 60.0, 100, 1024, '%Y%m%d', '%Y%m%d00', 'WikipediaClient', '_', 'cache/api/wikipedia', 'compute_statistics', 'en.wikipedia.org', 'iqr', 'items', 'median_views', 'pageviews', 'poi_id', 'popularity_z', 'records', 'timestamp', 'title', 'utf-8', 'views']

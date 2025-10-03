@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/education/childcare.py
+# hypothesis_version: 6.140.2
+
+['.parquet', 'FacilityID', 'FacilityName', 'Latitude', 'Longitude', 'capacity', 'combine_registries', 'facility_id', 'hex_id', 'ingest_childcare', 'lat', 'lon', 'name', 'provider_id', 'state']
