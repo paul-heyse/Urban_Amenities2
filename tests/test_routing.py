@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from conftest import StubSession
 from Urban_Amenities2.cli.main import GreatCircleOSRM
 from Urban_Amenities2.router.api import RoutingAPI
 from Urban_Amenities2.router.batch import BatchConfig, SkimBuilder
@@ -25,33 +26,6 @@ class DummyOSRM:
         durations = [[60.0 * (i + j + 1) for j in range(len(destinations))] for i in range(len(sources))]
         distances = [[1000.0 * (i + j + 1) for j in range(len(destinations))] for i in range(len(sources))]
         return {"durations": durations, "distances": distances}
-
-
-class StubResponse:
-    def __init__(self, payload: dict):
-        self._payload = payload
-
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self) -> dict:
-        return self._payload
-
-
-class StubSession:
-    def __init__(self, responses: dict[str, dict]):
-        self.responses = responses
-        self.calls: list[str] = []
-
-    def get(self, url: str, params=None, timeout: int | None = None):
-        self.calls.append(url)
-        if "route" in url:
-            return StubResponse(self.responses["route"])
-        return StubResponse(self.responses.get("table", {}))
-
-    def post(self, url: str, json=None, timeout: int | None = None):
-        self.calls.append(url)
-        return StubResponse(self.responses["post"])
 
 
 def test_great_circle_osrm() -> None:
@@ -85,13 +59,8 @@ def test_routing_api_and_batch(tmp_path: Path) -> None:
     assert not stored.empty
 
 
-def test_osrm_client_route_and_table() -> None:
-    responses = {
-        "route": {"code": "Ok", "routes": [{"duration": 100.0, "distance": 200.0, "legs": []}]},
-        "table": {"code": "Ok", "durations": [[10.0]], "distances": [[20.0]]},
-    }
-    session = StubSession(responses)
-    client = OSRMClient(OSRMConfig(base_url="http://osrm"), session=session)
+def test_osrm_client_route_and_table(osrm_stub_session) -> None:
+    client = OSRMClient(OSRMConfig(base_url="http://osrm"), session=osrm_stub_session)
     route = client.route([(0.0, 0.0), (1.0, 1.0)])
     assert route["duration"] == 100.0
     table = client.table([(0.0, 0.0)], [(1.0, 1.0)])
@@ -103,21 +72,8 @@ def test_osrm_client_route_and_table() -> None:
         client_error.route([(0.0, 0.0), (1.0, 1.0)])
 
 
-def test_otp_client_parsing() -> None:
-    itinerary = {
-        "duration": 600,
-        "walkTime": 120,
-        "transitTime": 300,
-        "waitingTime": 180,
-        "transfers": 1,
-        "fare": {"fare": {"regular": {"amount": 2.5}}},
-        "legs": [
-            {"mode": "WALK", "duration": 120, "distance": 200, "from": {"name": "A"}, "to": {"name": "B"}}
-        ],
-    }
-    payload = {"data": {"plan": {"itineraries": [itinerary]}}}
-    session = StubSession({"post": payload})
-    client = OTPClient(OTPConfig(base_url="http://otp"), session=session)
+def test_otp_client_parsing(otp_stub_session) -> None:
+    client = OTPClient(OTPConfig(base_url="http://otp"), session=otp_stub_session)
     plans = client.plan_trip((0.0, 0.0), (1.0, 1.0), ["TRANSIT"])
     assert plans[0]["transit_time"] == 300
 
