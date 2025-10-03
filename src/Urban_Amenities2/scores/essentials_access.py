@@ -8,7 +8,7 @@ import pandas as pd
 
 from ..config.params import AUCSParams, CategoryDiversityConfig
 from ..logging_utils import get_logger
-from ..math.ces import compute_z
+from ..math.ces import MAX_RHO, compute_z
 from ..math.diversity import DiversityConfig, compute_diversity
 from ..math.satiation import apply_satiation
 from .penalties import shortfall_penalty
@@ -31,8 +31,8 @@ class EssentialCategoryConfig:
     def __post_init__(self) -> None:
         if not np.isfinite(self.rho):
             raise ValueError("rho must be finite")
-        if self.rho > 1.0:
-            raise ValueError("rho must be less than or equal to 1")
+        if self.rho > MAX_RHO:
+            raise ValueError(f"rho must be less than or equal to {MAX_RHO}")
         if self.kappa <= 0:
             raise ValueError("kappa must be positive")
 

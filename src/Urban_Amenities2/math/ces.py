@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
+from numpy.exceptions import AxisError
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:  # pragma: no cover - typing helper for numba decorator
@@ -21,6 +22,64 @@ LOGGER = get_logger("aucs.math.ces")
 EPSILON = 1e-12
 _LINEAR_TOL = 1e-6
 _GEOMETRIC_TOL = 1e-6
+MAX_RHO = 10.0
+
+
+def _axis_index(array: NDArray[np.float64], axis: int) -> int:
+    axis_index = axis if axis >= 0 else array.ndim + axis
+    if axis_index < 0 or axis_index >= array.ndim:
+        raise AxisError(axis, array.ndim)
+    return axis_index
+
+
+def _expand_for_axis(values: NDArray[np.float64], axis: int) -> NDArray[np.float64]:
+    return np.expand_dims(values, axis=axis)
+
+
+def _aggregate_positive_rho(
+    product: NDArray[np.float64],
+    rho: float,
+    axis: int,
+) -> NDArray[np.float64]:
+    non_negative = np.maximum(product, 0.0)
+    axis_index = _axis_index(non_negative, axis)
+    scale = np.max(non_negative, axis=axis_index)
+    scale_expanded = _expand_for_axis(scale, axis_index)
+    safe_scale = np.where(scale_expanded > 0.0, scale_expanded, 1.0)
+    scaled = non_negative / safe_scale
+    with np.errstate(divide="ignore", invalid="ignore"):
+        powered = np.power(scaled, rho)
+    summed = np.sum(powered, axis=axis_index)
+    base = np.power(np.clip(summed, 0.0, None), 1.0 / rho)
+    result = base * scale
+    max_float = np.finfo(np.float64).max
+    clipped = np.minimum(result, max_float)
+    return np.asarray(np.where(scale > 0.0, clipped, 0.0), dtype=float)
+
+
+def _aggregate_negative_rho(
+    product: NDArray[np.float64],
+    rho: float,
+    axis: int,
+) -> NDArray[np.float64]:
+    non_negative = np.maximum(product, 0.0)
+    axis_index = _axis_index(non_negative, axis)
+    zero_mask = np.any(non_negative == 0.0, axis=axis_index)
+    positive = np.where(non_negative > 0.0, non_negative, np.inf)
+    scale = np.min(positive, axis=axis_index)
+    scale = np.where(np.isfinite(scale), scale, 0.0)
+    scale_expanded = _expand_for_axis(scale, axis_index)
+    safe_scale = np.where(scale_expanded > 0.0, scale_expanded, 1.0)
+    scaled = non_negative / safe_scale
+    with np.errstate(divide="ignore", invalid="ignore"):
+        powered = np.power(np.where(scaled > 0.0, scaled, np.inf), rho)
+    summed = np.sum(powered, axis=axis_index)
+    base = np.power(np.clip(summed, 0.0, None), 1.0 / rho)
+    result = base * scale
+    max_float = np.finfo(np.float64).max
+    cleaned = np.where(zero_mask, 0.0, result)
+    clipped = np.minimum(cleaned, max_float)
+    return np.asarray(np.where(np.isfinite(clipped), clipped, 0.0), dtype=float)
 
 
 def _validate_inputs(
@@ -36,8 +95,8 @@ def _validate_inputs(
         raise ValueError("quality and accessibility arrays must have the same shape")
     if not np.isfinite(rho):
         raise ValueError("rho must be finite")
-    if rho > 1.0:
-        raise ValueError("rho must be less than or equal to 1 for CES aggregation")
+    if rho > MAX_RHO:
+        raise ValueError(f"rho must be less than or equal to {MAX_RHO}")
     return quality_typed, accessibility_typed
 
 
@@ -78,27 +137,26 @@ def ces_aggregate(
         return empty
 
     product = quality_array * accessibility_array
-    if abs(rho) < _GEOMETRIC_TOL:
-        result = _geometric_mean(product, axis)
+    axis_index = axis if axis >= 0 else product.ndim + axis
+    if abs(rho) <= _GEOMETRIC_TOL:
+        result = _geometric_mean(product, axis_index)
     elif abs(rho - 1.0) < _LINEAR_TOL:
-        result = np.sum(product, axis=axis)
+        result = np.sum(np.maximum(product, 0.0), axis=axis_index)
+    elif rho > 0:
+        result = _aggregate_positive_rho(product, rho, axis_index)
     else:
-        z = compute_z(quality_array, accessibility_array, rho)
-        summed = np.sum(z, axis=axis)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            result = np.power(np.clip(summed, 0.0, None), 1.0 / rho)
-        result = np.where(np.isfinite(result), result, 0.0)
+        result = _aggregate_negative_rho(product, rho, axis_index)
 
     LOGGER.debug(
         "ces_aggregate",
         rho=float(rho),
         count=int(product.size),
         axis=axis,
-        min=float(np.min(result)),
-        max=float(np.max(result)),
-        mean=float(np.mean(result)) if result.size else 0.0,
+        min=float(np.min(result)) if np.size(result) else 0.0,
+        max=float(np.max(result)) if np.size(result) else 0.0,
+        mean=float(np.mean(result)) if np.size(result) else 0.0,
     )
     return np.asarray(result, dtype=float)
 
 
-__all__ = ["ces_aggregate", "compute_z"]
+__all__ = ["MAX_RHO", "ces_aggregate", "compute_z"]

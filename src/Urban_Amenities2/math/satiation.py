@@ -4,6 +4,20 @@ import numpy as np
 from numpy.typing import NDArray
 
 
+def satiation_weight(
+    counts: NDArray[np.float64] | float,
+    lambda_param: NDArray[np.float64] | float,
+) -> NDArray[np.float64]:
+    values_array = np.asarray(counts, dtype=float)
+    lambda_array = np.asarray(lambda_param, dtype=float)
+    if np.any(values_array <= 0):
+        raise ValueError("n must be positive")
+    if np.any(lambda_array <= 0):
+        raise ValueError("lambda must be positive")
+    weights = (1.0 - np.exp(-lambda_array * values_array)) / values_array
+    return np.asarray(weights, dtype=float)
+
+
 def compute_kappa_from_anchor(target_score: float, target_value: float) -> float:
     if target_value <= 0:
         raise ValueError("target_value must be positive")
@@ -48,4 +62,4 @@ def resolve_kappa(
     return resolved
 
 
-__all__ = ["apply_satiation", "compute_kappa_from_anchor", "resolve_kappa"]
+__all__ = ["apply_satiation", "compute_kappa_from_anchor", "resolve_kappa", "satiation_weight"]
