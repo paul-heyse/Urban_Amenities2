@@ -1,0 +1,87 @@
+grid:
+  hex_size_m: "not-a-number"
+  isochrone_minutes: [5, 10]
+  search_cap_minutes: 15
+subscores:
+  EA: 25
+  LCA: 15
+  MUHAA: 15
+  JEA: 15
+  MORR: 10
+  CTE: 10
+  SOU: 10
+time_slices:
+  - id: peak
+    weight: 0.6
+    VOT_per_hour: 18
+modes:
+  walk:
+    name: walk
+    theta_iv: -0.1
+    theta_wait: -0.2
+    theta_walk: -0.3
+    transfer_penalty_min: 0
+    half_life_min: 10
+    beta0: 0
+nests:
+  - id: base
+    modes: [walk]
+    mu: 1.0
+    eta: 1.0
+logit:
+  mu_top: 1.0
+carry_penalty:
+  category_multipliers:
+    groceries: 1.0
+  per_mode_extra_minutes:
+    walk: 0.0
+quality:
+  component_weights:
+    size: 0.5
+    popularity: 0.5
+  z_clip_abs: 3.0
+  opening_hours_bonus_xi: 1.0
+  dedupe_beta_per_km: 0.1
+categories:
+  essentials: [groceries]
+  leisure: []
+  ces_rho:
+    groceries: 0.5
+  satiation_mode: none
+leisure_cross_category:
+  weights:
+    arts: 1.0
+  elasticity_zeta: 1.0
+hubs_airports:
+  hub_mass_weights:
+    DEN: 1.0
+  hub_decay_alpha: 0.1
+  airport_decay_alpha: 0.1
+jobs_education:
+  university_weight_kappa: 0.5
+  industry_weights:
+    tech: 1.0
+morr:
+  frequent_exposure: 0.2
+  span: 0.3
+  reliability: 0.4
+  redundancy: 0.5
+  micromobility: 0.6
+corridor:
+  max_paths: 1
+  stop_buffer_m: 10.0
+  detour_cap_min: 5.0
+  pair_categories:
+    - [groceries, groceries]
+  walk_decay_alpha: 0.1
+  major_hubs: {}
+  chain_weights: {}
+seasonality:
+  comfort_index_default: 0.5
+normalization:
+  mode: metro
+  metro_percentile: 95.0
+  standards: []
+compute:
+  topK_per_category: 5
+  hub_max_minutes: 45

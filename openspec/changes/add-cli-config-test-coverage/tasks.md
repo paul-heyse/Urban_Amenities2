@@ -2,17 +2,17 @@
 
 ## 1. Test Infrastructure Setup
 
-- [ ] 1.1 Create `tests/cli/` and `tests/config/` directories
-- [ ] 1.2 Create `tests/fixtures/configs/` for sample configuration files
-- [ ] 1.3 Define shared CLI fixtures in `tests/cli/conftest.py`
-- [ ] 1.4 Define shared config fixtures in `tests/config/conftest.py`
+- [x] 1.1 Create `tests/cli/` and `tests/config/` directories
+- [x] 1.2 Create `tests/fixtures/configs/` for sample configuration files
+- [x] 1.3 Define shared CLI fixtures in `tests/cli/conftest.py`
+- [x] 1.4 Define shared config fixtures in `tests/config/conftest.py`
 
 ## 2. CLI Command Testing (High Priority)
 
-- [ ] 2.1 Create `tests/cli/test_ingest_command.py`
-  - [ ] Test `ingest overture-places --output data/places.parquet`:
-    - [ ] Valid execution with mocked BigQuery
-    - [ ] Output file created
+- [x] 2.1 Create `tests/cli/test_ingest_command.py`
+  - [x] Test `ingest overture-places --output data/places.parquet`:
+    - [x] Valid execution with mocked BigQuery
+    - [x] Output file created
     - [ ] Schema validation passes
   - [ ] Test `ingest gtfs --feed-url URL --output data/gtfs/`:
     - [ ] GTFS feed downloaded
@@ -43,12 +43,12 @@
     - [ ] Progress bar updates during scoring
     - [ ] Final summary displayed
 
-- [ ] 2.3 Create `tests/cli/test_aggregate_command.py`
-  - [ ] Test `aggregate --input scores/ --params config.yaml --output aucs.parquet`:
-    - [ ] All subscore files loaded
-    - [ ] Aggregation weights applied
+- [x] 2.3 Create `tests/cli/test_aggregate_command.py`
+  - [x] Test `aggregate --input scores/ --params config.yaml --output aucs.parquet`:
+    - [x] All subscore files loaded
+    - [x] Aggregation weights applied
     - [ ] Normalization executed
-    - [ ] Output written
+    - [x] Output written
   - [ ] Test export formats:
     - [ ] `--format parquet` → `.parquet` file
     - [ ] `--format csv` → `.csv` file
@@ -78,13 +78,13 @@
 
 ## 3. CLI Error Handling Testing
 
-- [ ] 3.1 Create `tests/cli/test_cli_errors.py`
-  - [ ] Test missing required arguments:
-    - [ ] `score essentials` (missing --input) → usage displayed
-    - [ ] Exit code non-zero
-  - [ ] Test invalid file paths:
-    - [ ] `score essentials --input nonexistent.parquet` → file not found error
-    - [ ] Clear error message with path
+- [x] 3.1 Create `tests/cli/test_cli_errors.py`
+  - [x] Test missing required arguments:
+    - [x] `score essentials` (missing --input) → usage displayed
+    - [x] Exit code non-zero
+  - [x] Test invalid file paths:
+    - [x] `score essentials --input nonexistent.parquet` → file not found error
+    - [x] Clear error message with path
   - [ ] Test conflicting options:
     - [ ] `aggregate --input scores/ --format csv --output file.parquet` → extension mismatch warning
   - [ ] Test keyboard interrupt handling:
@@ -92,8 +92,8 @@
 
 ## 4. Configuration Loader Testing (High Priority)
 
-- [ ] 4.1 Create `tests/config/test_loader.py`
-  - [ ] Test loading valid YAML:
+- [x] 4.1 Create `tests/config/test_loader.py`
+  - [x] Test loading valid YAML:
 
     ```yaml
     # tests/fixtures/configs/valid.yaml
@@ -104,19 +104,19 @@
       ea_threshold: 30.0
     ```
 
-    - [ ] All parameters parsed
-    - [ ] Types correct (float, int, etc.)
-  - [ ] Test malformed YAML:
-    - [ ] Invalid syntax → `yaml.YAMLError` with line number
+    - [x] All parameters parsed
+    - [x] Types correct (float, int, etc.)
+  - [x] Test malformed YAML:
+    - [x] Invalid syntax → `yaml.YAMLError` with line number
     - [ ] Tab/space mixing → parsing error
-  - [ ] Test missing required sections:
+  - [x] Test missing required sections:
     - [ ] Config without `scoring` section → error
-    - [ ] Clear message: "Required section 'scoring' missing"
+    - [x] Clear message: "Required section 'scoring' missing"
   - [ ] Test unknown parameters (strict mode):
     - [ ] Extra param `unknown_param` → validation error
     - [ ] Warning mode: log warning, ignore parameter
 
-- [ ] 4.2 Test parameter merging:
+- [x] 4.2 Test parameter merging:
 
   ```python
   base_config = load_config("base.yaml")
@@ -125,18 +125,18 @@
   assert merged.accessibility.vot_weekday == override_value
   ```
 
-  - [ ] Override values replace base values
+  - [x] Override values replace base values
   - [ ] Non-overridden values preserved from base
   - [ ] Nested dict merging works correctly
 
-- [ ] 4.3 Test environment variable overrides:
+- [x] 4.3 Test environment variable overrides:
 
   ```bash
   export AUCS_VOT_WEEKDAY=20.0
   ```
 
-  - [ ] Env var overrides config file
-  - [ ] Precedence: env var > override file > base file > defaults
+  - [x] Env var overrides config file
+  - [x] Precedence: env var > override file > base file > defaults
 
 - [ ] 4.4 Test configuration validation:
   - [ ] Type checking:
@@ -195,14 +195,14 @@
     assert "vot_weekday: 18.0" in yaml_str
     ```
 
-  - [ ] To JSON:
+  - [x] To JSON:
 
     ```python
     json_dict = params.dict()
     assert json_dict["vot_weekday"] == 18.0
     ```
 
-  - [ ] Round-trip:
+  - [x] Round-trip:
 
     ```python
     params1 = AccessibilityParams(...)
@@ -212,7 +212,7 @@
     ```
 
 - [ ] 5.3 Test parameter defaults:
-  - [ ] All optional parameters have defaults
+  - [x] All optional parameters have defaults
   - [ ] Defaults match documented values in specs
   - [ ] Defaults produce sensible scores (smoke test)
 
@@ -234,8 +234,8 @@
 - [ ] 6.1 Create golden config files in `tests/fixtures/configs/`:
   - [ ] `golden_v1.yaml` - Full config with all parameters (version 1.0)
   - [ ] `golden_v2.yaml` - Updated config (version 2.0)
-  - [ ] `minimal.yaml` - Minimal valid config
-  - [ ] `invalid_type.yaml` - Config with type error
+  - [x] `minimal.yaml` - Minimal valid config
+  - [x] `invalid_type.yaml` - Config with type error
   - [ ] `invalid_range.yaml` - Config with out-of-range value
   - [ ] `missing_required.yaml` - Config missing required section
 

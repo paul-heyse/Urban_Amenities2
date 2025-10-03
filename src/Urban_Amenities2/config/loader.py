@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping, MutableMapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping as TypingMapping
 
 from pydantic import ValidationError
 from ruamel.yaml import YAML
@@ -39,20 +40,90 @@ def compute_param_hash(params: AUCSParams | dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def load_params(path: str | Path) -> tuple[AUCSParams, str]:
+def _convert_to_builtin(obj: Any) -> Any:
+    if isinstance(obj, MutableMapping):
+        return {str(key): _convert_to_builtin(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_to_builtin(value) for value in obj]
+    return obj
+
+
+def _read_yaml(path: Path) -> dict[str, Any]:
+    try:
+        data = _yaml.load(path.read_text())
+    except Exception as exc:  # pragma: no cover - ruamel provides rich errors
+        raise ParameterLoadError(f"Failed to parse YAML: {exc}") from exc
+    if not isinstance(data, MutableMapping):
+        raise ParameterLoadError("Parameter file must define a mapping at the top level")
+    return _convert_to_builtin(data)
+
+
+def _merge_dicts(base: dict[str, Any], override: TypingMapping[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {key: _convert_to_builtin(value) for key, value in base.items()}
+    for key, value in override.items():
+        if (
+            key in result
+            and isinstance(result[key], MutableMapping)
+            and isinstance(value, Mapping)
+        ):
+            result[key] = _merge_dicts(result[key], value)
+        else:
+            result[key] = _convert_to_builtin(value)
+    return result
+
+
+def _apply_env_overrides(
+    data: dict[str, Any],
+    env: TypingMapping[str, str],
+    prefix: str,
+) -> dict[str, Any]:
+    result = {key: _convert_to_builtin(value) for key, value in data.items()}
+    for key, raw_value in env.items():
+        if not key.startswith(prefix):
+            continue
+        path = key[len(prefix) :]
+        if not path:
+            continue
+        parts = [segment for segment in path.split("__") if segment]
+        if not parts:
+            continue
+        target = result
+        for segment in parts[:-1]:
+            existing = target.get(segment)
+            if not isinstance(existing, dict):
+                existing = {}
+            target[segment] = existing
+            target = existing
+        try:
+            parsed_value = _yaml.load(raw_value)
+        except Exception:  # pragma: no cover - defensive
+            parsed_value = raw_value
+        target[parts[-1]] = _convert_to_builtin(parsed_value)
+    return result
+
+
+def load_params(
+    path: str | Path,
+    *,
+    override: str | Path | None = None,
+    env: TypingMapping[str, str] | None = None,
+    env_prefix: str = "AUCS_",
+) -> tuple[AUCSParams, str]:
     """Load a YAML configuration file and return the parsed params and hash."""
 
     path = Path(path)
     if not path.exists():
         raise ParameterLoadError(f"Parameter file {path} does not exist")
 
-    try:
-        data = _yaml.load(path.read_text())
-    except Exception as exc:  # pragma: no cover - ruamel provides rich errors
-        raise ParameterLoadError(f"Failed to parse YAML: {exc}") from exc
-
-    if not isinstance(data, dict):
-        raise ParameterLoadError("Parameter file must define a mapping at the top level")
+    data = _read_yaml(path)
+    if override is not None:
+        override_path = Path(override)
+        if not override_path.exists():
+            raise ParameterLoadError(f"Override file {override_path} does not exist")
+        override_data = _read_yaml(override_path)
+        data = _merge_dicts(data, override_data)
+    if env:
+        data = _apply_env_overrides(data, env, env_prefix)
 
     try:
         params = AUCSParams.model_validate(data)
