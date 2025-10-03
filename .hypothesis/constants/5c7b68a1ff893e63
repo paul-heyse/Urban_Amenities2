@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/gtfs/realtime.py
+# hypothesis_version: 6.140.2
+
+[300, 'GTFSRealtimeIngestor', 'RealtimeConfig', 'arrival', 'avg_delay_sec', 'data/snapshots.jsonl', 'delay', 'delay_sec', 'departure', 'entity', 'fetched_gtfs_rt', 'id', 'on_time_share', 'rb', 'route_id', 'stop_sequence', 'stop_time_update', 'trip', 'trip_id', 'trip_update', 'utf-8']

@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/router/batch.py
+# hypothesis_version: 6.140.2
+
+['BatchConfig', 'SkimBuilder', 'aucs.router.batch', 'car', 'data/cache/skims', 'destination_index', 'destinations', 'mode', 'origin_hex', 'origin_index', 'origins', 'period', 'poi_id', 'records', 'skim_cache_hit', 'skim_cache_miss', 'skim_written', 'utf-8']

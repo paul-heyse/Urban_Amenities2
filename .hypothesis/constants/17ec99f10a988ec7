@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/leisure_culture_access.py
+# hypothesis_version: 6.140.2
+
+[0.0, 1e-12, 1e-06, 0.2, 0.3, 0.6, 1.0, 6.0, 25.0, 100.0, 'LCA', 'LCA_CATEGORIES', 'NoveltyConfig', 'aucs.scores.lca', 'bars', 'cafes', 'category', 'category_scores', 'cinemas', 'daily_views', 'hex_id', 'inner', 'lca_compute', 'left', 'leisure', 'mean_views', 'museums_galleries', 'novelty_multiplier', 'parks_trails', 'performing_arts', 'poi_id', 'quality', 'quality_adjusted', 'restaurants', 'score', 'sports_rec', 'volatility', 'weight']

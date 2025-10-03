@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/parameters.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.01, 100.0, 'alpha', 'alpha_bike', 'alpha_car', 'alpha_transit', 'alpha_walk', 'bike', 'car', 'cte', 'decay_alpha', 'ea', 'jea', 'lca', 'morr', 'muhaa', 'parameter_updated', 'parameters_reset', 'sou', 'transit', 'unknown_mode', 'unknown_parameter', 'vot_weekday', 'vot_weekend', 'walk', 'weight_cte', 'weight_ea', 'weight_jea', 'weight_lca', 'weight_morr', 'weight_muhaa', 'weight_sou']

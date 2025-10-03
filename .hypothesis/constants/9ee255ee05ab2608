@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/corridor_enrichment.py
+# hypothesis_version: 6.140.2
+
+[0.0, 1.0, 50.0, 60.0, 80.0, 'EPSG:3857', 'EPSG:4326', 'ErrandChainScorer', 'StopBufferBuilder', 'TRANSIT', 'TransitPath', 'aucs.cte', 'category', 'category_pair', 'coerce', 'cte_no_hubs', 'cte_paths', 'detour_minutes', 'distance_m', 'duration', 'first', 'from', 'geometry', 'geometry_m', 'hex_id', 'hub_id', 'lat', 'legs', 'likelihood', 'lon', 'name', 'path_index', 'poi_id', 'quality', 'stop_id', 'stop_name', 'to', 'transfers', 'walk_minutes']

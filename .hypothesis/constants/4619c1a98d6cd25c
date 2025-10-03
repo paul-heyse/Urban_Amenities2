@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/filters.py
+# hypothesis_version: 6.140.2
+
+[0.0, 'aucs', 'counties', 'county', 'land_use', 'land_uses', 'metro', 'metros', 'pop_density', 'score_range', 'state', 'states']

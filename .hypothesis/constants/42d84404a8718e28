@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/jobs/lodes.py
+# hypothesis_version: 6.140.2
+
+['C000', 'CNS', 'CNS01', 'LODESConfig', 'LODESIngestor', 'block_geoid', 'data/snapshots.jsonl', 'fetching_lodes', 'gzip', 'hex_id', 'lat', 'left', 'lon', 'rb', 'state', 'w_geocode']

@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/downloads.py
+# hypothesis_version: 6.140.2
+
+['ascii', 'base64', 'build_file_download', 'content', 'dash.dcc', 'filename', 'send_file', 'type']

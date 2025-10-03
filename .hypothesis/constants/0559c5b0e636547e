@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/seasonal_outdoors.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.4, 0.5, 0.6, 1.0, 1.1, 1.2, 1.3, 15.0, 20.0, 50.0, 80.0, 100.0, 'ClimateComfortConfig', 'SOU', '_climate', 'apr', 'aucs.scores.sou', 'aug', 'category', 'climate_rows', 'compute_sigma_out', 'dec', 'extract_parks_score', 'feb', 'hex_id', 'jan', 'jul', 'jun', 'left', 'mar', 'may', 'nov', 'oct', 'parks_score', 'parks_trails', 'precip', 'score', 'sep', 'sigma_out', 'sou_join', 'sou_joined', 'temp', 'wind']

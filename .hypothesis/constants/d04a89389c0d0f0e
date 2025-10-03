@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/aggregation.py
+# hypothesis_version: 6.140.2
+
+[0.0, 'WeightConfig', 'aggregate_scores', 'aucs', 'build_weight_config', 'compute_total_aucs', 'hex_id']

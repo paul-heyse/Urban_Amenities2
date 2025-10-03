@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/schemas/scores.py
+# hypothesis_version: 6.140.2
+
+[100, 'EA', 'aucs', 'category', 'category_scores', 'contributors', 'hex_id', 'metadata', 'normalized_score', 'penalty', 'raw_score', 'subscore_name', 'subscores_dict', 'value']

@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/parks/trails.py
+# hypothesis_version: 6.140.2
+
+[0.5, 'TRAIL_ID', 'hex_id', 'id', 'index_trails', 'ingest_trails', 'lat', 'load_trails', 'lon', 'trail_id']

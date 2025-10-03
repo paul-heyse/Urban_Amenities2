@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/schemas/travel.py
+# hypothesis_version: 6.140.2
+
+['dest_hex', 'distance_m', 'duration_min', 'fare_usd', 'mode', 'ok', 'origin_hex', 'period', 'transfers', 'transit_time', 'wait_time', 'walk_time']

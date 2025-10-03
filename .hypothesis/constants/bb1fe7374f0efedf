@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/config/params.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.2, 0.3, 0.7, 1.0, 1.2, 2.0, 95.0, 100.0, 100, 1024, 'CTE', 'EA', 'JEA', 'LCA', 'MORR', 'MUHAA', 'SOU', 'VOT_per_hour', 'after', 'airport', 'anchor', 'direct', 'essentials', 'extra', 'forbid', 'global', 'hub', 'leisure', 'metro', 'none', 'score', 'validate_assignment', 'value']

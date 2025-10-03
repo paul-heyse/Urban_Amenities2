@@ -1,0 +1,48 @@
+src/Urban_Amenities2/ui/export.py:7: error: Library stubs not installed for "geopandas"  [import-untyped]
+src/Urban_Amenities2/ui/export.py:7: note: Hint: "python3 -m pip install types-geopandas"
+src/Urban_Amenities2/ui/export.py:8: error: Library stubs not installed for "pandas"  [import-untyped]
+src/Urban_Amenities2/ui/export.py:8: note: Hint: "python3 -m pip install pandas-stubs"
+src/Urban_Amenities2/ui/export.py:10: error: Library stubs not installed for "shapely.geometry"  [import-untyped]
+src/Urban_Amenities2/ui/export.py:10: note: Hint: "python3 -m pip install types-shapely"
+src/Urban_Amenities2/ui/export.py:10: note: (or run "mypy --install-types" to install all missing stub packages)
+src/Urban_Amenities2/ui/export.py:10: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+src/Urban_Amenities2/ui/export.py:25: error: Skipping analyzing "h3": module is installed, but missing library stubs or py.typed marker  [import-untyped]
+src/Urban_Amenities2/ui/export.py:171: error: Incompatible types in assignment (expression has type "int", target has type "str")  [assignment]
+src/Urban_Amenities2/ui/export.py:173: error: Incompatible types in assignment (expression has type "float", target has type "str")  [assignment]
+src/Urban_Amenities2/ui/export.py:174: error: Incompatible types in assignment (expression has type "float", target has type "str")  [assignment]
+src/Urban_Amenities2/ui/data_loader.py:12: error: Library stubs not installed for "shapely"  [import-untyped]
+src/Urban_Amenities2/ui/data_loader.py:13: error: Library stubs not installed for "shapely.geometry"  [import-untyped]
+src/Urban_Amenities2/ui/data_loader.py:14: error: Library stubs not installed for "shapely.ops"  [import-untyped]
+src/Urban_Amenities2/ui/data_loader.py:20: error: Library stubs not installed for "pandas"  [import-untyped]
+src/Urban_Amenities2/ui/data_loader.py:69: error: Missing type parameters for generic type "dict"  [type-arg]
+src/Urban_Amenities2/ui/data_loader.py:192: error: Missing type parameters for generic type "dict"  [type-arg]
+src/Urban_Amenities2/ui/data_loader.py:324: error: Returning Any from function declared to return "list[str]"  [no-any-return]
+src/Urban_Amenities2/ui/data_loader.py:357: error: Missing type parameters for generic type "dict"  [type-arg]
+src/Urban_Amenities2/ui/data_loader.py:388: error: Missing type parameters for generic type "dict"  [type-arg]
+src/Urban_Amenities2/ui/data_loader.py:420: error: Missing type parameters for generic type "dict"  [type-arg]
+src/Urban_Amenities2/ui/data_loader.py:423: error: Missing type parameters for generic type "dict"  [type-arg]
+src/Urban_Amenities2/ui/callbacks.py:38: error: Function is missing a return type annotation  [no-untyped-def]
+src/Urban_Amenities2/ui/callbacks.py:38: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
+src/Urban_Amenities2/ui/callbacks.py:55: error: No overload variant of "__pow__" of "int" matches argument type "None"  [operator]
+src/Urban_Amenities2/ui/callbacks.py:55: note: Possible overload variants:
+src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, Literal[0], /) -> Literal[1]
+src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, Literal[0], None, /) -> Literal[1]
+src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, Literal[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], None = ..., /) -> int
+src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, Literal[-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, -16, -17, -18, -19, -20], None = ..., /) -> float
+src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, int, None = ..., /) -> Any
+src/Urban_Amenities2/ui/callbacks.py:55: note:     def __pow__(self, int, int, /) -> int
+src/Urban_Amenities2/ui/callbacks.py:55: note: Right operand is of type "int | Any | None"
+src/Urban_Amenities2/ui/callbacks.py:55: error: Value of type variable "SupportsRichComparisonT" of "max" cannot be "int | Any | None"  [type-var]
+src/Urban_Amenities2/ui/callbacks.py:60: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
+src/Urban_Amenities2/ui/callbacks.py:61: error: Untyped decorator makes function "_update_map" untyped  [misc]
+src/Urban_Amenities2/ui/callbacks.py:78: error: Function is missing a return type annotation  [no-untyped-def]
+src/Urban_Amenities2/ui/callbacks.py:78: error: Function is missing a type annotation for one or more arguments  [no-untyped-def]
+src/Urban_Amenities2/ui/callbacks.py:155: error: Untyped decorator makes function "_refresh_data" untyped  [misc]
+src/Urban_Amenities2/ui/callbacks.py:160: error: Function is missing a return type annotation  [no-untyped-def]
+src/Urban_Amenities2/ui/callbacks.py:164: error: Untyped decorator makes function "_export_data" untyped  [misc]
+src/Urban_Amenities2/ui/callbacks.py:170: error: Function is missing a return type annotation  [no-untyped-def]
+src/Urban_Amenities2/ui/callbacks.py:175: error: Module "dash.dcc" does not explicitly export attribute "send_file"  [attr-defined]
+src/Urban_Amenities2/ui/callbacks.py:175: error: Call to untyped function "send_file" in typed context  [no-untyped-call]
+src/Urban_Amenities2/ui/callbacks.py:179: error: Module "dash.dcc" does not explicitly export attribute "send_file"  [attr-defined]
+src/Urban_Amenities2/ui/callbacks.py:179: error: Call to untyped function "send_file" in typed context  [no-untyped-call]
+Found 34 errors in 3 files (checked 3 source files)

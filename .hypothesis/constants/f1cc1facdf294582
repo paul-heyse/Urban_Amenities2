@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/essentials_access.py
+# hypothesis_version: 6.140.2
+
+[0.0, 1.0, 2.0, 8.0, 20.0, 100, 512, 'EA', 'V', 'aucs.scores.ea', 'aucstype', 'brand', 'brand_penalty', 'brand_weight', 'category', 'category_scores', 'coerce', 'contribution', 'contributors', 'diversity_multiplier', 'ea_batch', 'entropy', 'hex_id', 'left', 'name', 'origin_hex', 'penalty', 'poi_id', 'quality', 'quality_components', 'quality_original', 'qw', 'records', 'rho must be finite', 'satiation', 'score', 'subtype', 'weight', 'z']

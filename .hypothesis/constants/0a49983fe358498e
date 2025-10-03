@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/utils/resilience.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.1, 1.0, 4.0, 60.0, 'CircuitBreaker', 'RateLimiter', 'T', '_lock', 'closed', 'half-open', 'open', 'retry_with_backoff']

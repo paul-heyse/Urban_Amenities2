@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/config.py
+# hypothesis_version: 6.140.2
+
+['*', ',', '0.0.0.0', '30', '5,25,50,75,95', '6,7,8,9', '8050', 'INFO', 'MAPBOX_TOKEN', 'UISettings', 'UI_CORS_ORIGINS', 'UI_DATA_PATH', 'UI_DEBUG', 'UI_ENABLE_CORS', 'UI_HEX_RESOLUTIONS', 'UI_HOST', 'UI_LOG_LEVEL', 'UI_PORT', 'UI_RELOAD_INTERVAL', 'UI_SECRET_KEY', 'UI_TITLE', 'change-me', 'data/outputs', 'false', 'true', 'ui.config', 'ui_settings_loaded']

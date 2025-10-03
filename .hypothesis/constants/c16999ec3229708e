@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/overture/places.py
+# hypothesis_version: 6.140.2
+
+[' AND ', 'BigQueryConfig', 'EPSG:4326', 'PlacesPipeline', 'STRING', 'alternate_categories', 'aucs.ingest.overture', 'bbox', 'brand', 'build_bigquery_query', 'categories', 'confidence', 'display.name AS name', 'extract_fields', 'filter_operating', 'hex_id', 'id', 'ingest_places', 'lat', 'lon', 'name', 'open', 'opening_hours', 'operating_status', 'places', 'poi_id', 'primary_category', 'rb', 'reading_overture_geo', 'state']

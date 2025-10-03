@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/hub_airport_access.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.025, 0.03, 0.1, 0.2, 0.3, 0.4, 0.7, 1.0, 100.0, 'AccessibilityConfig', 'HubMassWeights', 'MUHAA', 'MuhAAConfig', 'MuhAAScore', '_airport', '_hub', 'accessibility', 'accessibility_hub', 'airport', 'airport_id', 'aucs.scores.muhaa', 'coerce', 'compute_hub_mass', 'contribution', 'culture', 'destination_id', 'enplanements', 'gdp', 'gtc', 'hex_id', 'hub', 'hub_id', 'hub_mass', 'left', 'mass', 'outer', 'poi', 'population', 'travel_minutes']

@@ -1,0 +1,16 @@
+From HEAD Mon Sep 17 00:00:00 2001
+From: Hypothesis 6.140.2 <no-reply@hypothesis.works>
+Date: Fri, 03 Oct 2025 21:58:34
+Subject: [PATCH] Hypothesis: add explicit examples
+
+---
+--- ./tests/test_math.py
++++ ./tests/test_math.py
+@@ -190,6 +190,7 @@
+     st.floats(-0.9, 1.0, allow_nan=False, allow_infinity=False),
+     st.floats(0.1, 4.0),
+ )
++@example(pairs=[(1.0, 1.0), (1.0, 1.0)], rho=1e-05, scale=0.5).via("discovered failure")
+ def test_ces_homogeneous_in_quality(
+     pairs: list[tuple[float, float]], rho: float, scale: float
+ ) -> None:

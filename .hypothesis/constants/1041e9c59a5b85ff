@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/schemas/spatial.py
+# hypothesis_version: 6.140.2
+
+[-180, 100, 180, 'aucstype', 'brand', 'brand_penalty', 'brand_weight', 'centroid_lat', 'centroid_lon', 'geometry', 'hex_id', 'lat', 'lon', 'mode_flags', 'name', 'poi_id', 'quality', 'quality_attrs', 'quality_base', 'quality_brand', 'quality_components', 'quality_heritage', 'quality_hours_bonus', 'quality_popularity', 'quality_size', 'segment_id', 'speed']

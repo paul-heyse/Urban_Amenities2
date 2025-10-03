@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/callbacks.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.1, 0.35, 100.0, 360, '/tmp/ui-export.csv', 'No dataset found', 'apply-filters', 'aucs', 'basemap-select', 'centroid_lat', 'centroid_lon', 'children', 'clear-filters', 'coordinates', 'count', 'county', 'county-filter', 'data', 'download-data', 'export-csv', 'export-geojson', 'figure', 'filter-count', 'hex-map', 'hex_id', 'mapbox._derived', 'mapbox.center.lat', 'mapbox.center.lon', 'mapbox.zoom', 'metro', 'metro-filter', 'n_clicks', 'overlay-layers', 'overlay-opacity', 'refresh-data', 'refresh-status', 'register_callbacks', 'relayoutData', 'score-range', 'state', 'state-filter', 'subscore-description', 'subscore-select', 'triggered_id', 'value']
