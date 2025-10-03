@@ -1,0 +1,34 @@
+From HEAD Mon Sep 17 00:00:00 2001
+From: Hypothesis 6.140.2 <no-reply@hypothesis.works>
+Date: Fri, 03 Oct 2025 13:06:15
+Subject: [PATCH] Hypothesis: add explicit examples
+
+---
+--- ./tests/test_math.py
++++ ./tests/test_math.py
+@@ -105,6 +105,7 @@
+     ),
+     st.floats(0.0, 1.0, allow_nan=False, allow_infinity=False),
+ )
++@example(pairs=[(0.0, 0.0)], rho=0.0).via("discovered failure")
+ def test_compute_z_monotonic_under_scaling(pairs: list[tuple[float, float]], rho: float) -> None:
+     quality = np.array([pair[0] for pair in pairs], dtype=float)
+     accessibility = np.array([pair[1] for pair in pairs], dtype=float)
+@@ -126,6 +127,7 @@
+     ),
+     st.floats(-0.9, 1.0, allow_nan=False, allow_infinity=False),
+ )
++@example(pairs=[(0.0, 0.0)], rho=0.5).via("discovered failure")
+ def test_ces_aggregate_monotonic(pairs: list[tuple[float, float]], rho: float) -> None:
+     quality = np.array([pair[0] for pair in pairs], dtype=float)
+     accessibility = np.array([pair[1] for pair in pairs], dtype=float)
+--- ./tests/test_scores.py
++++ ./tests/test_scores.py
+@@ -122,6 +122,7 @@
+         max_size=10,
+     )
+ )
++@example(records=[("hex1", "grocery", 0.0, 1.0, 1.0)]).via("discovered failure")
+ def test_essentials_access_property(records: list[tuple[str, str, float, float, float]]) -> None:
+     pois_records = []
+     access_records = []
