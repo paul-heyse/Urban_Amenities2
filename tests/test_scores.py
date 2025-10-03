@@ -1,5 +1,7 @@
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from Urban_Amenities2.config.loader import load_params
 from Urban_Amenities2.math.diversity import DiversityConfig
@@ -104,3 +106,69 @@ def test_compute_total_aucs_uses_params_weights() -> None:
     total = compute_total_aucs(subscores, params)
     assert {"hex_id", "aucs"} <= set(total.columns)
     assert total.loc[total["hex_id"] == "h1", "aucs"].iloc[0] > total.loc[total["hex_id"] == "h2", "aucs"].iloc[0]
+
+
+@settings(deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.sampled_from(["hex1", "hex2", "hex3"]),
+            st.sampled_from(["grocery", "health"]),
+            st.floats(0, 100, allow_nan=False, allow_infinity=False),
+            st.floats(0.1, 5.0, allow_nan=False, allow_infinity=False),
+            st.floats(0.5, 1.0, allow_nan=False, allow_infinity=False),
+        ),
+        min_size=1,
+        max_size=10,
+    )
+)
+def test_essentials_access_property(records: list[tuple[str, str, float, float, float]]) -> None:
+    pois_records = []
+    access_records = []
+    categories: set[str] = set()
+    for idx, (hex_id, category, quality, weight, penalty) in enumerate(records):
+        categories.add(category)
+        poi_id = f"poi{idx}"
+        pois_records.append(
+            {
+                "poi_id": poi_id,
+                "aucstype": category,
+                "quality": quality,
+                "brand": category,
+                "name": poi_id,
+                "quality_components": {
+                    "size": quality,
+                    "popularity": quality,
+                    "brand": quality,
+                    "heritage": 0.0,
+                },
+                "brand_penalty": penalty,
+            }
+        )
+        access_records.append({"hex_id": hex_id, "poi_id": poi_id, "weight": weight})
+
+    pois = pd.DataFrame(pois_records)
+    accessibility = pd.DataFrame(access_records)
+    category_list = sorted(categories) or ["grocery"]
+    config = EssentialsAccessConfig(
+        categories=category_list,
+        category_params=
+        {
+            category: EssentialCategoryConfig(rho=1.0, kappa=0.5, diversity=DiversityConfig())
+            for category in category_list
+        },
+        top_k=3,
+        shortfall_threshold=5.0,
+        shortfall_penalty=1.0,
+        shortfall_cap=10.0,
+    )
+    calculator = EssentialsAccessCalculator(config)
+    scores, category_scores = calculator.compute(pois, accessibility)
+    assert scores["EA"].between(0, 100).all()
+    if not category_scores.empty:
+        assert category_scores["score"].between(0, 100).all()
+    for contributors in scores["contributors"].values:
+        for items in contributors.values():
+            contributions = [item["contribution"] for item in items]
+            assert len(items) <= config.top_k
+            assert contributions == sorted(contributions, reverse=True)

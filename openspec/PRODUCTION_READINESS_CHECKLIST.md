@@ -22,7 +22,7 @@
 ### 1.2 Expand Test Coverage
 
 **Current:** ~13 test files
-**Target:** 80%+ coverage for core modules, 60%+ for I/O
+**Target:** ≥95% line coverage and ≥90% branch coverage across all first-party modules
 
 **Priority Test Additions:**
 
@@ -57,7 +57,7 @@
 **Commands:**
 
 ```bash
-pytest -v --cov=src/Urban_Amenities2 --cov-report=html
+pytest -v --cov=src/Urban_Amenities2 --cov-branch --cov-report=html
 pytest -v tests/test_integration_pipeline.py  # Critical test
 ```
 

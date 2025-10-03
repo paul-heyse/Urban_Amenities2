@@ -45,9 +45,24 @@ jobs:
         continue-on-error: true
 
       - name: Run tests
-        run: pytest -q --cov=Urban_Amenities2 --cov-report=xml --cov-report=term-missing
+        run: pytest
 
-      - name: Upload coverage
+      - name: Generate coverage HTML report
+        run: coverage html -d coverage_html
+
+      - name: Enforce coverage thresholds
+        run: python scripts/check_coverage.py --json coverage_summary.json --line-threshold 95 --branch-threshold 90
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.xml
+            coverage_html/
+            coverage_summary.json
+
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml

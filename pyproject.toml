@@ -163,13 +163,26 @@ ignore = ["E501"]  # line length handled by black
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-q --strict-markers --strict-config --cov=Urban_Amenities2 --cov-report=term-missing"
+addopts = "-q --strict-markers --strict-config --cov=Urban_Amenities2 --cov-report=term-missing --cov-report=xml --cov-branch --cov-fail-under=95"
 testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.coverage.run]
-source = ["src"]
+source = [
+  "Urban_Amenities2.cache",
+  "Urban_Amenities2.router",
+  "Urban_Amenities2.io",
+  "Urban_Amenities2.math",
+  "Urban_Amenities2.quality",
+  "Urban_Amenities2.scores",
+  "Urban_Amenities2.versioning",
+  "Urban_Amenities2.cli",
+  "Urban_Amenities2.config",
+  "Urban_Amenities2.utils",
+  "Urban_Amenities2.accessibility",
+]
 omit = ["*/tests/*", "*/test_*.py"]
+branch = true
 
 [tool.coverage.report]
 exclude_lines = [
@@ -180,6 +193,7 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+fail_under = 95
 
 [tool.mypy]
 python_version = "3.12"

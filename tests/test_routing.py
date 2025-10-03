@@ -81,3 +81,59 @@ def test_otp_client_parsing(otp_stub_session) -> None:
     client_error = OTPClient(OTPConfig(base_url="http://otp"), session=error_session)
     with pytest.raises(OTPError):
         client_error.plan_trip((0.0, 0.0), (1.0, 1.0), ["WALK"])
+
+
+def test_osrm_table_batches_concatenate_results() -> None:
+    class RecordingOSRM(OSRMClient):
+        def __init__(self, include_distances: bool = True):
+            super().__init__(OSRMConfig(base_url="http://osrm", max_matrix=2))
+            self.include_distances = include_distances
+            self.calls: list[tuple[str, dict[str, object] | None]] = []
+
+        def _request(self, path: str, params: dict[str, object] | None = None) -> dict:
+            self.calls.append((path, params))
+            assert params is not None
+            source_count = len(str(params["sources"]).split(";"))
+            dest_count = len(str(params["destinations"]).split(";"))
+            durations = [
+                [float(i * dest_count + j + 1) for j in range(dest_count)]
+                for i in range(source_count)
+            ]
+            payload: dict[str, object] = {"code": "Ok", "durations": durations}
+            if self.include_distances:
+                payload["distances"] = [
+                    [value * 100.0 for value in row] for row in durations
+                ]
+            return payload
+
+    origins = [(-104.0, 39.0), (-105.0, 39.5), (-106.0, 40.0)]
+    destinations = [(-104.5, 39.1), (-105.5, 39.6), (-106.5, 40.1)]
+    client = RecordingOSRM()
+    matrix = client.table(origins, destinations)
+    assert len(matrix["durations"]) == len(origins)
+    assert len(matrix["durations"][0]) == len(destinations)
+    assert len(client.calls) == 4  # 2x2 batching grid
+
+
+def test_routing_matrix_handles_missing_distances() -> None:
+    class DurationOnlyOSRM(OSRMClient):
+        def __init__(self) -> None:
+            super().__init__(OSRMConfig(base_url="http://osrm"))
+
+        def table(self, sources, destinations=None):  # type: ignore[override]
+            destinations = destinations or sources
+            durations = [[60.0 for _ in destinations] for _ in sources]
+            return {"durations": durations}
+
+    api = RoutingAPI({"car": DurationOnlyOSRM()})
+    origins = [(-104.0, 39.0), (-105.0, 39.5)]
+    destinations = [(-104.5, 39.1)]
+    frame = api.matrix("car", origins, destinations)
+    assert frame["duration_min"].notna().all()
+    assert frame["distance_m"].isna().all()
+
+
+def test_routing_transit_requires_itinerary() -> None:
+    api = RoutingAPI({"car": DummyOSRM()}, otp_client=type("EmptyOTP", (), {"plan_trip": lambda self, *args, **kwargs: []})())
+    with pytest.raises(ValueError):
+        api.route("transit", (-104.0, 39.0), (-105.0, 39.5))
