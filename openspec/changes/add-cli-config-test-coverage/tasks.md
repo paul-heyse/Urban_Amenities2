@@ -14,17 +14,17 @@
     - [x] Valid execution with mocked BigQuery
     - [x] Output file created
     - [ ] Schema validation passes
-  - [ ] Test `ingest gtfs --feed-url URL --output data/gtfs/`:
-    - [ ] GTFS feed downloaded
-    - [ ] Static GTFS files extracted
+  - [x] Test `ingest gtfs --feed-url URL --output data/gtfs/`:
+    - [x] GTFS feed downloaded
+    - [x] Static GTFS files extracted
     - [ ] Validation passes
   - [ ] Test `ingest noaa-climate --stations CO --output data/climate.parquet`:
     - [ ] Station data fetched
     - [ ] Monthly normals parsed
     - [ ] Output written
   - [ ] Test error handling:
-    - [ ] Invalid source type → clear error message
-    - [ ] Missing required argument → usage displayed
+    - [x] Invalid source type → clear error message
+    - [x] Missing required argument → usage displayed
     - [ ] Network error → retry logic triggered
 
 - [ ] 2.2 Create `tests/cli/test_score_command.py`
@@ -47,14 +47,14 @@
   - [x] Test `aggregate --input scores/ --params config.yaml --output aucs.parquet`:
     - [x] All subscore files loaded
     - [x] Aggregation weights applied
-    - [ ] Normalization executed
+    - [x] Normalization executed
     - [x] Output written
   - [ ] Test export formats:
     - [ ] `--format parquet` → `.parquet` file
     - [ ] `--format csv` → `.csv` file
     - [ ] `--format geojson` → `.geojson` file (with geometries)
   - [ ] Test error handling:
-    - [ ] Missing subscore files → error listing missing files
+    - [x] Missing subscore files → error listing missing files
     - [ ] Incompatible hex_id sets → merge error
 
 - [ ] 2.4 Create `tests/cli/test_ui_command.py`
@@ -110,10 +110,10 @@
     - [x] Invalid syntax → `yaml.YAMLError` with line number
     - [ ] Tab/space mixing → parsing error
   - [x] Test missing required sections:
-    - [ ] Config without `scoring` section → error
+    - [x] Config without `scoring` section → error
     - [x] Clear message: "Required section 'scoring' missing"
   - [ ] Test unknown parameters (strict mode):
-    - [ ] Extra param `unknown_param` → validation error
+    - [x] Extra param `unknown_param` → validation error
     - [ ] Warning mode: log warning, ignore parameter
 
 - [x] 4.2 Test parameter merging:

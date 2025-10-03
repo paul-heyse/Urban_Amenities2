@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 from ruamel.yaml import YAML
 
-from Urban_Amenities2.config.loader import ParameterLoadError, compute_param_hash, load_params
+from Urban_Amenities2.config.loader import (
+    ParameterLoadError,
+    compute_param_hash,
+    load_and_document,
+    load_params,
+)
 from Urban_Amenities2.config.params import AUCSParams
 
 
@@ -31,17 +36,24 @@ def test_load_params_malformed_yaml(tmp_path: Path) -> None:
     assert "Failed to parse" in str(excinfo.value)
 
 
-def test_load_params_missing_section(
+def test_load_params_override_missing_file(minimal_config_file: Path, tmp_path: Path) -> None:
+    missing_override = tmp_path / "override.yml"
+    with pytest.raises(ParameterLoadError) as excinfo:
+        load_params(minimal_config_file, override=missing_override)
+    assert "Override file" in str(excinfo.value)
+
+
+def test_load_params_missing_required_section(
     minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML
 ) -> None:
     data = yaml_loader.load(minimal_config_file.read_text())
-    data.pop("grid")
+    data.pop("subscores")
     missing = tmp_path / "missing.yml"
     with missing.open("w", encoding="utf-8") as handle:
         yaml_loader.dump(data, handle)
     with pytest.raises(ParameterLoadError) as excinfo:
         load_params(missing)
-    assert "grid" in str(excinfo.value)
+    assert "subscores" in str(excinfo.value)
 
 
 def test_load_params_with_override(
@@ -81,6 +93,31 @@ def test_load_params_invalid_type(invalid_type_config_file: Path) -> None:
     assert "number" in message.lower()
 
 
+def test_load_params_invalid_range(invalid_range_config_file: Path) -> None:
+    with pytest.raises(ParameterLoadError) as excinfo:
+        load_params(invalid_range_config_file)
+    assert "hex_size_m" in str(excinfo.value)
+
+
+def test_load_params_unknown_parameter(
+    minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML
+) -> None:
+    data = yaml_loader.load(minimal_config_file.read_text())
+    data["grid"]["unexpected"] = 5
+    target = tmp_path / "unknown.yml"
+    with target.open("w", encoding="utf-8") as handle:
+        yaml_loader.dump(data, handle)
+    with pytest.raises(ParameterLoadError) as excinfo:
+        load_params(target)
+    assert "extra input" in str(excinfo.value).lower()
+
+
+def test_load_params_missing_required_fixture(missing_required_config_file: Path) -> None:
+    with pytest.raises(ParameterLoadError) as excinfo:
+        load_params(missing_required_config_file)
+    assert "subscores" in str(excinfo.value)
+
+
 def test_param_hash_changes_with_override(
     minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML
 ) -> None:
@@ -91,3 +128,9 @@ def test_param_hash_changes_with_override(
         yaml_loader.dump(override_data, handle)
     merged, _ = load_params(minimal_config_file, override=override_path)
     assert compute_param_hash(merged) != original_hash
+
+
+def test_load_and_document_includes_hash(minimal_config_file: Path) -> None:
+    summary = load_and_document(minimal_config_file)
+    assert "AUCS Parameters" in summary
+    assert "hash:" in summary
