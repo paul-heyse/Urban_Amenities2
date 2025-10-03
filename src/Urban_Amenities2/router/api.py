@@ -58,12 +58,7 @@ class RoutingAPI:
                 period=period,
                 duration_min=result.duration / 60.0,
                 distance_m=result.distance,
-                metadata={
-                    "legs": [
-                        {"duration": leg.duration, "distance": leg.distance}
-                        for leg in result.legs
-                    ]
-                },
+                metadata=_build_osrm_metadata(mode, result),
             )
         if mode == "transit" and self.otp_client:
             itineraries = self.otp_client.plan_trip(origin, destination, ["TRANSIT", "WALK"])
@@ -83,7 +78,7 @@ class RoutingAPI:
                 period=period,
                 duration_min=duration_minutes,
                 distance_m=None,
-                metadata=dict(best),
+                metadata=_build_transit_metadata(best),
             )
         raise ValueError(f"Unsupported mode {mode}")
 
@@ -127,11 +122,76 @@ class RoutingAPI:
         return pd.DataFrame.from_records(records)
 
 
+def _build_osrm_metadata(mode: str, route: OSRMRoute) -> dict[str, object]:
+    legs = [
+        {
+            "mode": mode,
+            "duration_min": leg.duration / 60.0,
+            "distance_m": leg.distance,
+        }
+        for leg in route.legs
+    ]
+    return {
+        "engine": "osrm",
+        "summary": {
+            "duration_min": route.duration / 60.0,
+            "distance_m": route.distance,
+            "leg_count": len(legs),
+        },
+        "legs": legs,
+    }
+
+
+def _build_transit_metadata(itinerary: Mapping[str, object]) -> dict[str, object]:
+    legs_payload = itinerary.get("legs")
+    legs_entries = legs_payload if isinstance(legs_payload, Sequence) else ()
+    legs: list[dict[str, object]] = []
+    for entry in legs_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        legs.append(
+            {
+                "mode": entry.get("mode") if isinstance(entry.get("mode"), str) else None,
+                "duration_min": _coerce_minutes(entry.get("duration")),
+                "distance_m": _coerce_float(entry.get("distance")),
+                "from": entry.get("from") if isinstance(entry.get("from"), str) else None,
+                "to": entry.get("to") if isinstance(entry.get("to"), str) else None,
+            }
+        )
+    walk_minutes = _coerce_minutes(itinerary.get("walk_time"))
+    transit_minutes = _coerce_minutes(itinerary.get("transit_time"))
+    wait_minutes = _coerce_minutes(itinerary.get("wait_time"))
+    return {
+        "engine": "otp",
+        "summary": {
+            "duration_min": _coerce_minutes(itinerary.get("duration")),
+            "walk_time_min": walk_minutes,
+            "transit_time_min": transit_minutes,
+            "wait_time_min": wait_minutes,
+            "transfers": itinerary.get("transfers", 0),
+            "fare_usd": _coerce_float(itinerary.get("fare")) or 0.0,
+        },
+        "legs": legs,
+    }
+
+
 def _duration_key(payload: Mapping[str, object]) -> float:
     value = payload.get("duration")
     if isinstance(value, (int, float)):
         return float(value)
     return float("inf")
+
+
+def _coerce_minutes(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value) / 60.0
+    return None
+
+
+def _coerce_float(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 __all__ = ["RoutingAPI", "RouteResult"]

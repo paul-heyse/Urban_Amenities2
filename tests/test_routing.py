@@ -7,7 +7,13 @@ from .conftest import StubSession
 from Urban_Amenities2.cli.main import GreatCircleOSRM
 from Urban_Amenities2.router.api import RoutingAPI
 from Urban_Amenities2.router.batch import BatchConfig, SkimBuilder
-from Urban_Amenities2.router.osrm import OSRMClient, OSRMConfig, RoutingError
+from Urban_Amenities2.router.osrm import (
+    OSRMClient,
+    OSRMConfig,
+    OSRMRoute,
+    OSRMTable,
+    RoutingError,
+)
 from Urban_Amenities2.router.otp import OTPClient, OTPConfig, OTPError
 
 
@@ -18,22 +24,22 @@ class DummyOSRM:
 
     def route(self, coords):
         self.route_calls += 1
-        return {"duration": 600.0, "distance": 1000.0, "legs": []}
+        return OSRMRoute(duration=600.0, distance=1000.0, legs=[])
 
     def table(self, sources, destinations=None):
         self.table_calls += 1
         destinations = destinations or sources
         durations = [[60.0 * (i + j + 1) for j in range(len(destinations))] for i in range(len(sources))]
         distances = [[1000.0 * (i + j + 1) for j in range(len(destinations))] for i in range(len(sources))]
-        return {"durations": durations, "distances": distances}
+        return OSRMTable(durations=durations, distances=distances)
 
 
 def test_great_circle_osrm() -> None:
     client = GreatCircleOSRM("car")
     route = client.route([(0.0, 0.0), (1.0, 1.0)])
-    assert route["duration"] > 0
+    assert route.duration > 0
     matrix = client.table([(0.0, 0.0)], [(1.0, 1.0)])
-    assert matrix["durations"][0][0] > 0
+    assert matrix.durations[0][0] > 0
 
 
 def test_routing_api_and_batch(tmp_path: Path) -> None:
@@ -43,6 +49,11 @@ def test_routing_api_and_batch(tmp_path: Path) -> None:
     destination = (-105.0, 39.5)
     result = api.route("car", origin, destination)
     assert result.duration_min > 0
+    assert result.metadata["engine"] == "osrm"
+    summary = result.metadata["summary"]
+    assert summary["duration_min"] == pytest.approx(result.duration_min)
+    assert summary["distance_m"] == pytest.approx(1000.0)
+    assert result.metadata["legs"] == []
 
     matrix = api.matrix("car", [origin], [destination])
     assert not matrix.empty
@@ -62,9 +73,9 @@ def test_routing_api_and_batch(tmp_path: Path) -> None:
 def test_osrm_client_route_and_table(osrm_stub_session) -> None:
     client = OSRMClient(OSRMConfig(base_url="http://osrm"), session=osrm_stub_session)
     route = client.route([(0.0, 0.0), (1.0, 1.0)])
-    assert route["duration"] == 100.0
+    assert route.duration == 100.0
     table = client.table([(0.0, 0.0)], [(1.0, 1.0)])
-    assert table["durations"][0][0] == 10.0
+    assert table.durations[0][0] == 10.0
 
     error_session = StubSession({"route": {"code": "Error", "message": "bad"}})
     client_error = OSRMClient(OSRMConfig(base_url="http://osrm"), session=error_session)
@@ -110,8 +121,8 @@ def test_osrm_table_batches_concatenate_results() -> None:
     destinations = [(-104.5, 39.1), (-105.5, 39.6), (-106.5, 40.1)]
     client = RecordingOSRM()
     matrix = client.table(origins, destinations)
-    assert len(matrix["durations"]) == len(origins)
-    assert len(matrix["durations"][0]) == len(destinations)
+    assert len(matrix.durations) == len(origins)
+    assert len(matrix.durations[0]) == len(destinations)
     assert len(client.calls) == 4  # 2x2 batching grid
 
 
@@ -123,7 +134,7 @@ def test_routing_matrix_handles_missing_distances() -> None:
         def table(self, sources, destinations=None):  # type: ignore[override]
             destinations = destinations or sources
             durations = [[60.0 for _ in destinations] for _ in sources]
-            return {"durations": durations}
+            return OSRMTable(durations=durations, distances=None)
 
     api = RoutingAPI({"car": DurationOnlyOSRM()})
     origins = [(-104.0, 39.0), (-105.0, 39.5)]
@@ -137,3 +148,55 @@ def test_routing_transit_requires_itinerary() -> None:
     api = RoutingAPI({"car": DummyOSRM()}, otp_client=type("EmptyOTP", (), {"plan_trip": lambda self, *args, **kwargs: []})())
     with pytest.raises(ValueError):
         api.route("transit", (-104.0, 39.0), (-105.0, 39.5))
+
+
+def test_routing_transit_metadata_contract() -> None:
+    class DummyOTP:
+        def plan_trip(self, *args, **kwargs):
+            return [
+                {
+                    "duration": 900.0,
+                    "walk_time": 180.0,
+                    "transit_time": 600.0,
+                    "wait_time": 120.0,
+                    "transfers": 1,
+                    "fare": 2.5,
+                    "legs": [
+                        {
+                            "mode": "WALK",
+                            "duration": 180.0,
+                            "distance": 250.0,
+                            "from": "Start",
+                            "to": "Station",
+                        },
+                        {
+                            "mode": "BUS",
+                            "duration": 600.0,
+                            "distance": 5000.0,
+                            "from": "Station",
+                            "to": "End",
+                        },
+                    ],
+                }
+            ]
+
+    api = RoutingAPI({"car": DummyOSRM()}, otp_client=DummyOTP())
+    origin = (-104.0, 39.0)
+    destination = (-105.0, 39.5)
+    result = api.route("transit", origin, destination)
+    metadata = result.metadata
+    assert metadata["engine"] == "otp"
+    summary = metadata["summary"]
+    assert summary["duration_min"] == pytest.approx(15.0)
+    assert summary["walk_time_min"] == pytest.approx(3.0)
+    assert summary["transit_time_min"] == pytest.approx(10.0)
+    assert summary["wait_time_min"] == pytest.approx(2.0)
+    assert summary["transfers"] == 1
+    assert summary["fare_usd"] == pytest.approx(2.5)
+    legs = metadata["legs"]
+    assert len(legs) == 2
+    assert legs[0]["mode"] == "WALK"
+    assert legs[0]["duration_min"] == pytest.approx(3.0)
+    assert legs[0]["distance_m"] == pytest.approx(250.0)
+    assert legs[0]["from"] == "Start"
+    assert legs[0]["to"] == "Station"
