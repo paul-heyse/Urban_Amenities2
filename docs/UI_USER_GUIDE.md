@@ -263,6 +263,13 @@ Enable in Settings → Accessibility → High Contrast Mode
 3. Try smaller region or fewer hexes
 4. Contact support if issue persists
 
+## Developer Notes
+
+- Shared UI data shapes now live in `Urban_Amenities2.ui.types`. TypedDicts cover score rows, geometry cache records, and GeoJSON overlays so mypy can validate inter-module usage.
+- `HexGeometryCache` stores `GeometryCacheEntry` dataclasses and always returns DataFrames with `geometry`, `geometry_wkt`, centroid, and resolution columns. Call `ensure_geometries()` before relying on viewport math.
+- `DataContext` enforces typed overlays. `get_overlay()` always returns a `FeatureCollection`, and `_load_external_overlays()` drops malformed files instead of propagating raw dictionaries.
+- Run `mypy src/Urban_Amenities2/ui --warn-unused-ignores` after modifying UI data loaders to confirm TypedDict updates remain in sync.
+
 ## Support
 
 For questions, issues, or feedback:

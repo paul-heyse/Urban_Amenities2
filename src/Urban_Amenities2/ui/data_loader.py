@@ -3,29 +3,47 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from importlib import import_module
 from pathlib import Path
-
-try:  # pragma: no cover - optional dependency handled gracefully
-    from shapely import wkt as shapely_wkt
-    from shapely.geometry import mapping as shapely_mapping
-    from shapely.ops import unary_union
-except ImportError:  # pragma: no cover - shapely is an optional runtime dependency
-    shapely_wkt = None
-    unary_union = None
-    shapely_mapping = None
+from typing import Any, Callable, cast
 
 import pandas as pd
+
+shapely_wkt: Any | None = None
+shapely_mapping: Callable[[Any], dict[str, Any]] | None = None
+unary_union: Callable[[Sequence[Any]], Any] | None = None
+
+try:  # pragma: no cover - optional dependency handled gracefully
+    from shapely import wkt as _shapely_wkt
+    from shapely.geometry import mapping as _shapely_mapping
+    from shapely.ops import unary_union as _shapely_union
+except ImportError:  # pragma: no cover - shapely is an optional runtime dependency
+    pass
+else:
+    shapely_wkt = _shapely_wkt
+    shapely_mapping = _shapely_mapping
+    unary_union = _shapely_union
 
 from ..logging_utils import get_logger
 from .config import UISettings
 from .hexes import HexGeometryCache, build_hex_index
+from .types import (
+    AggregationCacheKey,
+    Bounds,
+    FeatureCollection,
+    GeoJSONFeature,
+    GeoJSONGeometry,
+    OverlayMap,
+    SummaryRow,
+    empty_feature_collection,
+)
 
 LOGGER = get_logger("ui.data")
 
-REQUIRED_COLUMNS = {
+REQUIRED_COLUMNS: dict[str, set[str]] = {
     "scores": {"hex_id", "aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"},
     "metadata": {"hex_id", "state", "metro", "county"},
 }
@@ -36,6 +54,12 @@ def _require_columns(frame: pd.DataFrame, required: Iterable[str]) -> None:
     if missing:
         msg = f"DataFrame missing required columns: {missing}"
         raise KeyError(msg)
+
+
+def _import_h3() -> Any:
+    """Import h3 lazily to keep optional dependency lightweight."""
+
+    return import_module("h3")
 
 
 @dataclass(slots=True)
@@ -63,10 +87,10 @@ class DataContext:
     version: DatasetVersion | None = None
     hex_cache: HexGeometryCache = field(default_factory=HexGeometryCache)
     base_resolution: int | None = None
-    bounds: tuple[float, float, float, float] | None = None
-    _aggregation_cache: dict[tuple[int, tuple[str, ...]], pd.DataFrame] = field(default_factory=dict)
+    bounds: Bounds | None = None
+    _aggregation_cache: dict[AggregationCacheKey, pd.DataFrame] = field(default_factory=dict)
     _aggregation_version: str | None = None
-    overlays: dict[str, dict] = field(default_factory=dict)
+    overlays: OverlayMap = field(default_factory=dict)
     _overlay_version: str | None = None
 
     @classmethod
@@ -83,7 +107,9 @@ class DataContext:
             LOGGER.warning("ui_data_path_missing", path=str(data_path))
             return
 
-        parquet_files = sorted(data_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime, reverse=True)
+        parquet_files = sorted(
+            data_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
         if not parquet_files:
             LOGGER.warning("ui_no_parquet", path=str(data_path))
             return
@@ -114,7 +140,7 @@ class DataContext:
     def _prepare_geometries(self) -> None:
         if "hex_id" not in self.scores.columns:
             return
-        hex_ids = self.scores["hex_id"].astype(str).unique()
+        hex_ids = cast(Sequence[str], self.scores["hex_id"].astype(str).unique())
         geometries = self.hex_cache.ensure_geometries(hex_ids)
         self.geometries = geometries
         self._update_bounds()
@@ -122,7 +148,7 @@ class DataContext:
     def validate_geometries(self) -> None:
         if "hex_id" not in self.scores.columns:
             return
-        self.hex_cache.validate(self.scores["hex_id"].astype(str))
+        self.hex_cache.validate(self.scores["hex_id"].astype(str).tolist())
 
     def _load_parquet(self, path: Path, columns: Iterable[str] | None = None) -> pd.DataFrame:
         frame = pd.read_parquet(path, columns=list(columns) if columns else None)
@@ -166,19 +192,26 @@ class DataContext:
     def summarise(self, columns: Iterable[str] | None = None) -> pd.DataFrame:
         if self.scores.empty:
             return pd.DataFrame()
-        columns = list(columns) if columns else ["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
-        summary = {}
+        columns = (
+            list(columns)
+            if columns
+            else ["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
+        )
+        summary: dict[str, SummaryRow] = {}
         percentiles = [p / 100.0 for p in self.settings.summary_percentiles]
         for column in columns:
             if column not in self.scores.columns:
                 continue
             series = self.scores[column]
-            summary[column] = {
+            stats: dict[str, float] = {
                 "min": float(series.min()),
                 "max": float(series.max()),
                 "mean": float(series.mean()),
-                **{f"p{int(p * 100)}": float(series.quantile(p)) for p in percentiles},
             }
+            for percentile in percentiles:
+                label = f"p{int(percentile * 100)}"
+                stats[label] = float(series.quantile(percentile))
+            summary[column] = cast(SummaryRow, stats)
         return pd.DataFrame(summary).T
 
     def export_geojson(self, path: Path, columns: Iterable[str] | None = None) -> Path:
@@ -189,15 +222,24 @@ class DataContext:
         path.write_text(json.dumps(payload))
         return path
 
-    def to_geojson(self, frame: pd.DataFrame) -> dict:
+    def to_geojson(self, frame: pd.DataFrame) -> FeatureCollection:
         geometries = self.geometries
         if geometries.empty:
             raise RuntimeError("Hex geometries not initialised")
         merged = frame.merge(geometries, on="hex_id", how="left")
-        features = []
+        features: list[GeoJSONFeature] = []
         for record in merged.to_dict("records"):
-            geometry = json.loads(record.pop("geometry"))
-            features.append({"type": "Feature", "geometry": geometry, "properties": record})
+            data = dict(record)
+            geometry_raw = data.pop("geometry")
+            geometry = cast(GeoJSONGeometry, json.loads(cast(str, geometry_raw)))
+            properties: dict[str, object] = {str(key): value for key, value in data.items()}
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": geometry,
+                    "properties": properties,
+                }
+            )
         return {"type": "FeatureCollection", "features": features}
 
     def export_csv(self, path: Path, columns: Iterable[str] | None = None) -> Path:
@@ -240,9 +282,9 @@ class DataContext:
         if subset.empty:
             return subset
         subset["hex_id"] = subset["hex_id"].astype(str)
-        h3 = __import__("h3")
+        h3 = _import_h3()
         subset["parent_hex"] = [
-            h3.cell_to_parent(hex_id, resolution) for hex_id in subset["hex_id"]
+            cast(str, h3.cell_to_parent(hex_id, resolution)) for hex_id in subset["hex_id"]
         ]
         aggregations = {column: "mean" for column in columns if column in subset.columns}
         aggregations["hex_id"] = "count"
@@ -270,8 +312,8 @@ class DataContext:
             self.base_resolution = None
             return
         sample = str(self.scores["hex_id"].astype(str).iloc[0])
-        h3 = __import__("h3")
-        self.base_resolution = h3.get_resolution(sample)
+        h3 = _import_h3()
+        self.base_resolution = int(h3.get_resolution(sample))
 
     def _update_bounds(self) -> None:
         if self.geometries.empty:
@@ -290,7 +332,7 @@ class DataContext:
             required = ["hex_id", *columns]
             available = [col for col in required if col in self.scores.columns]
             return self.scores.loc[:, available].copy()
-        cache_key = (resolution, tuple(sorted(columns)))
+        cache_key: AggregationCacheKey = (resolution, tuple(sorted(columns)))
         cached = self._aggregation_cache.get(cache_key)
         if cached is not None:
             return cached.copy()
@@ -300,7 +342,7 @@ class DataContext:
 
     def ids_in_viewport(
         self,
-        bounds: tuple[float, float, float, float] | None,
+        bounds: Bounds | None,
         *,
         resolution: int | None = None,
         buffer: float = 0.0,
@@ -324,7 +366,7 @@ class DataContext:
         return frame.loc[mask, "hex_id"].astype(str).tolist()
 
     def apply_viewport(
-        self, frame: pd.DataFrame, resolution: int, bounds: tuple[float, float, float, float] | None
+        self, frame: pd.DataFrame, resolution: int, bounds: Bounds | None
     ) -> pd.DataFrame:
         if bounds is None or frame.empty:
             return frame
@@ -354,12 +396,12 @@ class DataContext:
 
         self._build_overlays(force=force)
 
-    def get_overlay(self, key: str) -> dict:
+    def get_overlay(self, key: str) -> FeatureCollection:
         """Return a GeoJSON overlay by key, ensuring an empty payload on miss."""
 
-        payload = self.overlays.get(key, {})
-        if not payload:
-            return {"type": "FeatureCollection", "features": []}
+        payload = self.overlays.get(key)
+        if payload is None:
+            return empty_feature_collection()
         return payload
 
     def _build_overlays(self, force: bool = False) -> None:
@@ -380,34 +422,36 @@ class DataContext:
             self._overlay_version = self._aggregation_version
             return
 
+        assert shapely_wkt is not None
+        assert unary_union is not None
+        assert shapely_mapping is not None
+
         merged = self.scores.merge(
             self.geometries[["hex_id", "geometry_wkt"]],
             on="hex_id",
             how="left",
         )
-        overlays: dict[str, dict] = {}
+        overlays: OverlayMap = {}
         for column, key in (("state", "states"), ("county", "counties"), ("metro", "metros")):
             if column not in merged.columns:
                 continue
-            features = []
+            features: list[GeoJSONFeature] = []
             for value, group in merged.groupby(column):
                 if not value or group.empty:
                     continue
-                shapes = [
-                    shapely_wkt.loads(wkt)
-                    for wkt in group["geometry_wkt"].dropna().unique()
-                ]
+                shapes = [shapely_wkt.loads(wkt) for wkt in group["geometry_wkt"].dropna().unique()]
                 if not shapes:
                     continue
                 geometry = unary_union(shapes)
                 if geometry.is_empty:
                     continue
                 simplified = geometry.simplify(0.01, preserve_topology=True)
+                feature_geometry = cast(GeoJSONGeometry, shapely_mapping(simplified))
                 features.append(
                     {
                         "type": "Feature",
-                        "geometry": shapely_mapping(simplified),
-                        "properties": {"label": value},
+                        "geometry": feature_geometry,
+                        "properties": {"label": str(value)},
                     }
                 )
             if features:
@@ -417,10 +461,10 @@ class DataContext:
         self.overlays = overlays
         self._overlay_version = self._aggregation_version
 
-    def _load_external_overlays(self) -> dict[str, dict]:
+    def _load_external_overlays(self) -> OverlayMap:
         """Load optional overlay GeoJSON files from the data directory."""
 
-        result: dict[str, dict] = {}
+        result: OverlayMap = {}
         base = self.settings.data_path / "overlays"
         for name in ("transit_lines", "transit_stops", "parks"):
             path = base / f"{name}.geojson"
@@ -431,8 +475,40 @@ class DataContext:
             except json.JSONDecodeError as exc:
                 LOGGER.warning("ui_overlay_invalid", name=name, error=str(exc))
                 continue
-            result[name] = payload
+            typed = self._coerce_feature_collection(payload)
+            if typed is None:
+                LOGGER.warning("ui_overlay_invalid", name=name, error="not a FeatureCollection")
+                continue
+            result[name] = typed
         return result
+
+    @staticmethod
+    def _coerce_feature_collection(payload: object) -> FeatureCollection | None:
+        if not isinstance(payload, Mapping):
+            return None
+        if payload.get("type") != "FeatureCollection":
+            return None
+        features_obj = payload.get("features")
+        if not isinstance(features_obj, Iterable):
+            return None
+        features: list[GeoJSONFeature] = []
+        for feature in features_obj:
+            if not isinstance(feature, Mapping):
+                continue
+            geometry = feature.get("geometry")
+            properties = feature.get("properties", {})
+            if not isinstance(geometry, Mapping) or not isinstance(properties, Mapping):
+                continue
+            geometry_mapping = cast(GeoJSONGeometry, {str(k): v for k, v in geometry.items()})
+            property_mapping: dict[str, object] = {str(k): v for k, v in properties.items()}
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": geometry_mapping,
+                    "properties": property_mapping,
+                }
+            )
+        return {"type": "FeatureCollection", "features": features}
 
 
 __all__ = ["DataContext", "DatasetVersion"]

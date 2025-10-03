@@ -126,6 +126,7 @@ src/Urban_Amenities2/xwalk/__init__.py
 src/Urban_Amenities2/xwalk/overture_aucs.py
 tests/test_accessibility.py
 tests/test_basic.py
+tests/test_cache_manager.py
 tests/test_cli.py
 tests/test_corridor_enrichment.py
 tests/test_corridor_trip_chaining.py
@@ -148,8 +149,11 @@ tests/test_schemas.py
 tests/test_scores.py
 tests/test_seasonal_outdoors.py
 tests/test_ui_cache.py
+tests/test_ui_components_structure.py
 tests/test_ui_export.py
 tests/test_ui_filters.py
+tests/test_ui_layouts.py
 tests/test_ui_module.py
+tests/test_ui_parameters.py
 tests/test_versioning_cli.py
 tests/test_wikipedia_client.py

@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from importlib import import_module
+from typing import Any
 
 import pandas as pd
 import structlog
 
+from .types import AmenityEntry, ModeShareMap
+
 logger = structlog.get_logger()
 
 
-@dataclass
+def _import_h3() -> Any:
+    return import_module("h3")
+
+
+@dataclass(slots=True)
 class HexDetails:
     """Detailed information for a selected hex."""
 
@@ -29,8 +37,8 @@ class HexDetails:
     morr: float
     cte: float
     sou: float
-    top_amenities: list[dict[str, str]] = None
-    top_modes: dict[str, float] = None
+    top_amenities: list[AmenityEntry] = field(default_factory=list)
+    top_modes: ModeShareMap = field(default_factory=dict)
 
     @classmethod
     def from_row(cls, row: pd.Series) -> HexDetails:
@@ -43,24 +51,60 @@ class HexDetails:
         Returns:
             HexDetails instance
         """
+        amenities: list[AmenityEntry] = []
+        raw_amenities = row.get("top_amenities", [])
+        if isinstance(raw_amenities, list):
+            for item in raw_amenities:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name", ""))
+                category = str(item.get("category", ""))
+                score_raw = item.get("score")
+                score = float(score_raw) if isinstance(score_raw, (int, float)) else 0.0
+                amenities.append(AmenityEntry(name=name, category=category, score=score))
+
+        modes: ModeShareMap = {}
+        raw_modes = row.get("top_modes", {})
+        if isinstance(raw_modes, dict):
+            for mode, value in raw_modes.items():
+                if isinstance(mode, str) and isinstance(value, (int, float)):
+                    modes[mode] = float(value)
+
+        def _coerce_float(value: Any, fallback: float = 0.0) -> float:
+            return float(value) if isinstance(value, (int, float)) else fallback
+
+        population_raw = row.get("population")
+
+        ea_raw = row.get("ea", row.get("EA", 0.0))
+        lca_raw = row.get("lca", row.get("LCA", 0.0))
+        muhaa_raw = row.get("muhaa", row.get("MUHAA", 0.0))
+        jea_raw = row.get("jea", row.get("JEA", 0.0))
+        morr_raw = row.get("morr", row.get("MORR", 0.0))
+        cte_raw = row.get("cte", row.get("CTE", 0.0))
+        sou_raw = row.get("sou", row.get("SOU", 0.0))
+
         return cls(
-            hex_id=row["hex_id"],
-            lat=row["lat"],
-            lon=row["lon"],
-            state=row["state"],
+            hex_id=str(row.get("hex_id", "")),
+            lat=_coerce_float(row.get("lat", row.get("centroid_lat", 0.0))),
+            lon=_coerce_float(row.get("lon", row.get("centroid_lon", 0.0))),
+            state=str(row.get("state", "")),
             metro=row.get("metro"),
             county=row.get("county"),
-            population=row.get("population"),
-            aucs=row["aucs"],
-            ea=row["ea"],
-            lca=row["lca"],
-            muhaa=row["muhaa"],
-            jea=row["jea"],
-            morr=row["morr"],
-            cte=row["cte"],
-            sou=row["sou"],
-            top_amenities=row.get("top_amenities", []),
-            top_modes=row.get("top_modes", {}),
+            population=(
+                _coerce_float(population_raw, fallback=0.0)
+                if isinstance(population_raw, (int, float))
+                else None
+            ),
+            aucs=_coerce_float(row.get("aucs", 0.0)),
+            ea=_coerce_float(ea_raw),
+            lca=_coerce_float(lca_raw),
+            muhaa=_coerce_float(muhaa_raw),
+            jea=_coerce_float(jea_raw),
+            morr=_coerce_float(morr_raw),
+            cte=_coerce_float(cte_raw),
+            sou=_coerce_float(sou_raw),
+            top_amenities=amenities,
+            top_modes=modes,
         )
 
 
@@ -156,13 +200,10 @@ class HexSelector:
         Returns:
             DataFrame with neighboring hexes
         """
-        import h3
-
-        # Get neighbor hex IDs
+        h3 = _import_h3()
         neighbor_ids = list(h3.k_ring(hex_id, k=1))
 
         # Filter to neighbors in dataset
         neighbors = self.df[self.df["hex_id"].isin(neighbor_ids)].copy()
 
         return neighbors
-

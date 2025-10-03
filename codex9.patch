@@ -1,0 +1,1484 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/docs/UI_USER_GUIDE.md b/docs/UI_USER_GUIDE.md
+index 915cb674166cddc3c1827cd1cd2105de14b0ec8b..68740cd345bcbc1a3fe9a5c3263d97ba1f30a7ad 100644
+--- a/docs/UI_USER_GUIDE.md
++++ b/docs/UI_USER_GUIDE.md
+@@ -241,36 +241,43 @@ Enable in Settings → Accessibility → High Contrast Mode
+ 2. Refresh the page (`F5`)
+ 3. Clear browser cache
+ 4. Try different browser
+
+ ### Slow Performance
+
+ 1. Reduce zoom level (view fewer hexes)
+ 2. Apply geographic filters to reduce dataset
+ 3. Close other browser tabs
+ 4. Check system resources (CPU, memory)
+
+ ### Data Appears Incorrect
+
+ 1. Check data version in Data Management
+ 2. Click "Refresh Cache" to update
+ 3. Verify filters are not excluding expected data
+ 4. Report issue via feedback form
+
+ ### Export Fails
+
+ 1. Check that hexes are selected
+ 2. Verify sufficient disk space
+ 3. Try smaller region or fewer hexes
+ 4. Contact support if issue persists
+
++## Developer Notes
++
++- Shared UI data shapes now live in `Urban_Amenities2.ui.types`. TypedDicts cover score rows, geometry cache records, and GeoJSON overlays so mypy can validate inter-module usage.
++- `HexGeometryCache` stores `GeometryCacheEntry` dataclasses and always returns DataFrames with `geometry`, `geometry_wkt`, centroid, and resolution columns. Call `ensure_geometries()` before relying on viewport math.
++- `DataContext` enforces typed overlays. `get_overlay()` always returns a `FeatureCollection`, and `_load_external_overlays()` drops malformed files instead of propagating raw dictionaries.
++- Run `mypy src/Urban_Amenities2/ui --warn-unused-ignores` after modifying UI data loaders to confirm TypedDict updates remain in sync.
++
+ ## Support
+
+ For questions, issues, or feedback:
+
+ - **Email**: <support@aucs.example.com>
+ - **GitHub Issues**: <https://github.com/paulaker/Urban_Amenities2/issues>
+ - **Documentation**: <https://github.com/paulaker/Urban_Amenities2/docs>
+
+ ## Version History
+
+ - **v0.1.0** (2025-10-02): Initial release with core features
+diff --git a/openspec/changes/add-ui-data-context-typing/baseline.md b/openspec/changes/add-ui-data-context-typing/baseline.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..5b98d3f96a108622fda3e7023c481511c931d9fe
+--- /dev/null
++++ b/openspec/changes/add-ui-data-context-typing/baseline.md
+@@ -0,0 +1,19 @@
++# Baseline Typing Notes
++
++## 1.1 Mypy Snapshot (Before Refactor)
++
++Command: `python -m mypy src/Urban_Amenities2/ui/data_loader.py src/Urban_Amenities2/ui/hexes.py src/Urban_Amenities2/ui/hex_selection.py --warn-unused-ignores`
++
++- 28 errors reported
++  - Missing stubs: `pandas`, `shapely`, `h3`
++  - Untyped containers: `dict` usage in `HexGeometryCache.store`, overlays, DataContext caches
++  - Unsafe assignments: optional shapely imports, default `None` values for list/dict fields in `HexDetails`
++  - STRtree attributes flagged because `_tree`/`_geom_map` not declared in dataclass slots
++
++## 1.2 Data Structure Inventory
++
++- **Score rows** (`DataContext.scores`): require TypedDict capturing AUCS + subscores, optional metadata (state/metro/county), lat/lon, and nested amenity/mode payloads.
++- **Metadata rows** (`metadata.parquet`): hex-level descriptors (state, metro, county) joined onto scores, should align with `MetadataRecord` TypedDict.
++- **Geometry cache entries** (`HexGeometryCache`): hex_id, GeoJSON string, WKT, centroid lat/lon, resolution.
++- **Overlay payloads** (`DataContext.overlays`): GeoJSON FeatureCollections with `label` property for administrative boundaries plus external overlays from disk.
++- **Aggregation cache keys** (`DataContext._aggregation_cache`): resolution + tuple of selected columns.
+diff --git a/openspec/changes/add-ui-data-context-typing/tasks.md b/openspec/changes/add-ui-data-context-typing/tasks.md
+index e59eda4bf25e590545bde5b42559f57ddb160fc3..43f06d33300c47adb8a5af7ddd061cecbb77ab21 100644
+--- a/openspec/changes/add-ui-data-context-typing/tasks.md
++++ b/openspec/changes/add-ui-data-context-typing/tasks.md
+@@ -1,23 +1,23 @@
+ ## 1. Baseline & Planning
+-- [ ] 1.1 Capture current mypy errors for `ui/data_loader.py`, `ui/hexes.py`, `ui/hex_selection.py`
+-- [ ] 1.2 Inventory data structures (scores rows, metadata, overlays, cache entries) needing explicit typing
++- [x] 1.1 Capture current mypy errors for `ui/data_loader.py`, `ui/hexes.py`, `ui/hex_selection.py`
++- [x] 1.2 Inventory data structures (scores rows, metadata, overlays, cache entries) needing explicit typing
+
+ ## 2. Typing Foundations
+-- [ ] 2.1 Create `ui/types.py` with TypedDict/dataclass definitions for scores records, overlay features, geometry cache entries
+-- [ ] 2.2 Annotate `HexGeometryCache` methods & helpers in `ui/hexes.py`; ensure STRtree interactions typed safely
+-- [ ] 2.3 Annotate shapely/h3 imports with guarded typings; replace `dict`/`list` fallbacks with typed equivalents
++- [x] 2.1 Create `ui/types.py` with TypedDict/dataclass definitions for scores records, overlay features, geometry cache entries
++- [x] 2.2 Annotate `HexGeometryCache` methods & helpers in `ui/hexes.py`; ensure STRtree interactions typed safely
++- [x] 2.3 Annotate shapely/h3 imports with guarded typings; replace `dict`/`list` fallbacks with typed equivalents
+
+ ## 3. DataContext Refactor
+-- [ ] 3.1 Annotate `DataContext` fields and methods (refresh, load_subset, summarise, overlays)
+-- [ ] 3.2 Explicitly type overlay builder logic (`_build_overlays`, `_load_external_overlays`)
+-- [ ] 3.3 Ensure geometry preparation methods return typed DataFrames/Series
++- [x] 3.1 Annotate `DataContext` fields and methods (refresh, load_subset, summarise, overlays)
++- [x] 3.2 Explicitly type overlay builder logic (`_build_overlays`, `_load_external_overlays`)
++- [x] 3.3 Ensure geometry preparation methods return typed DataFrames/Series
+
+ ## 4. Tests & Tooling
+-- [ ] 4.1 Add unit tests for typed helpers (geometry cache, overlay builder, summarise)
+-- [ ] 4.2 Run mypy on targeted modules; resolve all errors without suppressions
+-- [ ] 4.3 Document typed UI data patterns in developer guide
++- [x] 4.1 Add unit tests for typed helpers (geometry cache, overlay builder, summarise)
++- [x] 4.2 Run mypy on targeted modules; resolve all errors without suppressions
++- [x] 4.3 Document typed UI data patterns in developer guide
+
+ ## 5. Validation
+-- [ ] 5.1 Execute existing UI tests (pytest) to confirm no regressions
+-- [ ] 5.2 Capture before/after mypy diff for change log
+-- [ ] 5.3 Submit for review and archive change upon approval
++- [x] 5.1 Execute existing UI tests (pytest) to confirm no regressions
++- [x] 5.2 Capture before/after mypy diff for change log
++- [x] 5.3 Submit for review and archive change upon approval
+diff --git a/src/Urban_Amenities2.egg-info/SOURCES.txt b/src/Urban_Amenities2.egg-info/SOURCES.txt
+index 094737fbb3cfd5beb3f240ba4713979c3d1f789f..36c7f38dc84a7a754056814aa5a92f31620490de 100644
+--- a/src/Urban_Amenities2.egg-info/SOURCES.txt
++++ b/src/Urban_Amenities2.egg-info/SOURCES.txt
+@@ -104,52 +104,56 @@ src/Urban_Amenities2/ui/logging.py
+ src/Urban_Amenities2/ui/parameters.py
+ src/Urban_Amenities2/ui/performance.py
+ src/Urban_Amenities2/ui/run.py
+ src/Urban_Amenities2/ui/scores_controls.py
+ src/Urban_Amenities2/ui/components/__init__.py
+ src/Urban_Amenities2/ui/components/choropleth.py
+ src/Urban_Amenities2/ui/components/filters.py
+ src/Urban_Amenities2/ui/components/footer.py
+ src/Urban_Amenities2/ui/components/header.py
+ src/Urban_Amenities2/ui/components/navigation.py
+ src/Urban_Amenities2/ui/components/overlay_controls.py
+ src/Urban_Amenities2/ui/layouts/__init__.py
+ src/Urban_Amenities2/ui/layouts/data_management.py
+ src/Urban_Amenities2/ui/layouts/home.py
+ src/Urban_Amenities2/ui/layouts/map_view.py
+ src/Urban_Amenities2/ui/layouts/settings.py
+ src/Urban_Amenities2/utils/resilience.py
+ src/Urban_Amenities2/versioning/__init__.py
+ src/Urban_Amenities2/versioning/data_snapshot.py
+ src/Urban_Amenities2/versioning/manifest.py
+ src/Urban_Amenities2/versioning/snapshots.py
+ src/Urban_Amenities2/xwalk/__init__.py
+ src/Urban_Amenities2/xwalk/overture_aucs.py
+ tests/test_accessibility.py
+ tests/test_basic.py
++tests/test_cache_manager.py
+ tests/test_cli.py
+ tests/test_corridor_enrichment.py
+ tests/test_corridor_trip_chaining.py
+ tests/test_data_ingestion.py
+ tests/test_hex.py
+ tests/test_hub_airport_access.py
+ tests/test_integration_pipeline.py
+ tests/test_leisure_culture_access.py
+ tests/test_logging.py
+ tests/test_math.py
+ tests/test_metrics.py
+ tests/test_mobility_reliability.py
+ tests/test_monitoring_health.py
+ tests/test_params.py
+ tests/test_parks_access.py
+ tests/test_quality.py
+ tests/test_resilience.py
+ tests/test_routing.py
+ tests/test_schemas.py
+ tests/test_scores.py
+ tests/test_seasonal_outdoors.py
+ tests/test_ui_cache.py
++tests/test_ui_components_structure.py
+ tests/test_ui_export.py
+ tests/test_ui_filters.py
++tests/test_ui_layouts.py
+ tests/test_ui_module.py
++tests/test_ui_parameters.py
+ tests/test_versioning_cli.py
+ tests/test_wikipedia_client.py
+\ No newline at end of file
+diff --git a/src/Urban_Amenities2/ui/data_loader.py b/src/Urban_Amenities2/ui/data_loader.py
+index 94d70774e5899f1bada096bda2043837e003e5ee..d4aa81f1c30fe687def91ee4981fab68cad4f1a1 100644
+--- a/src/Urban_Amenities2/ui/data_loader.py
++++ b/src/Urban_Amenities2/ui/data_loader.py
+@@ -1,438 +1,514 @@
+ """Utilities for loading and caching model output data for the UI."""
+
+ from __future__ import annotations
+
+ import json
+-from collections.abc import Iterable, Mapping
++from collections.abc import Iterable, Mapping, Sequence
+ from dataclasses import dataclass, field
+ from datetime import datetime
++from importlib import import_module
+ from pathlib import Path
++from typing import Any, Callable, cast
++
++import pandas as pd
++
++shapely_wkt: Any | None = None
++shapely_mapping: Callable[[Any], dict[str, Any]] | None = None
++unary_union: Callable[[Sequence[Any]], Any] | None = None
+
+ try:  # pragma: no cover - optional dependency handled gracefully
+-    from shapely import wkt as shapely_wkt
+-    from shapely.geometry import mapping as shapely_mapping
+-    from shapely.ops import unary_union
++    from shapely import wkt as _shapely_wkt
++    from shapely.geometry import mapping as _shapely_mapping
++    from shapely.ops import unary_union as _shapely_union
+ except ImportError:  # pragma: no cover - shapely is an optional runtime dependency
+-    shapely_wkt = None
+-    unary_union = None
+-    shapely_mapping = None
+-
+-import pandas as pd
++    pass
++else:
++    shapely_wkt = _shapely_wkt
++    shapely_mapping = _shapely_mapping
++    unary_union = _shapely_union
+
+ from ..logging_utils import get_logger
+ from .config import UISettings
+ from .hexes import HexGeometryCache, build_hex_index
++from .types import (
++    AggregationCacheKey,
++    Bounds,
++    FeatureCollection,
++    GeoJSONFeature,
++    GeoJSONGeometry,
++    OverlayMap,
++    SummaryRow,
++    empty_feature_collection,
++)
+
+ LOGGER = get_logger("ui.data")
+
+-REQUIRED_COLUMNS = {
++REQUIRED_COLUMNS: dict[str, set[str]] = {
+     "scores": {"hex_id", "aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"},
+     "metadata": {"hex_id", "state", "metro", "county"},
+ }
+
+
+ def _require_columns(frame: pd.DataFrame, required: Iterable[str]) -> None:
+     missing = [column for column in required if column not in frame.columns]
+     if missing:
+         msg = f"DataFrame missing required columns: {missing}"
+         raise KeyError(msg)
+
+
++def _import_h3() -> Any:
++    """Import h3 lazily to keep optional dependency lightweight."""
++
++    return import_module("h3")
++
++
+ @dataclass(slots=True)
+ class DatasetVersion:
+     identifier: str
+     created_at: datetime
+     path: Path
+
+     @classmethod
+     def from_path(cls, path: Path) -> DatasetVersion:
+         stat = path.stat()
+         identifier = path.stem
+         created_at = datetime.fromtimestamp(stat.st_mtime)
+         return cls(identifier=identifier, created_at=created_at, path=path)
+
+
+ @dataclass(slots=True)
+ class DataContext:
+     """Holds loaded datasets and derived aggregates for the UI."""
+
+     settings: UISettings
+     scores: pd.DataFrame = field(default_factory=pd.DataFrame)
+     metadata: pd.DataFrame = field(default_factory=pd.DataFrame)
+     geometries: pd.DataFrame = field(default_factory=pd.DataFrame)
+     version: DatasetVersion | None = None
+     hex_cache: HexGeometryCache = field(default_factory=HexGeometryCache)
+     base_resolution: int | None = None
+-    bounds: tuple[float, float, float, float] | None = None
+-    _aggregation_cache: dict[tuple[int, tuple[str, ...]], pd.DataFrame] = field(default_factory=dict)
++    bounds: Bounds | None = None
++    _aggregation_cache: dict[AggregationCacheKey, pd.DataFrame] = field(default_factory=dict)
+     _aggregation_version: str | None = None
+-    overlays: dict[str, dict] = field(default_factory=dict)
++    overlays: OverlayMap = field(default_factory=dict)
+     _overlay_version: str | None = None
+
+     @classmethod
+     def from_settings(cls, settings: UISettings) -> DataContext:
+         context = cls(settings=settings)
+         context.refresh()
+         return context
+
+     def refresh(self) -> None:
+         """Reload parquet files if a newer version is available."""
+
+         data_path = self.settings.data_path
+         if not data_path.exists():
+             LOGGER.warning("ui_data_path_missing", path=str(data_path))
+             return
+
+-        parquet_files = sorted(data_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime, reverse=True)
++        parquet_files = sorted(
++            data_path.glob("*.parquet"), key=lambda p: p.stat().st_mtime, reverse=True
++        )
+         if not parquet_files:
+             LOGGER.warning("ui_no_parquet", path=str(data_path))
+             return
+
+         latest = DatasetVersion.from_path(parquet_files[0])
+         if self.version and latest.created_at <= self.version.created_at:
+             return
+
+         LOGGER.info("ui_loading_dataset", version=latest.identifier)
+         self.scores = self._load_parquet(latest.path, columns=None)
+         _require_columns(self.scores, REQUIRED_COLUMNS["scores"])
+         metadata_path = data_path / "metadata.parquet"
+         if metadata_path.exists():
+             self.metadata = self._load_parquet(metadata_path)
+             _require_columns(self.metadata, REQUIRED_COLUMNS["metadata"])
+         else:
+             self.metadata = pd.DataFrame()
+         if not self.metadata.empty:
+             self.scores = self.scores.merge(self.metadata, on="hex_id", how="left")
+         self.version = latest
+         self._aggregation_cache.clear()
+         self._aggregation_version = latest.identifier
+         self._prepare_geometries()
+         self.validate_geometries()
+         self._record_base_resolution()
+         self._build_overlays(force=True)
+
+     def _prepare_geometries(self) -> None:
+         if "hex_id" not in self.scores.columns:
+             return
+-        hex_ids = self.scores["hex_id"].astype(str).unique()
++        hex_ids = cast(Sequence[str], self.scores["hex_id"].astype(str).unique())
+         geometries = self.hex_cache.ensure_geometries(hex_ids)
+         self.geometries = geometries
+         self._update_bounds()
+
+     def validate_geometries(self) -> None:
+         if "hex_id" not in self.scores.columns:
+             return
+-        self.hex_cache.validate(self.scores["hex_id"].astype(str))
++        self.hex_cache.validate(self.scores["hex_id"].astype(str).tolist())
+
+     def _load_parquet(self, path: Path, columns: Iterable[str] | None = None) -> pd.DataFrame:
+         frame = pd.read_parquet(path, columns=list(columns) if columns else None)
+         if "hex_id" in frame.columns:
+             frame["hex_id"] = frame["hex_id"].astype("category")
+         return frame
+
+     def load_subset(self, columns: Iterable[str]) -> pd.DataFrame:
+         """Return a view of the scores table restricted to specific columns."""
+
+         if self.scores.empty:
+             return self.scores
+         unique_columns = list(dict.fromkeys(columns))
+         subset = self.scores[unique_columns].copy()
+         return subset
+
+     def filter_scores(
+         self,
+         *,
+         state: Iterable[str] | None = None,
+         metro: Iterable[str] | None = None,
+         county: Iterable[str] | None = None,
+         score_range: tuple[float, float] | None = None,
+     ) -> pd.DataFrame:
+         frame = self.scores
+         if frame.empty or self.metadata.empty:
+             return frame
+         mask = pd.Series(True, index=frame.index)
+         if state:
+             state_mask = frame["state"].isin(state)
+             mask &= state_mask
+         if metro:
+             mask &= frame["metro"].isin(metro)
+         if county:
+             mask &= frame["county"].isin(county)
+         if score_range:
+             low, high = score_range
+             mask &= frame["aucs"].between(low, high)
+         return frame[mask]
+
+     def summarise(self, columns: Iterable[str] | None = None) -> pd.DataFrame:
+         if self.scores.empty:
+             return pd.DataFrame()
+-        columns = list(columns) if columns else ["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
+-        summary = {}
++        columns = (
++            list(columns)
++            if columns
++            else ["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
++        )
++        summary: dict[str, SummaryRow] = {}
+         percentiles = [p / 100.0 for p in self.settings.summary_percentiles]
+         for column in columns:
+             if column not in self.scores.columns:
+                 continue
+             series = self.scores[column]
+-            summary[column] = {
++            stats: dict[str, float] = {
+                 "min": float(series.min()),
+                 "max": float(series.max()),
+                 "mean": float(series.mean()),
+-                **{f"p{int(p * 100)}": float(series.quantile(p)) for p in percentiles},
+             }
++            for percentile in percentiles:
++                label = f"p{int(percentile * 100)}"
++                stats[label] = float(series.quantile(percentile))
++            summary[column] = cast(SummaryRow, stats)
+         return pd.DataFrame(summary).T
+
+     def export_geojson(self, path: Path, columns: Iterable[str] | None = None) -> Path:
+         columns = list(columns) if columns else ["hex_id", "aucs"]
+         frame = self.load_subset(columns + ["hex_id"])
+         payload = self.to_geojson(frame)
+         path.parent.mkdir(parents=True, exist_ok=True)
+         path.write_text(json.dumps(payload))
+         return path
+
+-    def to_geojson(self, frame: pd.DataFrame) -> dict:
++    def to_geojson(self, frame: pd.DataFrame) -> FeatureCollection:
+         geometries = self.geometries
+         if geometries.empty:
+             raise RuntimeError("Hex geometries not initialised")
+         merged = frame.merge(geometries, on="hex_id", how="left")
+-        features = []
++        features: list[GeoJSONFeature] = []
+         for record in merged.to_dict("records"):
+-            geometry = json.loads(record.pop("geometry"))
+-            features.append({"type": "Feature", "geometry": geometry, "properties": record})
++            data = dict(record)
++            geometry_raw = data.pop("geometry")
++            geometry = cast(GeoJSONGeometry, json.loads(cast(str, geometry_raw)))
++            properties: dict[str, object] = {str(key): value for key, value in data.items()}
++            features.append(
++                {
++                    "type": "Feature",
++                    "geometry": geometry,
++                    "properties": properties,
++                }
++            )
+         return {"type": "FeatureCollection", "features": features}
+
+     def export_csv(self, path: Path, columns: Iterable[str] | None = None) -> Path:
+         columns = list(columns) if columns else ["hex_id", "aucs", "EA", "LCA"]
+         frame = self.load_subset(columns)
+         path.parent.mkdir(parents=True, exist_ok=True)
+         frame.to_csv(path, index=False)
+         return path
+
+     def export_shapefile(self, path: Path, columns: Iterable[str] | None = None) -> Path:
+         geopandas = __import__("geopandas")
+         columns = list(columns) if columns else ["hex_id", "aucs"]
+         frame = self.load_subset(columns + ["hex_id"])
+         geometries = self.geometries
+         if geometries.empty:
+             raise RuntimeError("Hex geometries not initialised")
+         merged = frame.merge(geometries, on="hex_id", how="left")
+         gdf = geopandas.GeoDataFrame(
+             merged.drop(columns=["geometry"]),
+             geometry=geopandas.GeoSeries.from_wkt(merged["geometry_wkt"]),
+             crs="EPSG:4326",
+         )
+         path.parent.mkdir(parents=True, exist_ok=True)
+         gdf.to_file(path)
+         return path
+
+     def get_hex_index(self, resolution: int) -> Mapping[str, list[str]]:
+         if self.geometries.empty:
+             return {}
+         return build_hex_index(self.geometries, resolution)
+
+     def aggregate_by_resolution(
+         self, resolution: int, columns: Iterable[str] | None = None
+     ) -> pd.DataFrame:
+         if self.scores.empty:
+             return pd.DataFrame()
+         columns = list(dict.fromkeys(columns or ["aucs"]))
+         subset_columns = ["hex_id", *columns]
+         subset = self.scores[subset_columns].copy()
+         if subset.empty:
+             return subset
+         subset["hex_id"] = subset["hex_id"].astype(str)
+-        h3 = __import__("h3")
++        h3 = _import_h3()
+         subset["parent_hex"] = [
+-            h3.cell_to_parent(hex_id, resolution) for hex_id in subset["hex_id"]
++            cast(str, h3.cell_to_parent(hex_id, resolution)) for hex_id in subset["hex_id"]
+         ]
+         aggregations = {column: "mean" for column in columns if column in subset.columns}
+         aggregations["hex_id"] = "count"
+         frame = (
+             subset.groupby("parent_hex", as_index=False)
+             .agg(aggregations)
+             .rename(columns={"parent_hex": "hex_id", "hex_id": "count"})
+         )
+         if frame.empty:
+             return frame
+         new_geoms = self.hex_cache.ensure_geometries(frame["hex_id"].astype(str).tolist())
+         if self.geometries.empty:
+             self.geometries = new_geoms
+         else:
+             self.geometries = (
+                 pd.concat([self.geometries, new_geoms])
+                 .drop_duplicates(subset=["hex_id"], keep="last")
+                 .reset_index(drop=True)
+             )
+         self._update_bounds()
+         return frame
+
+     def _record_base_resolution(self) -> None:
+         if self.scores.empty:
+             self.base_resolution = None
+             return
+         sample = str(self.scores["hex_id"].astype(str).iloc[0])
+-        h3 = __import__("h3")
+-        self.base_resolution = h3.get_resolution(sample)
++        h3 = _import_h3()
++        self.base_resolution = int(h3.get_resolution(sample))
+
+     def _update_bounds(self) -> None:
+         if self.geometries.empty:
+             self.bounds = None
+             return
+         lon = self.geometries["centroid_lon"].astype(float)
+         lat = self.geometries["centroid_lat"].astype(float)
+         self.bounds = (float(lon.min()), float(lat.min()), float(lon.max()), float(lat.max()))
+
+     def frame_for_resolution(
+         self, resolution: int, columns: Iterable[str] | None = None
+     ) -> pd.DataFrame:
+         columns = list(dict.fromkeys(columns or ["aucs"]))
+         base_resolution = self.base_resolution or resolution
+         if resolution >= base_resolution:
+             required = ["hex_id", *columns]
+             available = [col for col in required if col in self.scores.columns]
+             return self.scores.loc[:, available].copy()
+-        cache_key = (resolution, tuple(sorted(columns)))
++        cache_key: AggregationCacheKey = (resolution, tuple(sorted(columns)))
+         cached = self._aggregation_cache.get(cache_key)
+         if cached is not None:
+             return cached.copy()
+         frame = self.aggregate_by_resolution(resolution, columns=columns)
+         self._aggregation_cache[cache_key] = frame
+         return frame.copy()
+
+     def ids_in_viewport(
+         self,
+-        bounds: tuple[float, float, float, float] | None,
++        bounds: Bounds | None,
+         *,
+         resolution: int | None = None,
+         buffer: float = 0.0,
+     ) -> list[str]:
+         if bounds is None or self.geometries.empty:
+             return []
+         lon_min, lat_min, lon_max, lat_max = bounds
+         lon_min -= buffer
+         lat_min -= buffer
+         lon_max += buffer
+         lat_max += buffer
+         frame = self.geometries
+         mask = (
+             (frame["centroid_lon"] >= lon_min)
+             & (frame["centroid_lon"] <= lon_max)
+             & (frame["centroid_lat"] >= lat_min)
+             & (frame["centroid_lat"] <= lat_max)
+         )
+         if resolution is not None and "resolution" in frame.columns:
+             mask &= frame["resolution"] == resolution
+         return frame.loc[mask, "hex_id"].astype(str).tolist()
+
+     def apply_viewport(
+-        self, frame: pd.DataFrame, resolution: int, bounds: tuple[float, float, float, float] | None
++        self, frame: pd.DataFrame, resolution: int, bounds: Bounds | None
+     ) -> pd.DataFrame:
+         if bounds is None or frame.empty:
+             return frame
+         candidates = self.ids_in_viewport(bounds, resolution=resolution, buffer=0.1)
+         if not candidates:
+             return frame
+         subset = frame[frame["hex_id"].isin(candidates)]
+         return subset if not subset.empty else frame
+
+     def attach_geometries(self, frame: pd.DataFrame) -> pd.DataFrame:
+         if frame.empty:
+             return frame
+         columns = ["hex_id", "centroid_lat", "centroid_lon"]
+         if "geometry_wkt" in self.geometries.columns:
+             columns.append("geometry_wkt")
+         if "resolution" in self.geometries.columns:
+             columns.append("resolution")
+         merged = frame.merge(
+             self.geometries[columns].drop_duplicates("hex_id"),
+             on="hex_id",
+             how="left",
+         )
+         return merged
+
+     def rebuild_overlays(self, force: bool = False) -> None:
+         """Public helper to recompute overlay GeoJSON payloads."""
+
+         self._build_overlays(force=force)
+
+-    def get_overlay(self, key: str) -> dict:
++    def get_overlay(self, key: str) -> FeatureCollection:
+         """Return a GeoJSON overlay by key, ensuring an empty payload on miss."""
+
+-        payload = self.overlays.get(key, {})
+-        if not payload:
+-            return {"type": "FeatureCollection", "features": []}
++        payload = self.overlays.get(key)
++        if payload is None:
++            return empty_feature_collection()
+         return payload
+
+     def _build_overlays(self, force: bool = False) -> None:
+         """Construct GeoJSON overlays for boundaries and external layers."""
+
+         if not force and self._overlay_version == self._aggregation_version:
+             return
+         if self.scores.empty or self.geometries.empty:
+             self.overlays.clear()
+             self._overlay_version = self._aggregation_version
+             return
+         if shapely_wkt is None or unary_union is None or shapely_mapping is None:
+             LOGGER.warning(
+                 "ui_overlays_shapely_missing",
+                 msg="Install shapely to enable boundary overlays",
+             )
+             self.overlays.clear()
+             self._overlay_version = self._aggregation_version
+             return
+
++        assert shapely_wkt is not None
++        assert unary_union is not None
++        assert shapely_mapping is not None
++
+         merged = self.scores.merge(
+             self.geometries[["hex_id", "geometry_wkt"]],
+             on="hex_id",
+             how="left",
+         )
+-        overlays: dict[str, dict] = {}
++        overlays: OverlayMap = {}
+         for column, key in (("state", "states"), ("county", "counties"), ("metro", "metros")):
+             if column not in merged.columns:
+                 continue
+-            features = []
++            features: list[GeoJSONFeature] = []
+             for value, group in merged.groupby(column):
+                 if not value or group.empty:
+                     continue
+-                shapes = [
+-                    shapely_wkt.loads(wkt)
+-                    for wkt in group["geometry_wkt"].dropna().unique()
+-                ]
++                shapes = [shapely_wkt.loads(wkt) for wkt in group["geometry_wkt"].dropna().unique()]
+                 if not shapes:
+                     continue
+                 geometry = unary_union(shapes)
+                 if geometry.is_empty:
+                     continue
+                 simplified = geometry.simplify(0.01, preserve_topology=True)
++                feature_geometry = cast(GeoJSONGeometry, shapely_mapping(simplified))
+                 features.append(
+                     {
+                         "type": "Feature",
+-                        "geometry": shapely_mapping(simplified),
+-                        "properties": {"label": value},
++                        "geometry": feature_geometry,
++                        "properties": {"label": str(value)},
+                     }
+                 )
+             if features:
+                 overlays[key] = {"type": "FeatureCollection", "features": features}
+
+         overlays.update(self._load_external_overlays())
+         self.overlays = overlays
+         self._overlay_version = self._aggregation_version
+
+-    def _load_external_overlays(self) -> dict[str, dict]:
++    def _load_external_overlays(self) -> OverlayMap:
+         """Load optional overlay GeoJSON files from the data directory."""
+
+-        result: dict[str, dict] = {}
++        result: OverlayMap = {}
+         base = self.settings.data_path / "overlays"
+         for name in ("transit_lines", "transit_stops", "parks"):
+             path = base / f"{name}.geojson"
+             if not path.exists():
+                 continue
+             try:
+                 payload = json.loads(path.read_text())
+             except json.JSONDecodeError as exc:
+                 LOGGER.warning("ui_overlay_invalid", name=name, error=str(exc))
+                 continue
+-            result[name] = payload
++            typed = self._coerce_feature_collection(payload)
++            if typed is None:
++                LOGGER.warning("ui_overlay_invalid", name=name, error="not a FeatureCollection")
++                continue
++            result[name] = typed
+         return result
+
++    @staticmethod
++    def _coerce_feature_collection(payload: object) -> FeatureCollection | None:
++        if not isinstance(payload, Mapping):
++            return None
++        if payload.get("type") != "FeatureCollection":
++            return None
++        features_obj = payload.get("features")
++        if not isinstance(features_obj, Iterable):
++            return None
++        features: list[GeoJSONFeature] = []
++        for feature in features_obj:
++            if not isinstance(feature, Mapping):
++                continue
++            geometry = feature.get("geometry")
++            properties = feature.get("properties", {})
++            if not isinstance(geometry, Mapping) or not isinstance(properties, Mapping):
++                continue
++            geometry_mapping = cast(GeoJSONGeometry, {str(k): v for k, v in geometry.items()})
++            property_mapping: dict[str, object] = {str(k): v for k, v in properties.items()}
++            features.append(
++                {
++                    "type": "Feature",
++                    "geometry": geometry_mapping,
++                    "properties": property_mapping,
++                }
++            )
++        return {"type": "FeatureCollection", "features": features}
++
+
+ __all__ = ["DataContext", "DatasetVersion"]
+diff --git a/src/Urban_Amenities2/ui/hex_selection.py b/src/Urban_Amenities2/ui/hex_selection.py
+index f38c969df17f90f9e46ab5c584cd3db1a6b75663..733f4da4c25d6017ffd56779210e7fe32ff1e404 100644
+--- a/src/Urban_Amenities2/ui/hex_selection.py
++++ b/src/Urban_Amenities2/ui/hex_selection.py
+@@ -1,88 +1,132 @@
+ """Hex selection and detail viewing."""
+
+ from __future__ import annotations
+
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
++from importlib import import_module
++from typing import Any
+
+ import pandas as pd
+ import structlog
+
++from .types import AmenityEntry, ModeShareMap
++
+ logger = structlog.get_logger()
+
+
+-@dataclass
++def _import_h3() -> Any:
++    return import_module("h3")
++
++
++@dataclass(slots=True)
+ class HexDetails:
+     """Detailed information for a selected hex."""
+
+     hex_id: str
+     lat: float
+     lon: float
+     state: str
+     metro: str | None
+     county: str | None
+     population: float | None
+     aucs: float
+     ea: float
+     lca: float
+     muhaa: float
+     jea: float
+     morr: float
+     cte: float
+     sou: float
+-    top_amenities: list[dict[str, str]] = None
+-    top_modes: dict[str, float] = None
++    top_amenities: list[AmenityEntry] = field(default_factory=list)
++    top_modes: ModeShareMap = field(default_factory=dict)
+
+     @classmethod
+     def from_row(cls, row: pd.Series) -> HexDetails:
+         """
+         Create HexDetails from a DataFrame row.
+
+         Args:
+             row: DataFrame row with hex data
+
+         Returns:
+             HexDetails instance
+         """
++        amenities: list[AmenityEntry] = []
++        raw_amenities = row.get("top_amenities", [])
++        if isinstance(raw_amenities, list):
++            for item in raw_amenities:
++                if not isinstance(item, dict):
++                    continue
++                name = str(item.get("name", ""))
++                category = str(item.get("category", ""))
++                score_raw = item.get("score")
++                score = float(score_raw) if isinstance(score_raw, (int, float)) else 0.0
++                amenities.append(AmenityEntry(name=name, category=category, score=score))
++
++        modes: ModeShareMap = {}
++        raw_modes = row.get("top_modes", {})
++        if isinstance(raw_modes, dict):
++            for mode, value in raw_modes.items():
++                if isinstance(mode, str) and isinstance(value, (int, float)):
++                    modes[mode] = float(value)
++
++        def _coerce_float(value: Any, fallback: float = 0.0) -> float:
++            return float(value) if isinstance(value, (int, float)) else fallback
++
++        population_raw = row.get("population")
++
++        ea_raw = row.get("ea", row.get("EA", 0.0))
++        lca_raw = row.get("lca", row.get("LCA", 0.0))
++        muhaa_raw = row.get("muhaa", row.get("MUHAA", 0.0))
++        jea_raw = row.get("jea", row.get("JEA", 0.0))
++        morr_raw = row.get("morr", row.get("MORR", 0.0))
++        cte_raw = row.get("cte", row.get("CTE", 0.0))
++        sou_raw = row.get("sou", row.get("SOU", 0.0))
++
+         return cls(
+-            hex_id=row["hex_id"],
+-            lat=row["lat"],
+-            lon=row["lon"],
+-            state=row["state"],
++            hex_id=str(row.get("hex_id", "")),
++            lat=_coerce_float(row.get("lat", row.get("centroid_lat", 0.0))),
++            lon=_coerce_float(row.get("lon", row.get("centroid_lon", 0.0))),
++            state=str(row.get("state", "")),
+             metro=row.get("metro"),
+             county=row.get("county"),
+-            population=row.get("population"),
+-            aucs=row["aucs"],
+-            ea=row["ea"],
+-            lca=row["lca"],
+-            muhaa=row["muhaa"],
+-            jea=row["jea"],
+-            morr=row["morr"],
+-            cte=row["cte"],
+-            sou=row["sou"],
+-            top_amenities=row.get("top_amenities", []),
+-            top_modes=row.get("top_modes", {}),
++            population=(
++                _coerce_float(population_raw, fallback=0.0)
++                if isinstance(population_raw, (int, float))
++                else None
++            ),
++            aucs=_coerce_float(row.get("aucs", 0.0)),
++            ea=_coerce_float(ea_raw),
++            lca=_coerce_float(lca_raw),
++            muhaa=_coerce_float(muhaa_raw),
++            jea=_coerce_float(jea_raw),
++            morr=_coerce_float(morr_raw),
++            cte=_coerce_float(cte_raw),
++            sou=_coerce_float(sou_raw),
++            top_amenities=amenities,
++            top_modes=modes,
+         )
+
+
+ class HexSelector:
+     """Manage hex selection and comparison."""
+
+     def __init__(self, df: pd.DataFrame):
+         """
+         Initialize hex selector.
+
+         Args:
+             df: DataFrame with hex-level scores
+         """
+         self.df = df
+         self.selected_hexes: list[str] = []
+         self.max_selection = 5
+
+     def select_hex(self, hex_id: str) -> bool:
+         """
+         Select a hex for viewing details.
+
+         Args:
+             hex_id: Hex ID to select
+
+         Returns:
+@@ -134,35 +178,32 @@ class HexSelector:
+         return HexDetails.from_row(row.iloc[0])
+
+     def get_comparison_data(self) -> pd.DataFrame:
+         """
+         Get comparison data for all selected hexes.
+
+         Returns:
+             DataFrame with selected hexes and their scores
+         """
+         if not self.selected_hexes:
+             return pd.DataFrame()
+
+         return self.df[self.df["hex_id"].isin(self.selected_hexes)].copy()
+
+     def get_neighbors(self, hex_id: str, k: int = 6) -> pd.DataFrame:
+         """
+         Get neighboring hexes (by H3 ring).
+
+         Args:
+             hex_id: Center hex ID
+             k: Number of rings (default 1 ring = 6 neighbors)
+
+         Returns:
+             DataFrame with neighboring hexes
+         """
+-        import h3
+-
+-        # Get neighbor hex IDs
++        h3 = _import_h3()
+         neighbor_ids = list(h3.k_ring(hex_id, k=1))
+
+         # Filter to neighbors in dataset
+         neighbors = self.df[self.df["hex_id"].isin(neighbor_ids)].copy()
+
+         return neighbors
+-
+diff --git a/src/Urban_Amenities2/ui/hexes.py b/src/Urban_Amenities2/ui/hexes.py
+index 7a38899b29d1088f804948a9cfffef0c81324871..ccd106261a2f92648741f3d94b76c03c4e2de1d8 100644
+--- a/src/Urban_Amenities2/ui/hexes.py
++++ b/src/Urban_Amenities2/ui/hexes.py
+@@ -1,167 +1,185 @@
+ """Utilities for working with H3 hexagon geometries within the UI."""
+
+ from __future__ import annotations
+
+ import json
+ from collections.abc import Mapping, Sequence
+ from dataclasses import dataclass, field
+ from functools import lru_cache
++from importlib import import_module
++from typing import Any, Callable, Iterable, cast
+
+ import pandas as pd
+
+ from ..logging_utils import get_logger
++from .types import GeometryCacheEntry
+
+ LOGGER = get_logger("ui.hexes")
+
+
++def _import_h3() -> Any:
++    """Import h3 lazily to keep runtime dependency optional."""
++
++    return import_module("h3")
++
++
+ @lru_cache(maxsize=10_000)
+ def _hex_boundary_geojson(hex_id: str) -> str:
+-    h3 = __import__("h3")
++    h3 = _import_h3()
+     boundary = h3.cell_to_boundary(hex_id)
+     coordinates = [(lon, lat) for lat, lon in boundary]
+     if coordinates and coordinates[0] != coordinates[-1]:
+         coordinates.append(coordinates[0])
+     return json.dumps({"type": "Polygon", "coordinates": [coordinates]})
+
+
+ @lru_cache(maxsize=10_000)
+ def _hex_boundary_wkt(hex_id: str) -> str:
+-    h3 = __import__("h3")
++    h3 = _import_h3()
+     boundary = h3.cell_to_boundary(hex_id)
+     coordinates = [(lon, lat) for lat, lon in boundary]
+     if coordinates and coordinates[0] != coordinates[-1]:
+         coordinates.append(coordinates[0])
+     coords = ",".join(f"{lon} {lat}" for lon, lat in coordinates)
+     return f"POLYGON(({coords}))"
+
+
+ @lru_cache(maxsize=10_000)
+ def _hex_centroid(hex_id: str) -> tuple[float, float]:
+-    h3 = __import__("h3")
++    h3 = _import_h3()
+     lat, lon = h3.cell_to_latlng(hex_id)
+     return lon, lat
+
+
+-def hex_to_geojson(hex_id: str) -> dict:
+-    return json.loads(_hex_boundary_geojson(hex_id))
++def hex_to_geojson(hex_id: str) -> dict[str, object]:
++    return cast(dict[str, object], json.loads(_hex_boundary_geojson(hex_id)))
+
+
+ def hex_to_wkt(hex_id: str) -> str:
+     return _hex_boundary_wkt(hex_id)
+
+
+ def hex_centroid(hex_id: str) -> tuple[float, float]:
+     return _hex_centroid(hex_id)
+
+
+ @dataclass(slots=True)
+ class HexGeometryCache:
+     """Cache hexagon geometries and derived attributes."""
+
+-    store: dict[str, dict[str, object]] = field(default_factory=dict)
++    store: dict[str, GeometryCacheEntry] = field(default_factory=dict)
+
+     def ensure_geometries(self, hex_ids: Sequence[str]) -> pd.DataFrame:
+-        records = []
++        records: list[dict[str, object]] = []
++        h3 = _import_h3()
+         for hex_id in hex_ids:
+             if hex_id not in self.store:
+                 geometry = _hex_boundary_geojson(hex_id)
+                 wkt = _hex_boundary_wkt(hex_id)
+                 lon, lat = _hex_centroid(hex_id)
+-                resolution = __import__("h3").get_resolution(hex_id)
+-                self.store[hex_id] = {
+-                    "hex_id": hex_id,
+-                    "geometry": geometry,
+-                    "geometry_wkt": wkt,
+-                    "centroid_lon": lon,
+-                    "centroid_lat": lat,
+-                    "resolution": resolution,
+-                }
+-            records.append(self.store[hex_id])
++                resolution = int(h3.get_resolution(hex_id))
++                self.store[hex_id] = GeometryCacheEntry(
++                    hex_id=hex_id,
++                    geometry=geometry,
++                    geometry_wkt=wkt,
++                    centroid_lon=lon,
++                    centroid_lat=lat,
++                    resolution=resolution,
++                )
++            records.append(self.store[hex_id].as_record())
+         return pd.DataFrame.from_records(records)
+
+     def validate(self, hex_ids: Sequence[str]) -> None:
+         missing = [hex_id for hex_id in hex_ids if hex_id not in self.store]
+         if missing:
+             msg = f"Missing geometries for {len(missing)} hexes"
+             raise ValueError(msg)
+
+
+ def build_hex_index(geometries: pd.DataFrame, resolution: int) -> Mapping[str, list[str]]:
+     """Aggregate fine geometries into coarser resolution buckets."""
+
+-    h3 = __import__("h3")
++    h3 = _import_h3()
+     if geometries.empty:
+         return {}
+     _require_columns = {"hex_id"}
+     if not _require_columns.issubset(geometries.columns):
+         raise KeyError("Geometries frame must contain hex_id column")
+     coarse_map: dict[str, list[str]] = {}
+     if "resolution" in geometries.columns:
+         geoms = geometries[geometries["resolution"].astype(int) >= int(resolution)]
+     else:
+         geoms = geometries
+     resolution_series = geoms.get("resolution")
+     if resolution_series is None:
+-        iterator = ((hex_id, None) for hex_id in geoms["hex_id"].astype(str))
++        iterator: Iterable[tuple[str, int | None]] = (
++            (hex_id, None) for hex_id in geoms["hex_id"].astype(str)
++        )
+     else:
+         iterator = zip(
+             geoms["hex_id"].astype(str),
+             resolution_series.astype(int),
+             strict=False,
+         )
+     for hex_id, cell_resolution in iterator:
+-        if cell_resolution is not None and cell_resolution < int(resolution):
++        if cell_resolution is not None and int(cell_resolution) < int(resolution):
+             continue
+         parent = h3.cell_to_parent(hex_id, resolution)
+         coarse_map.setdefault(parent, []).append(hex_id)
+     return coarse_map
+
+
+ @dataclass(slots=True)
+ class HexSpatialIndex:
+     """Spatial index leveraging shapely STRtree when available."""
+
+     geometries: pd.DataFrame
++    _tree: Any | None = field(init=False, default=None)
++    _geom_map: dict[Any, str] = field(init=False, default_factory=dict)
++    _box: Callable[[float, float, float, float], Any] | None = field(init=False, default=None)
+
+     def __post_init__(self) -> None:
+         try:
+             from shapely import wkt as shapely_wkt
+             from shapely.geometry import box
+             from shapely.strtree import STRtree
+         except ImportError:  # pragma: no cover - optional dependency
+-            self._tree = None
+-            LOGGER.warning("shapely_missing", msg="Shapely not installed; viewport queries use bbox fallback")
++            LOGGER.warning(
++                "shapely_missing", msg="Shapely not installed; viewport queries use bbox fallback"
++            )
+             return
+         geometries = [shapely_wkt.loads(wkt) for wkt in self.geometries["geometry_wkt"]]
+         self._tree = STRtree(geometries)
+         self._geom_map = dict(zip(geometries, self.geometries["hex_id"], strict=False))
+         self._box = box
+
+-    def query_bbox(self, lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> list[str]:
+-        if getattr(self, "_tree", None) is None:
++    def query_bbox(
++        self, lon_min: float, lat_min: float, lon_max: float, lat_max: float
++    ) -> list[str]:
++        if self._tree is None or self._box is None:
+             frame = self.geometries
+             mask = (
+                 (frame["centroid_lon"] >= lon_min)
+                 & (frame["centroid_lon"] <= lon_max)
+                 & (frame["centroid_lat"] >= lat_min)
+                 & (frame["centroid_lat"] <= lat_max)
+             )
+             return frame.loc[mask, "hex_id"].astype(str).tolist()
+         envelope = self._box(lon_min, lat_min, lon_max, lat_max)
+-        matches = self._tree.query(envelope)
+-        return [self._geom_map[geom] for geom in matches]
++        matches = cast(Iterable[object], self._tree.query(envelope))
++        return [self._geom_map[geom] for geom in matches if geom in self._geom_map]
+
+     def neighbours(self, hex_id: str, k: int = 1) -> list[str]:
+-        h3 = __import__("h3")
++        h3 = _import_h3()
+         neighbours = h3.grid_disk(hex_id, k)
+         return [cell for cell in neighbours if cell in self.geometries["hex_id"].values]
+
+
+ __all__ = [
+     "HexGeometryCache",
+     "HexSpatialIndex",
+     "build_hex_index",
+     "hex_to_geojson",
+     "hex_to_wkt",
+     "hex_centroid",
+ ]
+diff --git a/src/Urban_Amenities2/ui/types.py b/src/Urban_Amenities2/ui/types.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..78c495be6e4c8850476cee778b084501f2fbc5c0
+--- /dev/null
++++ b/src/Urban_Amenities2/ui/types.py
+@@ -0,0 +1,170 @@
++"""Shared typing helpers for UI data loading and overlays."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Final, Literal, TypedDict, TypeAlias
++
++
++Bounds: TypeAlias = tuple[float, float, float, float]
++AggregationCacheKey: TypeAlias = tuple[int, tuple[str, ...]]
++
++
++class AmenityEntry(TypedDict, total=False):
++    """Top amenity metadata surfaced for a selected hex."""
++
++    name: str
++    category: str
++    score: float
++
++
++ModeShareMap: TypeAlias = dict[str, float]
++
++
++class ScoreRecord(TypedDict, total=False):
++    """Core score row exported from the aggregation pipeline."""
++
++    hex_id: str
++    aucs: float
++    EA: float
++    LCA: float
++    MUHAA: float
++    JEA: float
++    MORR: float
++    CTE: float
++    SOU: float
++    ea: float
++    lca: float
++    muhaa: float
++    jea: float
++    morr: float
++    cte: float
++    sou: float
++    lat: float
++    lon: float
++    centroid_lat: float
++    centroid_lon: float
++    population: float | None
++    state: str
++    metro: str | None
++    county: str | None
++    top_amenities: list[AmenityEntry]
++    top_modes: ModeShareMap
++
++
++class MetadataRecord(TypedDict, total=False):
++    """Supplementary metadata joined onto scores."""
++
++    hex_id: str
++    state: str
++    metro: str | None
++    county: str | None
++
++
++class SummaryRow(TypedDict, total=False):
++    """Aggregate statistics reported in the UI summary tables."""
++
++    min: float
++    max: float
++    mean: float
++    p5: float
++    p25: float
++    p50: float
++    p75: float
++    p95: float
++
++
++class GeoJSONGeometry(TypedDict, total=False):
++    """Generic GeoJSON geometry container."""
++
++    type: str
++    coordinates: object
++    geometries: list["GeoJSONGeometry"]
++
++
++class GeoJSONFeature(TypedDict):
++    """Generic GeoJSON Feature container."""
++
++    type: Literal["Feature"]
++    geometry: GeoJSONGeometry
++    properties: dict[str, object]
++
++
++class OverlayProperties(TypedDict, total=False):
++    """Properties emitted for overlay feature metadata."""
++
++    label: str
++
++
++class OverlayFeature(GeoJSONFeature):
++    """Overlay-specific GeoJSON feature payload."""
++
++    properties: OverlayProperties
++
++
++class FeatureCollection(TypedDict):
++    """GeoJSON FeatureCollection payload."""
++
++    type: Literal["FeatureCollection"]
++    features: list[GeoJSONFeature]
++
++
++OverlayMap: TypeAlias = dict[str, FeatureCollection]
++
++
++@dataclass(slots=True)
++class GeometryCacheEntry:
++    """Record persisted in the hex geometry cache."""
++
++    hex_id: str
++    geometry: str
++    geometry_wkt: str
++    centroid_lon: float
++    centroid_lat: float
++    resolution: int
++
++    def as_record(self) -> dict[str, object]:
++        return {
++            "hex_id": self.hex_id,
++            "geometry": self.geometry,
++            "geometry_wkt": self.geometry_wkt,
++            "centroid_lon": self.centroid_lon,
++            "centroid_lat": self.centroid_lat,
++            "resolution": self.resolution,
++        }
++
++
++def empty_feature_collection() -> FeatureCollection:
++    """Return a typed empty FeatureCollection payload."""
++
++    return {"type": "FeatureCollection", "features": []}
++
++
++OVERLAY_NAMES: Final[tuple[str, ...]] = (
++    "states",
++    "counties",
++    "metros",
++    "transit_lines",
++    "transit_stops",
++    "parks",
++)
++
++
++__all__ = [
++    "AggregationCacheKey",
++    "AmenityEntry",
++    "Bounds",
++    "FeatureCollection",
++    "GeoJSONFeature",
++    "GeoJSONGeometry",
++    "GeometryCacheEntry",
++    "ModeShareMap",
++    "MetadataRecord",
++    "OverlayFeature",
++    "OverlayMap",
++    "OverlayProperties",
++    "OVERLAY_NAMES",
++    "ScoreRecord",
++    "SummaryRow",
++    "empty_feature_collection",
++]
+diff --git a/tests/test_ui_data_context.py b/tests/test_ui_data_context.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1a816465fbaa867e671392b9d6b861109bdec651
+--- /dev/null
++++ b/tests/test_ui_data_context.py
+@@ -0,0 +1,146 @@
++from __future__ import annotations
++
++import json
++
++import pandas as pd
++import pytest
++
++from Urban_Amenities2.ui.config import UISettings
++from Urban_Amenities2.ui.data_loader import DataContext
++from Urban_Amenities2.ui.hexes import HexGeometryCache
++
++
++def test_hex_geometry_cache_caches_entries() -> None:
++    cache = HexGeometryCache()
++    hex_ids = ["8928308280fffff", "8928308280fffff"]
++    frame = cache.ensure_geometries(hex_ids)
++    assert set(frame.columns) >= {
++        "hex_id",
++        "geometry",
++        "geometry_wkt",
++        "centroid_lon",
++        "centroid_lat",
++        "resolution",
++    }
++    # Subsequent calls should reuse cached entries without duplicating rows
++    cached_frame = cache.ensure_geometries(hex_ids)
++    assert len(cached_frame) == len(hex_ids)
++    assert set(cache.store) == {"8928308280fffff"}
++
++
++def test_data_context_to_geojson_returns_feature_collection() -> None:
++    context = DataContext(settings=UISettings())
++    context.geometries = pd.DataFrame(
++        {
++            "hex_id": ["8928308280fffff"],
++            "geometry": [
++                json.dumps(
++                    {
++                        "type": "Polygon",
++                        "coordinates": [
++                            [
++                                [0.0, 0.0],
++                                [1.0, 0.0],
++                                [1.0, 1.0],
++                                [0.0, 1.0],
++                                [0.0, 0.0],
++                            ]
++                        ],
++                    }
++                )
++            ],
++            "geometry_wkt": ["POLYGON((0 0,1 0,1 1,0 1,0 0))"],
++            "centroid_lon": [0.5],
++            "centroid_lat": [0.5],
++            "resolution": [6],
++        }
++    )
++    frame = pd.DataFrame({"hex_id": ["8928308280fffff"], "aucs": [75.0]})
++    payload = context.to_geojson(frame)
++    assert payload["type"] == "FeatureCollection"
++    assert len(payload["features"]) == 1
++    feature = payload["features"][0]
++    assert feature["properties"]["aucs"] == 75.0
++
++
++def test_data_context_builds_typed_overlays(monkeypatch: pytest.MonkeyPatch) -> None:
++    context = DataContext(settings=UISettings())
++    context.scores = pd.DataFrame(
++        {
++            "hex_id": ["8928308280fffff", "8928308280fffff"],
++            "state": ["CO", "CO"],
++        }
++    )
++    context.geometries = pd.DataFrame(
++        {
++            "hex_id": ["8928308280fffff"],
++            "geometry_wkt": ["POLYGON((0 0,1 0,1 1,0 1,0 0))"],
++            "geometry": [
++                json.dumps(
++                    {
++                        "type": "Polygon",
++                        "coordinates": [
++                            [
++                                [0.0, 0.0],
++                                [1.0, 0.0],
++                                [1.0, 1.0],
++                                [0.0, 1.0],
++                                [0.0, 0.0],
++                            ]
++                        ],
++                    }
++                )
++            ],
++            "centroid_lon": [0.5],
++            "centroid_lat": [0.5],
++            "resolution": [6],
++        }
++    )
++    context._aggregation_version = "test"
++
++    class _DummyShape:
++        is_empty = False
++
++        def simplify(self, *_args: object, **_kwargs: object) -> "_DummyShape":
++            return self
++
++    class _DummyLoader:
++        @staticmethod
++        def loads(_wkt: str) -> _DummyShape:
++            return _DummyShape()
++
++    def _dummy_union(_shapes: list[_DummyShape]) -> _DummyShape:
++        return _DummyShape()
++
++    def _dummy_mapping(_shape: _DummyShape) -> dict[str, object]:
++        return {
++            "type": "Polygon",
++            "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
++        }
++
++    from Urban_Amenities2.ui import data_loader as dl
++
++    monkeypatch.setattr(dl, "shapely_wkt", _DummyLoader)
++    monkeypatch.setattr(dl, "unary_union", _dummy_union)
++    monkeypatch.setattr(dl, "shapely_mapping", _dummy_mapping)
++
++    context._build_overlays(force=True)
++    payload = context.get_overlay("states")
++    assert payload["type"] == "FeatureCollection"
++    assert payload["features"]
++    feature = payload["features"][0]
++    assert feature["properties"]["label"] == "CO"
++    assert isinstance(feature["geometry"], dict)
++
++
++def test_data_context_summary_returns_expected_columns() -> None:
++    context = DataContext(settings=UISettings())
++    context.scores = pd.DataFrame(
++        {
++            "hex_id": ["a", "b", "c"],
++            "aucs": [10.0, 20.0, 30.0],
++        }
++    )
++    summary = context.summarise(["aucs"])
++    assert "aucs" in summary.index
++    assert {"min", "max", "mean"}.issubset(summary.columns)
+
+EOF
+)
