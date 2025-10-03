@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import import_module
@@ -15,7 +15,7 @@ import pandas as pd
 from ..logging_utils import get_logger
 from .config import UISettings
 from .export import build_feature_collection
-from .export_types import GeoJSONFeatureCollection, GeoJSONGeometry, TabularData
+from .export_types import GeoJSONFeature, GeoJSONFeatureCollection, GeoJSONGeometry, TabularData
 from .hexes import HexGeometryCache, build_hex_index
 
 LOGGER = get_logger("ui.data")
@@ -37,7 +37,7 @@ def _import_h3() -> Any:
     return import_module("h3")
 
 
-def _import_shapely_modules() -> tuple[Any, Any, Any]:
+def _import_shapely_modules() -> tuple[Any, Callable[[object], dict[str, object]], Callable[[Sequence[object]], object]]:
     shapely_wkt = import_module("shapely.wkt")
     shapely_geometry = import_module("shapely.geometry")
     shapely_ops = import_module("shapely.ops")
@@ -120,7 +120,7 @@ class DataContext:
         versions = self._discover_versions(data_path)
         self._available_versions = versions
         if not versions:
-            LOGGER.warning("ui_no_parquet", path=str(data_path))
+            LOGGER.warning("ui_scores_missing", path=str(data_path))
             self.version = None
             self.scores = pd.DataFrame()
             self.metadata = pd.DataFrame()
@@ -442,7 +442,7 @@ class DataContext:
             return
         try:
             shapely_wkt, shapely_mapping, unary_union = _import_shapely_modules()
-        except ImportError:  # pragma: no cover
+        except ImportError:
             LOGGER.warning(
                 "ui_overlays_shapely_missing",
                 msg="Install shapely to enable boundary overlays",
@@ -460,7 +460,7 @@ class DataContext:
         for column, key in (("state", "states"), ("county", "counties"), ("metro", "metros")):
             if column not in merged.columns:
                 continue
-            features = []
+            features: list[GeoJSONFeature] = []
             for value, group in merged.groupby(column):
                 if not value or len(group) == 0:
                     continue
@@ -521,13 +521,13 @@ class DataContext:
                 if not isinstance(features, list):
                     LOGGER.warning("ui_overlay_invalid_features", name=name)
                     continue
+                typed_features: list[GeoJSONFeature] = []
+                for feature in features:
+                    if isinstance(feature, dict):
+                        typed_features.append(cast(GeoJSONFeature, feature))
                 result[name] = {
                     "type": "FeatureCollection",
-                    "features": [
-                        cast(dict[str, object], feature)
-                        for feature in features
-                        if isinstance(feature, dict)
-                    ],
+                    "features": typed_features,
                 }
         return result
 

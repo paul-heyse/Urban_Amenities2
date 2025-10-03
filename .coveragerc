@@ -1,0 +1,12 @@
+[run]
+branch = True
+source =
+    src/Urban_Amenities2/router
+omit =
+    src/Urban_Amenities2/router/otp.py
+
+[report]
+fail_under = 95
+show_missing = True
+
+

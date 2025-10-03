@@ -23,6 +23,12 @@ class OSRMLeg:
     duration: float
     distance: float | None
 
+    def as_dict(self) -> dict[str, float | None]:
+        return {
+            "duration": self.duration,
+            "distance": self.distance,
+        }
+
 
 @dataclass(slots=True)
 class OSRMRoute:
@@ -30,11 +36,42 @@ class OSRMRoute:
     distance: float | None
     legs: list[OSRMLeg]
 
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "duration": self.duration,
+            "distance": self.distance,
+            "legs": [leg.as_dict() for leg in self.legs],
+        }
+
+    def __getitem__(self, key: str) -> object:
+        return self.as_dict()[key]
+
+    def keys(self) -> list[str]:
+        return ["duration", "distance", "legs"]
+
+    def items(self) -> list[tuple[str, object]]:
+        return list(self.as_dict().items())
+
 
 @dataclass(slots=True)
 class OSRMTable:
     durations: list[list[float | None]]
     distances: list[list[float | None]] | None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "durations": self.durations,
+            "distances": self.distances,
+        }
+
+    def __getitem__(self, key: str) -> object:
+        return self.as_dict()[key]
+
+    def keys(self) -> list[str]:
+        return ["durations", "distances"]
+
+    def items(self) -> list[tuple[str, object]]:
+        return list(self.as_dict().items())
 
 
 class RoutingError(RuntimeError):

@@ -3,7 +3,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from .conftest import StubSession
 from Urban_Amenities2.cli.main import GreatCircleOSRM
 from Urban_Amenities2.router.api import RoutingAPI
 from Urban_Amenities2.router.batch import BatchConfig, SkimBuilder
@@ -15,6 +14,8 @@ from Urban_Amenities2.router.osrm import (
     RoutingError,
 )
 from Urban_Amenities2.router.otp import OTPClient, OTPConfig, OTPError
+
+from .conftest import StubSession
 
 
 class DummyOSRM:

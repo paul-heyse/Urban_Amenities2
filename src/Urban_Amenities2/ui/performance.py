@@ -1,8 +1,4 @@
-"""Performance monitoring and optimization utilities."""
-
-from __future__ import annotations
-
-"""Utilities for tracking UI performance metrics."""
+"""Performance monitoring utilities."""
 
 from __future__ import annotations
 
@@ -10,9 +6,9 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import wraps
+from statistics import mean
 from typing import ParamSpec, TypeVar
 
-import numpy as np
 import structlog
 
 logger = structlog.get_logger()
@@ -104,16 +100,24 @@ class PerformanceMonitor:
         if metric_name not in self.metrics or not self.metrics[metric_name]:
             return None
 
-        values = np.array(self.metrics[metric_name], dtype=float)
+        values = list(self.metrics[metric_name])
+        values_sorted = sorted(values)
+        count = len(values_sorted)
+
+        def percentile(pct: float) -> float:
+            if not values_sorted:
+                return 0.0
+            index = min(count - 1, int(round((pct / 100) * (count - 1))))
+            return values_sorted[index]
 
         return {
-            "min": float(np.min(values)),
-            "max": float(np.max(values)),
-            "mean": float(np.mean(values)),
-            "p50": float(np.percentile(values, 50)),
-            "p95": float(np.percentile(values, 95)),
-            "p99": float(np.percentile(values, 99)),
-            "count": len(values),
+            "min": float(values_sorted[0]),
+            "max": float(values_sorted[-1]),
+            "mean": float(mean(values_sorted)),
+            "p50": percentile(50),
+            "p95": percentile(95),
+            "p99": percentile(99),
+            "count": count,
         }
 
     def get_all_stats(self) -> dict[str, dict[str, float]]:

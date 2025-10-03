@@ -79,5 +79,9 @@ def test_filter_and_parameter_panels() -> None:
             if isinstance(block, html.Div) and len(block.children) == 2:
                 slider = block.children[1]
                 assert isinstance(slider, dcc.Slider)
+                tooltip = slider.tooltip
+                assert isinstance(tooltip, dict)
+                assert tooltip.get("placement") == "bottom"
+                assert tooltip.get("always_visible") is False
                 slider_components.append(slider)
     assert slider_components

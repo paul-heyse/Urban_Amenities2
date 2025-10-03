@@ -39,7 +39,7 @@ def build_filter_panel(states: Sequence[str], metros: Sequence[str], counties: S
 def build_parameter_panel(default_weights: Mapping[str, float]) -> html.Div:
     sliders = []
     for key, value in default_weights.items():
-        tooltip_config: SliderTooltip = {"placement": "bottom"}
+        tooltip_config: SliderTooltip = {"placement": "bottom", "always_visible": False}
         sliders.append(
             html.Div(
                 className="parameter-control",

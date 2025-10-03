@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/data_loader.py
+# hypothesis_version: 6.140.2
+
+[0.0, 0.01, 0.1, 100.0, '*.parquet', 'CTE', 'DataContext', 'DatasetVersion', 'EA', 'EPSG:4326', 'Feature', 'FeatureCollection', 'JEA', 'LCA', 'MORR', 'MUHAA', 'SOU', '_scores', 'aucs', 'category', 'centroid_lat', 'centroid_lon', 'count', 'counties', 'county', 'features', 'geometry', 'geometry_wkt', 'geopandas', 'h3', 'hex_id', 'label', 'last', 'left', 'max', 'mean', 'metadata', 'metadata.parquet', 'metro', 'metros', 'min', 'overlays', 'parent_hex', 'parks', 'properties', 'resolution', 'scores', 'shapely.geometry', 'shapely.ops', 'shapely.wkt', 'state', 'states', 'transit_lines', 'transit_stops', 'type', 'ui.data', 'ui_data_path_missing', 'ui_loading_dataset', 'ui_metadata_invalid', 'ui_overlay_invalid', 'ui_scores_missing']

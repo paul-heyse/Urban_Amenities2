@@ -2,23 +2,23 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, TypedDict, cast
 
 import pandas as pd  # type: ignore[import-untyped]
 
-from .osrm import OSRMRoute, OSRMTable
+from .osrm import OSRMLeg, OSRMRoute, OSRMTable
 from .otp import OTPClient
 
 
 class OSRMClientProtocol(Protocol):
-    def route(self, coords: Sequence[tuple[float, float]]) -> OSRMRoute:
+    def route(self, coords: Sequence[tuple[float, float]]) -> OSRMRoute | Mapping[str, object]:
         ...
 
     def table(
         self,
         sources: Sequence[tuple[float, float]],
         destinations: Sequence[tuple[float, float]],
-    ) -> OSRMTable:
+    ) -> OSRMTable | Mapping[str, object]:
         ...
 
 
@@ -51,14 +51,15 @@ class RoutingAPI:
     ) -> RouteResult:
         if mode in self.osrm_clients:
             result = self.osrm_clients[mode].route([origin, destination])
+            osrm_route = _coerce_route(result)
             return RouteResult(
                 origin=origin,
                 destination=destination,
                 mode=mode,
                 period=period,
-                duration_min=result.duration / 60.0,
-                distance_m=result.distance,
-                metadata=_build_osrm_metadata(mode, result),
+                duration_min=osrm_route.duration / 60.0,
+                distance_m=osrm_route.distance,
+                metadata=_build_osrm_metadata(mode, osrm_route),
             )
         if mode == "transit" and self.otp_client:
             itineraries = self.otp_client.plan_trip(origin, destination, ["TRANSIT", "WALK"])
@@ -92,8 +93,9 @@ class RoutingAPI:
         if mode not in self.osrm_clients:
             raise ValueError("Matrix computation currently supported for OSRM-backed modes only")
         result = self.osrm_clients[mode].table(origins, destinations)
-        durations = result.durations
-        distances = result.distances or []
+        table = _coerce_table(result)
+        durations = table.durations
+        distances = table.distances or []
         records: list[dict[str, object]] = []
         for i, origin in enumerate(origins):
             for j, destination in enumerate(destinations):
@@ -192,6 +194,49 @@ def _coerce_float(value: object) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     return None
+
+
+class _RouteMapping(TypedDict, total=False):
+    duration: float
+    distance: float | None
+    legs: list[dict[str, float | None]]
+
+
+class _TableMapping(TypedDict, total=False):
+    durations: list[list[float | None]]
+    distances: list[list[float | None]] | None
+
+
+def _coerce_route(payload: OSRMRoute | Mapping[str, object]) -> OSRMRoute:
+    if isinstance(payload, OSRMRoute):
+        return payload
+    mapping = cast(_RouteMapping, payload)
+    duration = _coerce_float(mapping.get("duration"))
+    if duration is None:
+        raise ValueError("Route payload missing duration")
+    distance = _coerce_float(mapping.get("distance"))
+    legs_payload = mapping.get("legs", [])
+    legs: list[OSRMLeg] = []
+    if isinstance(legs_payload, Sequence):
+        for leg_entry in legs_payload:
+            if isinstance(leg_entry, Mapping):
+                leg_duration = _coerce_float(leg_entry.get("duration"))
+                if leg_duration is None:
+                    continue
+                leg_distance = _coerce_float(leg_entry.get("distance"))
+                legs.append(OSRMLeg(duration=leg_duration, distance=leg_distance))
+    return OSRMRoute(duration=duration, distance=distance, legs=legs)
+
+
+def _coerce_table(payload: OSRMTable | Mapping[str, object]) -> OSRMTable:
+    if isinstance(payload, OSRMTable):
+        return payload
+    mapping = cast(_TableMapping, payload)
+    durations = mapping.get("durations")
+    if not isinstance(durations, list):
+        raise ValueError("Table payload missing durations")
+    distances = mapping.get("distances")
+    return OSRMTable(durations=durations, distances=distances)
 
 
 __all__ = ["RoutingAPI", "RouteResult"]

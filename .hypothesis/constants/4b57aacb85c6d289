@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/router/api.py
+# hypothesis_version: 6.140.2
+
+[0.0, 60.0, 'RouteResult', 'RoutingAPI', 'TRANSIT', 'WALK', 'destination', 'destination_index', 'distance', 'distance_m', 'duration', 'duration_min', 'engine', 'fare', 'fare_usd', 'from', 'inf', 'leg_count', 'legs', 'mode', 'origin', 'origin_index', 'osrm', 'otp', 'period', 'summary', 'to', 'transfers', 'transit', 'transit_time', 'transit_time_min', 'wait_time', 'wait_time_min', 'walk_time', 'walk_time_min']

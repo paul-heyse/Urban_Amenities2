@@ -6,6 +6,8 @@ import base64
 from pathlib import Path
 from typing import cast
 
+from dash import dcc
+
 from .contracts import DownloadPayload
 
 
@@ -29,4 +31,18 @@ def build_file_download(
     return payload
 
 
-__all__ = ["build_file_download"]
+def send_file(
+    path: Path,
+    *,
+    filename: str | None = None,
+    content_type: str | None = None,
+) -> DownloadPayload:
+    """Compatibility wrapper returning Dash download payloads."""
+
+    return cast(
+        DownloadPayload,
+        dcc.send_file(str(path), filename=filename, type=content_type),
+    )
+
+
+__all__ = ["build_file_download", "send_file"]

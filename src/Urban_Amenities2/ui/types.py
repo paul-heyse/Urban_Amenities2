@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Literal, TypeAlias, TypedDict
+from typing import Final, Literal, TypedDict
 
-Bounds: TypeAlias = tuple[float, float, float, float]
-AggregationCacheKey: TypeAlias = tuple[int, tuple[str, ...]]
+
+class SliderTooltip(TypedDict, total=False):
+    """Tooltip configuration for Dash sliders."""
+
+    placement: str
+    always_visible: bool
+
+
+type Bounds = tuple[float, float, float, float]
+type AggregationCacheKey = tuple[int, tuple[str, ...]]
 
 
 class AmenityEntry(TypedDict, total=False):
@@ -17,7 +25,7 @@ class AmenityEntry(TypedDict, total=False):
     score: float
 
 
-ModeShareMap: TypeAlias = dict[str, float]
+type ModeShareMap = dict[str, float]
 
 
 class ScoreRecord(TypedDict, total=False):
@@ -108,7 +116,7 @@ class FeatureCollection(TypedDict):
     features: list[GeoJSONFeature]
 
 
-OverlayMap: TypeAlias = dict[str, FeatureCollection]
+type OverlayMap = dict[str, FeatureCollection]
 
 
 @dataclass(slots=True)
@@ -153,6 +161,7 @@ __all__ = [
     "AggregationCacheKey",
     "AmenityEntry",
     "Bounds",
+    "SliderTooltip",
     "FeatureCollection",
     "GeoJSONFeature",
     "GeoJSONGeometry",
