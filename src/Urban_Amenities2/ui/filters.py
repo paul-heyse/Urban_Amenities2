@@ -68,15 +68,25 @@ def get_filter_options(df: pd.DataFrame) -> dict[str, Any]:
     Returns:
         Dictionary with available filter values
     """
-    return {
-        "states": sorted(df["state"].unique().tolist()),
-        "metros": sorted(df["metro"].unique().tolist()),
-        "score_range": [float(df["aucs"].min()), float(df["aucs"].max())],
+    options: dict[str, Any] = {
+        "states": sorted(df["state"].unique().tolist()) if "state" in df.columns else [],
+        "metros": sorted(df["metro"].unique().tolist()) if "metro" in df.columns else [],
+        "score_range": (
+            float(df["aucs"].min()),
+            float(df["aucs"].max()),
+        )
+        if "aucs" in df.columns and not df.empty
+        else (0.0, 0.0),
         "land_uses": sorted(df["land_use"].unique().tolist()) if "land_use" in df.columns else [],
         "population_density_range": (
-            [float(df["pop_density"].min()), float(df["pop_density"].max())]
-            if "pop_density" in df.columns
-            else [0, 0]
+            (
+                float(df["pop_density"].min()),
+                float(df["pop_density"].max()),
+            )
+            if "pop_density" in df.columns and not df.empty
+            else (0.0, 0.0)
         ),
     }
-
+    if "county" in df.columns:
+        options["counties"] = sorted(df["county"].unique().tolist())
+    return options

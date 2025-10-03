@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
+from typing import Any, Sequence, cast
 
 import geopandas as gpd
 import pandas as pd
@@ -10,6 +12,10 @@ import structlog
 from shapely.geometry import Polygon
 
 logger = structlog.get_logger()
+
+
+def _load_h3() -> Any:
+    return import_module("h3")
 
 
 def hex_to_polygon(hex_id: str) -> Polygon:
@@ -22,13 +28,12 @@ def hex_to_polygon(hex_id: str) -> Polygon:
     Returns:
         Shapely Polygon
     """
-    import h3
-
     # Ensure hex_id is a string (H3 v4 requires string format)
     hex_str = str(hex_id) if not isinstance(hex_id, str) else hex_id
 
     # H3 v4 API: cell_to_boundary returns list of (lat, lon) tuples
-    boundary = h3.cell_to_boundary(hex_str)
+    h3 = _load_h3()
+    boundary = cast(Sequence[Sequence[float]], h3.cell_to_boundary(hex_str))
     # Convert to (lon, lat) for Shapely
     coords = [(lon, lat) for lat, lon in boundary]
     return Polygon(coords)
@@ -37,7 +42,7 @@ def hex_to_polygon(hex_id: str) -> Polygon:
 def export_geojson(
     df: pd.DataFrame,
     output_path: Path,
-    properties: list[str] | None = None,
+    properties: Sequence[str] | None = None,
 ) -> None:
     """
     Export DataFrame to GeoJSON.
@@ -84,11 +89,10 @@ def export_csv(
 
     # Optionally add lat/lon centroids
     if include_geometry and "lat" not in export_df.columns:
-        import h3
-
         # H3 v4 API: cell_to_latlng returns (lat, lon)
         # Ensure hex_id is string
-        centroids = [h3.cell_to_latlng(str(hex_id)) for hex_id in export_df["hex_id"]]
+        h3 = _load_h3()
+        centroids = [cast(tuple[float, float], h3.cell_to_latlng(str(hex_id))) for hex_id in export_df["hex_id"]]
         export_df["lat"] = [c[0] for c in centroids]
         export_df["lon"] = [c[1] for c in centroids]
 
@@ -135,6 +139,7 @@ def export_parquet(df: pd.DataFrame, output_path: Path) -> None:
 
 def create_shareable_url(
     base_url: str,
+    *,
     state: str | None = None,
     metro: str | None = None,
     subscore: str | None = None,
@@ -159,7 +164,7 @@ def create_shareable_url(
     """
     from urllib.parse import urlencode
 
-    params = {}
+    params: dict[str, str] = {}
 
     if state:
         params["state"] = state
@@ -168,10 +173,10 @@ def create_shareable_url(
     if subscore:
         params["subscore"] = subscore
     if zoom is not None:
-        params["zoom"] = zoom
+        params["zoom"] = str(zoom)
     if center_lat is not None and center_lon is not None:
-        params["lat"] = center_lat
-        params["lon"] = center_lon
+        params["lat"] = str(center_lat)
+        params["lon"] = str(center_lon)
 
     if not params:
         return base_url

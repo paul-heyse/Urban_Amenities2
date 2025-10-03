@@ -9,6 +9,7 @@ import geopandas as gpd
 import pandas as pd
 import pytest
 
+from tests.ui_factories import make_export_dataset
 from Urban_Amenities2.ui.export import (
     create_shareable_url,
     export_csv,
@@ -20,22 +21,7 @@ from Urban_Amenities2.ui.export import (
 @pytest.fixture
 def sample_data():
     """Create sample hex data for export testing."""
-    df = pd.DataFrame({
-        "hex_id": ["8928308280fffff", "8928308280bffff"],  # Valid H3 hex IDs
-        "state": ["CO", "CO"],
-        "metro": ["Denver", "Denver"],
-        "aucs": [75.0, 45.0],
-        "ea": [80.0, 50.0],
-        "lca": [70.0, 40.0],
-        "muhaa": [65.0, 35.0],
-        "jea": [85.0, 55.0],
-        "morr": [75.0, 45.0],
-        "cte": [60.0, 30.0],
-        "sou": [70.0, 40.0],
-    })
-    # Ensure hex_id is string type
-    df["hex_id"] = df["hex_id"].astype(str)
-    return df
+    return make_export_dataset()
 
 
 def test_export_csv(sample_data):
@@ -153,4 +139,3 @@ def test_create_shareable_url_complete():
     assert "zoom=12" in url
     assert "lat=39.7392" in url
     assert "lon=-104.9903" in url
-

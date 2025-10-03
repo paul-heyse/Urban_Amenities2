@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any, Mapping, Sequence, cast
+
 from dash import dcc, html
 
+from ..types import SliderTooltip
 
-def build_filter_panel(states: list[str], metros: list[str], counties: list[str]) -> html.Div:
+def build_filter_panel(states: Sequence[str], metros: Sequence[str], counties: Sequence[str]) -> html.Div:
     return html.Div(
         className="filter-panel",
         children=[
@@ -31,15 +34,23 @@ def build_filter_panel(states: list[str], metros: list[str], counties: list[str]
     )
 
 
-def build_parameter_panel(default_weights: dict[str, float]) -> html.Div:
+def build_parameter_panel(default_weights: Mapping[str, float]) -> html.Div:
     sliders = []
     for key, value in default_weights.items():
+        tooltip_config: SliderTooltip = {"placement": "bottom"}
         sliders.append(
             html.Div(
                 className="parameter-control",
                 children=[
                     html.Label(f"{key} weight"),
-                    dcc.Slider(0, 100, step=1, value=value, id=f"weight-{key}", tooltip={"placement": "bottom"}),
+                    dcc.Slider(
+                        0,
+                        100,
+                        step=1,
+                        value=value,
+                        id=f"weight-{key}",
+                        tooltip=cast(Any, tooltip_config),
+                    ),
                 ],
             )
         )

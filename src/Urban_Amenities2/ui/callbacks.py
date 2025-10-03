@@ -2,25 +2,34 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
+from typing import Any, cast
 
-from dash import Input, Output, State, callback_context, dcc, html, no_update
+import plotly.graph_objects as go
+from dash import Dash, Input, Output, State, callback_context, dcc, html, no_update
 
 from .components.choropleth import create_choropleth
+from .config import UISettings
 from .data_loader import DataContext
 from .layers import basemap_attribution, build_overlay_payload, resolve_basemap_style
 from .scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
 
-SUBSCORE_VALUES = [option["value"] for option in SUBSCORE_OPTIONS]
+SUBSCORE_VALUES: list[str] = [option["value"] for option in SUBSCORE_OPTIONS]
 
 
-def _normalise_filters(values: Iterable[str] | None) -> list[str]:
+def _normalise_filters(values: Iterable[str] | str | None) -> list[str]:
     if not values:
         return []
     if isinstance(values, str):
         return [values]
     return [value for value in values if value]
+
+
+def _coerce_float(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 def _resolution_for_zoom(zoom: float | None) -> int:
@@ -35,10 +44,13 @@ def _resolution_for_zoom(zoom: float | None) -> int:
     return 9
 
 
-def _extract_viewport_bounds(relayout_data, fallback: tuple[float, float, float, float] | None):
-    if not isinstance(relayout_data, dict):
+def _extract_viewport_bounds(
+    relayout_data: Mapping[str, object] | None,
+    fallback: tuple[float, float, float, float] | None,
+) -> tuple[float, float, float, float] | None:
+    if not isinstance(relayout_data, Mapping):
         return fallback
-    derived = relayout_data.get("mapbox._derived") if isinstance(relayout_data, dict) else None
+    derived = relayout_data.get("mapbox._derived") if isinstance(relayout_data, Mapping) else None
     if isinstance(derived, dict):
         coordinates = derived.get("coordinates")
         if coordinates:
@@ -47,17 +59,22 @@ def _extract_viewport_bounds(relayout_data, fallback: tuple[float, float, float,
                 lons = [point[0] for point in points]
                 lats = [point[1] for point in points]
                 return min(lons), min(lats), max(lons), max(lats)
-    lon = relayout_data.get("mapbox.center.lon")
-    lat = relayout_data.get("mapbox.center.lat")
-    if lon is not None and lat is not None and "mapbox.zoom" in relayout_data:
+    lon = _coerce_float(relayout_data.get("mapbox.center.lon"))
+    lat = _coerce_float(relayout_data.get("mapbox.center.lat"))
+    zoom = _coerce_float(relayout_data.get("mapbox.zoom"))
+    if lon is not None and lat is not None and zoom is not None:
         # Fallback heuristic: approximate span based on zoom level
-        zoom = relayout_data.get("mapbox.zoom")
-        span = max(0.1, 360 / (2 ** max(zoom, 0)))
+        span = max(0.1, 360 / (2 ** max(zoom, 0.0)))
         return lon - span, lat - span, lon + span, lat + span
     return fallback
 
 
-def register_callbacks(app, data_context: DataContext, settings) -> None:
+def _send_file_response(path: Path) -> dict[str, object]:
+    sender = getattr(dcc, "send_file")
+    return cast(dict[str, object], sender(str(path)))
+
+
+def register_callbacks(app: Dash, data_context: DataContext, settings: UISettings) -> None:
     @app.callback(
         Output("hex-map", "figure"),
         Output("filter-count", "children"),
@@ -78,29 +95,30 @@ def register_callbacks(app, data_context: DataContext, settings) -> None:
     def _update_map(
         subscore: str,
         basemap: str,
-        overlay_values,
-        overlay_opacity,
-        *_events,
-        relayout_data,
-        state_values,
-        metro_values,
-        county_values,
-        score_range,
-    ):
+        overlay_values: Sequence[str] | None,
+        overlay_opacity: float | None,
+        *_events: object,
+        relayout_data: Mapping[str, object] | None,
+        state_values: Sequence[str] | str | None,
+        metro_values: Sequence[str] | str | None,
+        county_values: Sequence[str] | str | None,
+        score_range: Sequence[float] | None,
+    ) -> tuple[go.Figure, str, str]:
         triggered = callback_context.triggered_id
         if triggered == "clear-filters":
             state_values = metro_values = county_values = []
-            score_range = [0, 100]
+            score_range = [0.0, 100.0]
+        typed_score_range: tuple[float, float] | None = None
+        if score_range and len(score_range) >= 2:
+            typed_score_range = (float(score_range[0]), float(score_range[1]))
         filtered = data_context.filter_scores(
             state=_normalise_filters(state_values),
             metro=_normalise_filters(metro_values),
             county=_normalise_filters(county_values),
-            score_range=tuple(score_range) if score_range else None,
+            score_range=typed_score_range,
         )
-        zoom = None
-        if isinstance(relayout_data, dict):
-            zoom = relayout_data.get("mapbox.zoom")
-        resolution = _resolution_for_zoom(zoom)
+        zoom_value = _coerce_float(relayout_data.get("mapbox.zoom")) if isinstance(relayout_data, Mapping) else None
+        resolution = _resolution_for_zoom(zoom_value)
         bounds = _extract_viewport_bounds(relayout_data, data_context.bounds)
         base_resolution = data_context.base_resolution or 9
         source = filtered if not filtered.empty else data_context.scores
@@ -132,7 +150,7 @@ def register_callbacks(app, data_context: DataContext, settings) -> None:
         geojson = data_context.to_geojson(frame)
         basemap_style = resolve_basemap_style(basemap)
         overlay_payload = build_overlay_payload(
-            overlay_values or [],
+            list(overlay_values or []),
             data_context,
             opacity=overlay_opacity if overlay_opacity is not None else 0.35,
         )
@@ -157,9 +175,14 @@ def register_callbacks(app, data_context: DataContext, settings) -> None:
         Input("refresh-data", "n_clicks"),
         prevent_initial_call=True,
     )
-    def _refresh_data(_n_clicks: int | None):
+    def _refresh_data(_n_clicks: int | None) -> html.Span:
         data_context.refresh()
-        return html.Span(f"Reloaded dataset {data_context.version.identifier}" if data_context.version else "No dataset found")
+        message = (
+            f"Reloaded dataset {data_context.version.identifier}"
+            if data_context.version
+            else "No dataset found"
+        )
+        return html.Span(message)
 
     @app.callback(
         Output("download-data", "data"),
@@ -167,16 +190,19 @@ def register_callbacks(app, data_context: DataContext, settings) -> None:
         Input("export-geojson", "n_clicks"),
         prevent_initial_call=True,
     )
-    def _export_data(csv_clicks: int | None, geojson_clicks: int | None):
+    def _export_data(
+        csv_clicks: int | None,
+        geojson_clicks: int | None,
+    ) -> dict[str, object] | Any:
         triggered = callback_context.triggered_id
         if triggered == "export-csv":
             temp = Path("/tmp/ui-export.csv")
             data_context.export_csv(temp)
-            return dcc.send_file(str(temp))
+            return _send_file_response(temp)
         if triggered == "export-geojson":
             temp = Path("/tmp/ui-export.geojson")
             data_context.export_geojson(temp)
-            return dcc.send_file(str(temp))
+            return _send_file_response(temp)
         return no_update
 
 

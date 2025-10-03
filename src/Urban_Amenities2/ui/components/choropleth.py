@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
+from typing import Iterable
 
+import pandas as pd
 import plotly.graph_objects as go
+from plotly.basedatatypes import BaseTraceType
 
-COLOR_SCALES = {
+from ..types import GeoJSONFeatureCollection, MapboxLayer
+
+COLOR_SCALES: dict[str, str] = {
     "aucs": "Viridis",
     "EA": "YlGn",
     "LCA": "Blues",
@@ -20,8 +25,8 @@ COLOR_SCALES = {
 
 def create_choropleth(
     *,
-    geojson: dict,
-    frame,
+    geojson: GeoJSONFeatureCollection,
+    frame: pd.DataFrame,
     score_column: str,
     hover_columns: Iterable[str],
     mapbox_token: str | None,
@@ -29,8 +34,8 @@ def create_choropleth(
     zoom: float = 6.0,
     map_style: str = "carto-positron",
     transition_duration: int = 350,
-    layers: Sequence[dict] | None = None,
-    extra_traces: Sequence[go.BaseTraceType] | None = None,
+    layers: Sequence[MapboxLayer] | None = None,
+    extra_traces: Sequence[BaseTraceType] | None = None,
     attribution: str | None = None,
 ) -> go.Figure:
     color_scale = COLOR_SCALES.get(score_column, "Viridis")
@@ -53,7 +58,7 @@ def create_choropleth(
         )
     )
     mapbox_style = _resolve_style(map_style, mapbox_token)
-    mapbox_config: dict = {
+    mapbox_config: dict[str, object] = {
         "style": mapbox_style,
         "center": center or {"lat": 39.5, "lon": -111.0},
         "zoom": zoom,

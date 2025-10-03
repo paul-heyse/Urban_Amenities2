@@ -5,22 +5,14 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from tests.ui_factories import make_filter_dataset
 from Urban_Amenities2.ui.filters import FilterConfig, apply_filters, get_filter_options
 
 
 @pytest.fixture
 def sample_data():
     """Create sample hex data for testing."""
-    return pd.DataFrame({
-        "hex_id": ["8928308280fffff", "8928308281fffff", "8928308282fffff", "8928308283fffff"],
-        "state": ["CO", "CO", "UT", "ID"],
-        "metro": ["Denver", "Denver", "Salt Lake City", "Boise"],
-        "aucs": [75.0, 45.0, 60.0, 30.0],
-        "pop_density": [5000, 2000, 3000, 500],
-        "land_use": ["urban", "suburban", "urban", "rural"],
-        "lat": [39.7, 39.8, 40.7, 43.6],
-        "lon": [-104.9, -104.8, -111.8, -116.2],
-    })
+    return make_filter_dataset()
 
 
 def test_filter_by_state(sample_data):
@@ -79,9 +71,10 @@ def test_get_filter_options(sample_data):
 
     assert set(options["states"]) == {"CO", "ID", "UT"}
     assert set(options["metros"]) == {"Boise", "Denver", "Salt Lake City"}
-    assert options["score_range"] == [30.0, 75.0]
+    assert set(options["counties"]) == {"Ada", "Denver", "Jefferson", "Salt Lake"}
+    assert options["score_range"] == (30.0, 75.0)
     assert set(options["land_uses"]) == {"rural", "suburban", "urban"}
-    assert options["population_density_range"] == [500, 5000]
+    assert options["population_density_range"] == (500.0, 5000.0)
 
 
 def test_empty_filter_returns_all(sample_data):
@@ -97,4 +90,3 @@ def test_filter_resulting_in_no_data(sample_data):
     config = FilterConfig(score_min=100.0)
     filtered = apply_filters(sample_data, config)
     assert len(filtered) == 0
-

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any, Sequence, cast
+
 from dash import dcc, html
 
-OVERLAY_OPTIONS = [
+from ..types import ChecklistOption, OverlayToggle
+
+
+OVERLAY_OPTIONS: list[ChecklistOption] = [
     {"label": "State boundaries", "value": "states"},
     {"label": "County boundaries", "value": "counties"},
     {"label": "Metro areas", "value": "metros"},
@@ -16,12 +21,23 @@ OVERLAY_OPTIONS = [
 ]
 
 
-DEFAULT_OVERLAYS = ["states", "city_labels", "landmark_labels"]
+DEFAULT_OVERLAYS: list[OverlayToggle] = [
+    "states",
+    "city_labels",
+    "landmark_labels",
+]
 
 
-def build_overlay_panel() -> html.Div:
+def build_overlay_panel(
+    *,
+    options: Sequence[ChecklistOption] | None = None,
+    default: Sequence[OverlayToggle] | None = None,
+) -> html.Div:
     """Render the overlay control panel."""
 
+    source_options = list(options) if options is not None else OVERLAY_OPTIONS
+    resolved_options = [dict(option) for option in source_options]
+    resolved_default = [str(value) for value in (default or DEFAULT_OVERLAYS)]
     return html.Div(
         className="overlay-panel",
         children=[
@@ -31,8 +47,8 @@ def build_overlay_panel() -> html.Div:
                     html.Summary("Map layers"),
                     dcc.Checklist(
                         id="overlay-layers",
-                        options=OVERLAY_OPTIONS,
-                        value=DEFAULT_OVERLAYS,
+                        options=cast(Any, resolved_options),
+                        value=resolved_default,
                         inputClassName="overlay-input",
                         labelClassName="overlay-label",
                     ),

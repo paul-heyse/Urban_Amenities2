@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
+
 import plotly.graph_objects as go
+from plotly.basedatatypes import BaseTraceType
+
+from .types import DropdownOption, GeoJSONFeature, GeoJSONFeatureCollection, MapboxLayer, OverlayKey, OverlayPayload
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .data_loader import DataContext
-
-
-@dataclass(frozen=True)
-class OverlayPayload:
-    """Container for mapbox layers and additional Plotly traces."""
-
-    layers: list[dict]
-    traces: list[go.BaseTraceType]
 
 
 _BASEMAP_STYLES: dict[str, dict[str, str]] = {
@@ -48,7 +48,7 @@ _BASEMAP_STYLES: dict[str, dict[str, str]] = {
 }
 
 
-_CITY_FEATURES: list[dict] = [
+_CITY_FEATURES: list[GeoJSONFeature] = [
     {
         "type": "Feature",
         "properties": {"label": "Denver"},
@@ -72,7 +72,7 @@ _CITY_FEATURES: list[dict] = [
 ]
 
 
-_LANDMARK_FEATURES: list[dict] = [
+_LANDMARK_FEATURES: list[GeoJSONFeature] = [
     {
         "type": "Feature",
         "properties": {"label": "DEN Airport"},
@@ -104,8 +104,21 @@ _OVERLAY_COLOR = {
     "parks": "#22c55e",
 }
 
+_OVERLAY_KEYS: set[OverlayKey] = {
+    "states",
+    "counties",
+    "metros",
+    "transit_lines",
+    "transit_stops",
+    "parks",
+}
 
-def basemap_options() -> list[dict]:
+TRANSIT_LINES_KEY: OverlayKey = "transit_lines"
+TRANSIT_STOPS_KEY: OverlayKey = "transit_stops"
+PARKS_KEY: OverlayKey = "parks"
+
+
+def basemap_options() -> list[DropdownOption]:
     """Return dropdown options for map styles."""
 
     return [
@@ -137,9 +150,12 @@ def build_overlay_payload(
 ) -> OverlayPayload:
     """Build mapbox layers and Plotly traces for the selected overlays."""
 
-    selected_set = {value for value in (selected or []) if value}
-    layers: list[dict] = []
-    traces: list[go.BaseTraceType] = []
+    selected_values: set[str] = {str(value) for value in selected or []}
+    selected_set: set[OverlayKey] = {
+        cast(OverlayKey, value) for value in selected_values if value in _OVERLAY_KEYS
+    }
+    layers: list[MapboxLayer] = []
+    traces: list[BaseTraceType] = []
     clamped_opacity = max(0.0, min(opacity, 1.0))
 
     def _rgba(color: str, alpha: float) -> str:
@@ -147,11 +163,12 @@ def build_overlay_payload(
         r, g, b = (int(color[i : i + 2], 16) for i in (0, 2, 4))
         return f"rgba({r},{g},{b},{alpha:.3f})"
 
-    def _boundary_layers(key: str, name: str, alpha_multiplier: float = 0.35) -> None:
+    def _boundary_layers(key: OverlayKey, name: str, alpha_multiplier: float = 0.35) -> None:
         if key not in selected_set:
             return
         geojson = context.get_overlay(key)
-        if not geojson.get("features"):
+        features = geojson.get("features", [])
+        if not features:
             return
         color = _OVERLAY_COLOR.get(key, "#111827")
         layers.extend(
@@ -179,8 +196,8 @@ def build_overlay_payload(
     _boundary_layers("counties", "Counties", alpha_multiplier=0.1)
     _boundary_layers("metros", "Metros", alpha_multiplier=0.25)
 
-    if "transit_lines" in selected_set:
-        lines = context.get_overlay("transit_lines")
+    if TRANSIT_LINES_KEY in selected_set:
+        lines = context.get_overlay(TRANSIT_LINES_KEY)
         if lines.get("features"):
             layers.append(
                 {
@@ -193,8 +210,8 @@ def build_overlay_payload(
                 }
             )
 
-    if "parks" in selected_set:
-        parks = context.get_overlay("parks")
+    if PARKS_KEY in selected_set:
+        parks = context.get_overlay(PARKS_KEY)
         if parks.get("features"):
             layers.append(
                 {
@@ -207,23 +224,29 @@ def build_overlay_payload(
                 }
             )
 
-    def _point_trace(features: Sequence[dict], name: str, marker: dict, text_only: bool = False) -> None:
+    def _point_trace(
+        features: Sequence[GeoJSONFeature],
+        name: str,
+        marker: dict[str, object],
+        text_only: bool = False,
+    ) -> None:
         if not features:
             return
         lon: list[float] = []
         lat: list[float] = []
         labels: list[str] = []
         for feature in features:
-            geometry = feature.get("geometry") or {}
+            geometry = cast(dict[str, object], feature.get("geometry") or {})
             if geometry.get("type") != "Point":
                 continue
-            coords = geometry.get("coordinates") or []
+            coords = cast(Sequence[float], geometry.get("coordinates") or ())
             if len(coords) < 2:
                 continue
-            lon.append(coords[0])
-            lat.append(coords[1])
-            label = feature.get("properties", {}).get("label")
-            labels.append(label or name)
+            lon.append(float(coords[0]))
+            lat.append(float(coords[1]))
+            properties = cast(dict[str, object], feature.get("properties") or {})
+            label_value = properties.get("label")
+            labels.append(label_value if isinstance(label_value, str) else name)
         if not lon:
             return
         mode = "text" if text_only else "markers+text"
@@ -240,15 +263,15 @@ def build_overlay_payload(
         )
         traces.append(trace)
 
-    if "transit_stops" in selected_set:
-        stops = context.get_overlay("transit_stops")
+    if TRANSIT_STOPS_KEY in selected_set:
+        stops = context.get_overlay(TRANSIT_STOPS_KEY)
         _point_trace(
             stops.get("features", []),
             "Transit stops",
             {"size": 9, "color": "#0ea5e9", "opacity": 0.85},
         )
 
-    if "city_labels" in selected_set:
+    if "city_labels" in selected_values:
         _point_trace(
             _CITY_FEATURES,
             "City labels",
@@ -256,7 +279,7 @@ def build_overlay_payload(
             text_only=True,
         )
 
-    if "landmark_labels" in selected_set:
+    if "landmark_labels" in selected_values:
         _point_trace(
             _LANDMARK_FEATURES,
             "Landmarks",

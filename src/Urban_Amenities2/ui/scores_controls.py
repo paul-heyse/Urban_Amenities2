@@ -1,6 +1,13 @@
 """Shared constants for score controls."""
 
-SUBSCORE_OPTIONS = [
+from __future__ import annotations
+
+from typing import Mapping
+
+from .types import DropdownOption
+
+
+SUBSCORE_OPTIONS: list[DropdownOption] = [
     {"label": "Total AUCS", "value": "aucs"},
     {"label": "Essentials Access", "value": "EA"},
     {"label": "Leisure & Culture", "value": "LCA"},
@@ -11,7 +18,7 @@ SUBSCORE_OPTIONS = [
     {"label": "Seasonal Outdoors", "value": "SOU"},
 ]
 
-SUBSCORE_DESCRIPTIONS = {
+SUBSCORE_DESCRIPTIONS: Mapping[str, str] = {
     "aucs": "Overall composite score aggregating all subscores with current weights.",
     "EA": "Access to essential amenities such as groceries, pharmacies, and childcare.",
     "LCA": "Leisure and culture opportunities including dining, arts, parks, and recreation.",

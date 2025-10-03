@@ -2,25 +2,43 @@
 
 from __future__ import annotations
 
-from dash import dcc, html, register_page
+from typing import Any, Callable, Sequence, cast
+
+from dash import dcc, html, register_page as _register_page
 
 from ..components.filters import build_filter_panel, build_parameter_panel
 from ..components.overlay_controls import build_overlay_panel
 from ..config import UISettings
+from ..data_loader import DataContext
 from ..layers import basemap_options
 from ..scores_controls import SUBSCORE_DESCRIPTIONS, SUBSCORE_OPTIONS
 from . import DATA_CONTEXT, SETTINGS
 
+register_page = cast(Callable[..., None], _register_page)
 register_page(__name__, path="/map", name="Map Explorer")
 
 
-def layout(**_) -> html.Div:
+def _sorted_values(values: Sequence[str]) -> list[str]:
+    return sorted({str(value) for value in values})
+
+
+def _collect_unique(context: DataContext | None, column: str) -> list[str]:
+    if context is None or column not in context.scores:
+        return []
+    values = context.scores[column].dropna().astype(str).tolist()
+    return _sorted_values(values)
+
+
+def layout(**_: object) -> html.Div:
     context = DATA_CONTEXT
     SETTINGS or UISettings.from_environment()
-    states = sorted(context.scores["state"].dropna().unique()) if context and "state" in context.scores else []
-    metros = sorted(context.scores["metro"].dropna().unique()) if context and "metro" in context.scores else []
-    counties = sorted(context.scores["county"].dropna().unique()) if context and "county" in context.scores else []
-    default_weights = {option["value"]: 100 / len(SUBSCORE_OPTIONS) for option in SUBSCORE_OPTIONS}
+    states = _collect_unique(context, "state")
+    metros = _collect_unique(context, "metro")
+    counties = _collect_unique(context, "county")
+    option_count = len(SUBSCORE_OPTIONS)
+    default_weights = {option["value"]: 100 / option_count for option in SUBSCORE_OPTIONS}
+    subscore_dropdown_options = [dict(option) for option in SUBSCORE_OPTIONS]
+    basemap_dropdown_options = [dict(option) for option in basemap_options()]
     return html.Div(
         className="page map-page",
         children=[
@@ -31,7 +49,7 @@ def layout(**_) -> html.Div:
                     build_parameter_panel(default_weights),
                     html.Label("Subscore"),
                     dcc.Dropdown(
-                        options=SUBSCORE_OPTIONS,
+                        options=cast(Any, subscore_dropdown_options),
                         value="aucs",
                         id="subscore-select",
                         clearable=False,
@@ -43,7 +61,7 @@ def layout(**_) -> html.Div:
                     ),
                     html.Label("Base Map"),
                     dcc.Dropdown(
-                        options=basemap_options(),
+                        options=cast(Any, basemap_dropdown_options),
                         value="mapbox://styles/mapbox/streets-v11",
                         id="basemap-select",
                         clearable=False,

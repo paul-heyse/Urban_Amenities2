@@ -44,6 +44,9 @@ jobs:
         run: mypy src
         continue-on-error: true
 
+      - name: Type check UI package
+        run: mypy src/Urban_Amenities2/ui --warn-unused-ignores
+
       - name: Run tests
         run: pytest
 

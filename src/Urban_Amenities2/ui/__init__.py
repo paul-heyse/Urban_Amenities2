@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any
+from typing import Any, Callable, cast
 
 from .config import UISettings
 
@@ -70,7 +70,9 @@ def _configure_server(server: Any, settings: UISettings) -> None:
         cors_module = import_module("flask_cors")
         cors_module.CORS(server, resources={r"/*": {"origins": settings.cors_origins}})
 
-    @server.route("/health")
+    route = cast(Callable[[str], Callable[[Callable[..., Response]], Callable[..., Response]]], server.route)
+
+    @route("/health")
     def _healthcheck() -> Response:  # pragma: no cover - simple HTTP response
         return Response("OK", status=200, mimetype="text/plain")
 

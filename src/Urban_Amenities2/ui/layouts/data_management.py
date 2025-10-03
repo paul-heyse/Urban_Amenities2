@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from dash import dcc, html, register_page
+from typing import Callable, cast
+
+from dash import dcc, html, register_page as _register_page
 
 from ..config import UISettings
 from . import DATA_CONTEXT, SETTINGS
 
+register_page = cast(Callable[..., None], _register_page)
 register_page(__name__, path="/data", name="Data")
 
 
-def layout(**_) -> html.Div:
+def layout(**_: object) -> html.Div:
     context = DATA_CONTEXT
     SETTINGS or UISettings.from_environment()
     version = context.version.identifier if context and context.version else "Unavailable"

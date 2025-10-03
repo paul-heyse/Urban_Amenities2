@@ -18,6 +18,12 @@ The shared fixtures in `tests/conftest.py` provide:
 
 Prefer these fixtures over ad-hoc mocks to keep scenarios consistent and fast.
 
+## UI Typing Expectations
+
+- Run `python -m mypy src/Urban_Amenities2/ui --warn-unused-ignores` before submitting UI changes; keep the UI package clean of `Any` leaks.
+- Reuse helper types or factories (e.g., `DropdownOption`, `MapboxLayer`, test factories in `tests/ui_factories.py`) instead of ad-hoc dicts.
+- When adding new UI tests, prefer the shared factories so datasets stay aligned with typed interfaces.
+
 ## Pull Request Checklist
 
 1. Format and lint (`black`, `ruff`) before opening a PR.

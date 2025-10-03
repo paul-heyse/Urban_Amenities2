@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+"""Utilities for tracking UI performance metrics."""
+
+from __future__ import annotations
+
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import wraps
+from typing import ParamSpec, TypeVar
 
+import numpy as np
 import structlog
 
 logger = structlog.get_logger()
 
+P = ParamSpec("P")
+T = TypeVar("T")
+
 
 @contextmanager
-def timer(operation: str):
+def timer(operation: str) -> Iterator[None]:
     """
     Context manager to time operations.
 
@@ -28,7 +37,7 @@ def timer(operation: str):
         logger.info("operation_timed", operation=operation, elapsed_ms=elapsed * 1000)
 
 
-def profile_function(func: Callable) -> Callable:
+def profile_function(func: Callable[P, T]) -> Callable[P, T]:
     """
     Decorator to profile function execution time.
 
@@ -40,7 +49,7 @@ def profile_function(func: Callable) -> Callable:
     """
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         start = time.perf_counter()
         result = func(*args, **kwargs)
         elapsed = time.perf_counter() - start
@@ -61,7 +70,7 @@ def profile_function(func: Callable) -> Callable:
 class PerformanceMonitor:
     """Monitor and track UI performance metrics."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize performance monitor."""
         self.metrics: dict[str, list[float]] = {}
 
@@ -95,9 +104,7 @@ class PerformanceMonitor:
         if metric_name not in self.metrics or not self.metrics[metric_name]:
             return None
 
-        import numpy as np
-
-        values = np.array(self.metrics[metric_name])
+        values = np.array(self.metrics[metric_name], dtype=float)
 
         return {
             "min": float(np.min(values)),
@@ -111,7 +118,11 @@ class PerformanceMonitor:
 
     def get_all_stats(self) -> dict[str, dict[str, float]]:
         """Get statistics for all tracked metrics."""
-        return {name: self.get_stats(name) for name in self.metrics if self.get_stats(name)}
+        return {
+            name: stats
+            for name in self.metrics
+            if (stats := self.get_stats(name)) is not None
+        }
 
 
 # Global performance monitor instance
