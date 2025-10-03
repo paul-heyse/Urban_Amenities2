@@ -51,11 +51,35 @@ class DatasetVersion:
     path: Path
 
     @classmethod
-    def from_path(cls, path: Path) -> DatasetVersion:
+    def from_path(cls, path: Path, base_path: Path | None = None) -> DatasetVersion:
         stat = path.stat()
-        identifier = path.stem
+        identifier = cls._derive_identifier(path, base_path)
         created_at = datetime.fromtimestamp(stat.st_mtime)
         return cls(identifier=identifier, created_at=created_at, path=path)
+
+    @staticmethod
+    def _derive_identifier(path: Path, base_path: Path | None) -> str:
+        stem = path.stem
+        if stem.endswith("_scores"):
+            stem = stem[: -len("_scores")]
+        if base_path is not None and (not stem or stem == "scores"):
+            try:
+                resolved_base = base_path.resolve()
+                resolved_parent = path.parent.resolve()
+            except FileNotFoundError:
+                resolved_base = base_path
+                resolved_parent = path.parent
+            if resolved_parent != resolved_base:
+                stem = resolved_parent.name
+        return stem
+
+    def matching_metadata_candidates(self) -> list[Path]:
+        base = self.path.parent
+        candidates: list[Path] = []
+        if self.identifier:
+            candidates.append(base / f"{self.identifier}_metadata.parquet")
+        candidates.append(base / "metadata.parquet")
+        return candidates
 
 
 @dataclass(slots=True)
@@ -74,6 +98,7 @@ class DataContext:
     _aggregation_version: str | None = None
     overlays: dict[str, GeoJSONFeatureCollection] = field(default_factory=dict)
     _overlay_version: str | None = None
+    _available_versions: list[DatasetVersion] = field(default_factory=list)
 
     @classmethod
     def from_settings(cls, settings: UISettings) -> DataContext:
@@ -81,40 +106,80 @@ class DataContext:
         context.refresh()
         return context
 
-    def refresh(self) -> None:
+    def refresh(
+        self,
+        version: str | DatasetVersion | None = None,
+        *,
+        force: bool = False,
+    ) -> None:
         data_path = self.settings.data_path
         if not data_path.exists():
             LOGGER.warning("ui_data_path_missing", path=str(data_path))
+            self._available_versions = []
             return
-        parquet_files = sorted(
-            data_path.glob("*.parquet"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        if not parquet_files:
+        versions = self._discover_versions(data_path)
+        self._available_versions = versions
+        if not versions:
             LOGGER.warning("ui_no_parquet", path=str(data_path))
-            return
-        latest = DatasetVersion.from_path(parquet_files[0])
-        if self.version and latest.created_at <= self.version.created_at:
-            return
-        LOGGER.info("ui_loading_dataset", version=latest.identifier)
-        self.scores = self._load_parquet(latest.path, columns=None)
-        _require_columns(self.scores, REQUIRED_COLUMNS["scores"])
-        metadata_path = data_path / "metadata.parquet"
-        if metadata_path.exists():
-            self.metadata = self._load_parquet(metadata_path)
-            _require_columns(self.metadata, REQUIRED_COLUMNS["metadata"])
-        else:
+            self.version = None
+            self.scores = pd.DataFrame()
             self.metadata = pd.DataFrame()
-        if len(self.metadata):
-            self.scores = self.scores.merge(self.metadata, on="hex_id", how="left")
-        self.version = latest
+            self.geometries = pd.DataFrame()
+            self.overlays.clear()
+            self._aggregation_cache.clear()
+            self._aggregation_version = None
+            self._overlay_version = None
+            self.base_resolution = None
+            self.bounds = None
+            return
+
+        target = self._select_version(version, versions)
+        if target is None:
+            LOGGER.warning(
+                "ui_dataset_version_not_found",
+                requested=str(version),
+                available=[candidate.identifier for candidate in versions],
+            )
+            return
+        if (
+            not force
+            and self.version is not None
+            and self.version.identifier == target.identifier
+        ):
+            return
+
+        LOGGER.info("ui_loading_dataset", version=target.identifier)
+        scores = self._load_parquet(target.path, columns=None)
+        _require_columns(scores, REQUIRED_COLUMNS["scores"])
+
+        metadata = self._load_metadata(target)
+        if len(metadata):
+            scores = scores.merge(metadata, on="hex_id", how="left")
+
+        self.scores = scores
+        self.metadata = metadata
+        self.version = target
         self._aggregation_cache.clear()
-        self._aggregation_version = latest.identifier
+        self._aggregation_version = target.identifier
         self._prepare_geometries()
         self.validate_geometries()
         self._record_base_resolution()
-        self._build_overlays(force=True)
+        self._build_overlays(force=True, version=target)
+
+    def available_versions(self) -> list[DatasetVersion]:
+        return list(self._available_versions)
+
+    def load_version(self, identifier: str) -> bool:
+        target = self._select_version(identifier, self._available_versions)
+        if target is None:
+            LOGGER.warning(
+                "ui_dataset_version_not_found",
+                requested=identifier,
+                available=[candidate.identifier for candidate in self._available_versions],
+            )
+            return False
+        self.refresh(target, force=True)
+        return self.version is not None and self.version.identifier == target.identifier
 
     def _prepare_geometries(self) -> None:
         if "hex_id" not in self.scores.columns:
@@ -355,7 +420,7 @@ class DataContext:
         return cast(TabularData, merged)
 
     def rebuild_overlays(self, force: bool = False) -> None:
-        self._build_overlays(force=force)
+        self._build_overlays(force=force, version=self.version)
 
     def get_overlay(self, key: str) -> GeoJSONFeatureCollection:
         payload = self.overlays.get(key)
@@ -363,7 +428,12 @@ class DataContext:
             return payload
         return {"type": "FeatureCollection", "features": []}
 
-    def _build_overlays(self, force: bool = False) -> None:
+    def _build_overlays(
+        self,
+        *,
+        force: bool = False,
+        version: DatasetVersion | None = None,
+    ) -> None:
         if not force and self._overlay_version == self._aggregation_version:
             return
         if len(self.scores) == 0 or len(self.geometries) == 0:
@@ -415,38 +485,133 @@ class DataContext:
             if features:
                 overlays[key] = {"type": "FeatureCollection", "features": features}
 
-        overlays.update(self._load_external_overlays())
+        overlays.update(self._load_external_overlays(version))
         self.overlays = overlays
         self._overlay_version = self._aggregation_version
 
-    def _load_external_overlays(self) -> dict[str, GeoJSONFeatureCollection]:
+    def _load_external_overlays(
+        self, version: DatasetVersion | None = None
+    ) -> dict[str, GeoJSONFeatureCollection]:
         result: dict[str, GeoJSONFeatureCollection] = {}
-        base = self.settings.data_path / "overlays"
-        for name in ("transit_lines", "transit_stops", "parks"):
-            path = base / f"{name}.geojson"
-            if not path.exists():
+        search_roots: list[Path] = []
+        if version is not None:
+            search_roots.append(version.path.parent / "overlays")
+        search_roots.append(self.settings.data_path / "overlays")
+
+        seen_roots: set[Path] = set()
+        for base in search_roots:
+            if base in seen_roots or not base.exists():
                 continue
-            try:
-                payload = json.loads(path.read_text())
-            except json.JSONDecodeError as exc:
-                LOGGER.warning("ui_overlay_invalid", name=name, error=str(exc))
-                continue
-            if payload.get("type") != "FeatureCollection":
-                LOGGER.warning("ui_overlay_invalid_type", name=name)
-                continue
-            features = payload.get("features")
-            if not isinstance(features, list):
-                LOGGER.warning("ui_overlay_invalid_features", name=name)
-                continue
-            result[name] = {
-                "type": "FeatureCollection",
-                "features": [
-                    cast(dict[str, object], feature)
-                    for feature in features
-                    if isinstance(feature, dict)
-                ],
-            }
+            seen_roots.add(base)
+            for name in ("transit_lines", "transit_stops", "parks"):
+                if name in result:
+                    continue
+                path = base / f"{name}.geojson"
+                if not path.exists():
+                    continue
+                try:
+                    payload = json.loads(path.read_text())
+                except json.JSONDecodeError as exc:
+                    LOGGER.warning("ui_overlay_invalid", name=name, error=str(exc))
+                    continue
+                if payload.get("type") != "FeatureCollection":
+                    LOGGER.warning("ui_overlay_invalid_type", name=name)
+                    continue
+                features = payload.get("features")
+                if not isinstance(features, list):
+                    LOGGER.warning("ui_overlay_invalid_features", name=name)
+                    continue
+                result[name] = {
+                    "type": "FeatureCollection",
+                    "features": [
+                        cast(dict[str, object], feature)
+                        for feature in features
+                        if isinstance(feature, dict)
+                    ],
+                }
         return result
+
+    def _discover_versions(self, data_path: Path) -> list[DatasetVersion]:
+        candidates: list[DatasetVersion] = []
+        parquet_files = sorted(
+            data_path.glob("*.parquet"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for path in parquet_files:
+            if not self._is_score_file(path):
+                continue
+            candidates.append(DatasetVersion.from_path(path, data_path))
+        for child in data_path.iterdir():
+            if not child.is_dir():
+                continue
+            for nested in child.glob("*.parquet"):
+                if not self._is_score_file(nested):
+                    continue
+                candidates.append(DatasetVersion.from_path(nested, data_path))
+        unique: dict[Path, DatasetVersion] = {}
+        for candidate in candidates:
+            try:
+                key = candidate.path.resolve()
+            except FileNotFoundError:
+                key = candidate.path
+            unique[key] = candidate
+        ordered = sorted(unique.values(), key=lambda item: item.created_at, reverse=True)
+        return ordered
+
+    @staticmethod
+    def _is_score_file(path: Path) -> bool:
+        name = path.name
+        if name == "metadata.parquet":
+            return False
+        stem = path.stem
+        return stem.endswith("_scores") or stem == "scores"
+
+    def _select_version(
+        self,
+        requested: str | DatasetVersion | None,
+        versions: Sequence[DatasetVersion],
+    ) -> DatasetVersion | None:
+        if requested is None:
+            return versions[0]
+        if isinstance(requested, DatasetVersion):
+            return requested
+        for version in versions:
+            if version.identifier == requested or version.path.name == requested:
+                return version
+        return None
+
+    def _load_metadata(self, version: DatasetVersion) -> TabularData:
+        tried: set[Path] = set()
+        for candidate in version.matching_metadata_candidates():
+            if not candidate.exists():
+                continue
+            tried.add(candidate)
+            frame = self._load_parquet(candidate)
+            try:
+                _require_columns(frame, REQUIRED_COLUMNS["metadata"])
+            except KeyError as exc:
+                LOGGER.warning(
+                    "ui_metadata_invalid",
+                    error=str(exc),
+                    path=str(candidate),
+                )
+                continue
+            return frame
+        fallback = self.settings.data_path / "metadata.parquet"
+        if fallback.exists() and fallback not in tried:
+            frame = self._load_parquet(fallback)
+            try:
+                _require_columns(frame, REQUIRED_COLUMNS["metadata"])
+            except KeyError as exc:
+                LOGGER.warning(
+                    "ui_metadata_invalid",
+                    error=str(exc),
+                    path=str(fallback),
+                )
+            else:
+                return frame
+        return cast(TabularData, pd.DataFrame())
 
 
 __all__ = ["DataContext", "DatasetVersion"]
