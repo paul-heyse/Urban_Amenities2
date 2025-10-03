@@ -1,8 +1,8 @@
 import gzip
 import json
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 import geopandas as gpd
 import numpy as np
@@ -175,53 +175,6 @@ def test_climate_and_parks(tmp_path: Path) -> None:
     )
     indexed_recreation = ridb.index_to_hex(recareas)
     assert "hex_id" in indexed_recreation.columns
-
-
-def test_ridb_request_serialization(tmp_path: Path) -> None:
-    captured_params: list[dict[str, str | int]] = []
-    captured_headers: list[dict[str, str] | None] = []
-
-    class _DummyResponse:
-        def __init__(self, url: str) -> None:
-            self._url = url
-            self.content = b"{}"
-
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, list[dict[str, object]]]:
-            return {"RECDATA": []}
-
-        @property
-        def url(self) -> str:
-            return self._url
-
-    class _DummySession:
-        def get(
-            self,
-            url: str,
-            *,
-            params: Mapping[str, str | int],
-            headers: Mapping[str, str] | None = None,
-            timeout: float | int | None = None,
-        ) -> _DummyResponse:
-            captured_params.append(dict(params))
-            captured_headers.append(dict(headers) if headers is not None else None)
-            assert timeout == 60
-            return _DummyResponse(url)
-
-    registry = SnapshotRegistry(tmp_path / "snap.jsonl")
-    ingestor = RIDBIngestor(
-        config=RIDBConfig(api_key="token", page_size=10),
-        registry=registry,
-    )
-    session = _DummySession()
-    frame = ingestor.fetch(["CO"], session=session)  # type: ignore[arg-type]
-    assert frame.empty
-    assert captured_params
-    params = captured_params[0]
-    assert params == {"limit": 10, "offset": 0, "state": "CO"}
-    assert captured_headers[0] == {"apikey": "token"}
 
 
 def test_ridb_request_serialization(tmp_path: Path) -> None:

@@ -3,15 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import fsspec
+import fsspec  # type: ignore[import-untyped]
 import pandas as pd
 
 try:  # pragma: no cover - import guard for optional dependency
-    from google.transit import gtfs_realtime_pb2 as feedmessage_pb2
+    from google.transit import gtfs_realtime_pb2 as feedmessage_pb2  # type: ignore[import-untyped]
 except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
     import json
+    from collections.abc import Iterable, Mapping
     from dataclasses import dataclass, field
-    from typing import Iterable, Mapping
 
     @dataclass(slots=True)
     class _StopTimeEvent:
@@ -24,7 +24,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             return {"delay": self.delay}
 
         @classmethod
-        def from_dict(cls, payload: Mapping[str, object]) -> "_StopTimeEvent":
+        def from_dict(cls, payload: Mapping[str, object]) -> _StopTimeEvent:
             value = payload.get("delay")
             return cls(delay=int(value) if isinstance(value, int) else None)
 
@@ -45,7 +45,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             }
 
         @classmethod
-        def from_dict(cls, payload: Mapping[str, object]) -> "_StopTimeUpdate":
+        def from_dict(cls, payload: Mapping[str, object]) -> _StopTimeUpdate:
             update = cls()
             sequence = payload.get("stop_sequence")
             if isinstance(sequence, int):
@@ -67,7 +67,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             return {"trip_id": self.trip_id, "route_id": self.route_id}
 
         @classmethod
-        def from_dict(cls, payload: Mapping[str, object]) -> "_TripDescriptor":
+        def from_dict(cls, payload: Mapping[str, object]) -> _TripDescriptor:
             trip_id = payload.get("trip_id")
             route_id = payload.get("route_id")
             return cls(
@@ -87,7 +87,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             }
 
         @classmethod
-        def from_dict(cls, payload: Mapping[str, object]) -> "_TripUpdate":
+        def from_dict(cls, payload: Mapping[str, object]) -> _TripUpdate:
             update = cls()
             trip_payload = payload.get("trip")
             if isinstance(trip_payload, Mapping):
@@ -110,7 +110,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             return {"id": self.id, "trip_update": self.trip_update.to_dict()}
 
         @classmethod
-        def from_dict(cls, payload: Mapping[str, object]) -> "_Entity":
+        def from_dict(cls, payload: Mapping[str, object]) -> _Entity:
             entity = cls()
             identifier = payload.get("id")
             if isinstance(identifier, str):
@@ -168,7 +168,8 @@ class GTFSRealtimeIngestor:
 
     def fetch(self, url: str) -> bytes:
         with fsspec.open(url, mode="rb") as handle:
-            data = handle.read()
+            raw = handle.read()
+        data = bytes(raw)
         if self.registry.has_changed(url, data):
             self.registry.record_snapshot(url, url, data)
         LOGGER.info("fetched_gtfs_rt", url=url, size=len(data))

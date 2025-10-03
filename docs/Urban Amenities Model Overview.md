@@ -44,7 +44,7 @@ Subscores map to 0–100 via metro‑relative percentiles (or absolute anchors),
 * **Jobs & education** (LODES, NCES/IPEDS/Carnegie).
 * **Airports** (FAA enplanements).
 * **Climate** (NOAA normals) and optional **air quality**.
-* **Typing note:** Ingestion clients expose typed interfaces (BigQuery fallbacks, HTTP params, GTFS realtime). When adding sources, prefer `Mapping`-based request payloads and provide optional dependency stubs so `mypy src/Urban_Amenities2/io --warn-unused-ignores` remains clean.
+* **Type safety:** Ingestion code now uses typed fallbacks for optional dependencies (BigQuery, shapely) and typed HTTP request payloads. When extending this layer, rely on `Mapping`-based params and keep `mypy src/Urban_Amenities2/io --warn-unused-ignores` clean.
 
 **B) Enrich & index**
 

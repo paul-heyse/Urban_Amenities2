@@ -72,7 +72,7 @@ def load_registry(path: Path | str = Path("docs/AUCS place category crosswalk"))
 
 def _extract_urls(text: str, footnotes: dict[str, str]) -> tuple[str | None, list[str]]:
     references = re.findall(r"\[(\d+)\]", text)
-    urls = [footnotes.get(ref) for ref in references if ref in footnotes]
+    urls: list[str] = [footnotes[ref] for ref in references if ref in footnotes]
     static_url = urls[0] if urls else None
     return static_url, urls[1:]
 

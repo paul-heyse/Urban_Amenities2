@@ -2,11 +2,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping, Sequence, cast, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
-import geopandas as gpd
+from ...dedupe.pois import DedupeConfig, deduplicate_pois
+from ...hex.aggregation import points_to_hex
+from ...logging_utils import get_logger
+from ...xwalk.overture_aucs import CategoryMatcher, load_crosswalk
+
+try:
+    import geopandas as _geopandas
+except ModuleNotFoundError:  # pragma: no cover
+    raise
+
 import pandas as pd
 from shapely.geometry import Point
+
+gpd = cast(Any, _geopandas)
 
 try:  # pragma: no cover - optional dependency
     from google.cloud import bigquery as _bigquery_module  # type: ignore[import]
@@ -34,7 +45,7 @@ else:
                 "google.cloud.bigquery is required runtime dependency for this feature"
             )
 
-        def result(self) -> "_QueryJobResult":  # pragma: no cover - stub path
+        def result(self) -> _QueryJobResult:  # pragma: no cover - stub path
             return self
 
         def to_dataframe(self, *, create_bqstorage_client: bool = False) -> pd.DataFrame:
@@ -58,7 +69,7 @@ else:
         QueryJobConfig = _QueryJobConfig
         ScalarQueryParameter = _ScalarQueryParameter
 
-    bigquery = cast("Any", _bigquery_module or _BigQueryStub())
+    bigquery = cast(Any, _bigquery_module or _BigQueryStub())
 
 
 class _BigQueryQueryJob(Protocol):
@@ -69,11 +80,6 @@ class _BigQueryQueryJob(Protocol):
 class _BigQueryClient(Protocol):
     def query(self, query: str, job_config: Any | None = None) -> _BigQueryQueryJob:
         ...
-
-from ...dedupe.pois import DedupeConfig, deduplicate_pois
-from ...hex.aggregation import points_to_hex
-from ...logging_utils import get_logger
-from ...xwalk.overture_aucs import CategoryMatcher, load_crosswalk
 
 LOGGER = get_logger("aucs.ingest.overture")
 
@@ -140,7 +146,7 @@ def read_places_from_bigquery(
 
 
 def read_places_from_cloud(path: str | Path, bbox: BBox | None = None) -> pd.DataFrame:
-    import fsspec
+    import fsspec  # type: ignore[import-untyped]
 
     LOGGER.info("reading_overture_geo", path=str(path))
     with fsspec.open(path, mode="rb") as handle:

@@ -3,11 +3,20 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable as IterableType, Mapping, cast, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
-import geopandas as gpd
+from ...hex.aggregation import lines_to_hex
+from ...logging_utils import get_logger
+
+try:
+    import geopandas as _geopandas
+except ModuleNotFoundError:  # pragma: no cover
+    raise
+
 import pandas as pd
 from shapely.geometry import LineString
+
+gpd = cast(Any, _geopandas)
 
 try:  # pragma: no cover
     from google.cloud import bigquery as _bigquery_module  # type: ignore[import]
@@ -35,7 +44,7 @@ else:
                 "google.cloud.bigquery is required runtime dependency for this feature"
             )
 
-        def result(self) -> "_QueryJobResult":  # pragma: no cover
+        def result(self) -> _QueryJobResult:  # pragma: no cover
             return self
 
         def to_dataframe(self, *, create_bqstorage_client: bool = False) -> pd.DataFrame:
@@ -59,7 +68,7 @@ else:
         QueryJobConfig = _QueryJobConfig
         ScalarQueryParameter = _ScalarQueryParameter
 
-    bigquery = cast("Any", _bigquery_module or _BigQueryStub())
+    bigquery = cast(Any, _bigquery_module or _BigQueryStub())
 
 
 class _BigQueryQueryJob(Protocol):
@@ -70,9 +79,6 @@ class _BigQueryQueryJob(Protocol):
 class _BigQueryClient(Protocol):
     def query(self, query: str, job_config: Any | None = None) -> _BigQueryQueryJob:
         ...
-
-from ...hex.aggregation import lines_to_hex
-from ...logging_utils import get_logger
 
 LOGGER = get_logger("aucs.ingest.transportation")
 
@@ -116,7 +122,7 @@ def read_transportation_from_bigquery(
 
 
 def read_transportation_from_cloud(path: str | Path) -> pd.DataFrame:
-    import fsspec
+    import fsspec  # type: ignore[import-untyped]
 
     with fsspec.open(path, mode="rb") as handle:
         return pd.read_parquet(handle)
@@ -129,7 +135,9 @@ def filter_transportation(frame: pd.DataFrame, classes: Iterable[str] | None = N
 
 def parse_geometry(frame: pd.DataFrame, geometry_column: str = "geometry") -> pd.DataFrame:
     converted = frame.copy()
-    converted[geometry_column] = converted[geometry_column].apply(_ensure_linestring)
+    converted[geometry_column] = [
+        _ensure_linestring(value) for value in converted[geometry_column]
+    ]
     return converted
 
 
@@ -144,7 +152,7 @@ def export_mode_geojson(frame: pd.DataFrame, path: Path, mode_column: str) -> No
     if gdf.empty:
         LOGGER.warning("empty_network_export", path=str(path), mode=mode_column)
     path.parent.mkdir(parents=True, exist_ok=True)
-    gdf.to_file(path, driver="GeoJSON")
+    gdf.to_file(path=str(path), driver="GeoJSON")
 
 
 def export_networks(frame: pd.DataFrame, output_root: Path = Path("data/processed")) -> dict[str, Path]:
