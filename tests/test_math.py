@@ -22,6 +22,15 @@ def test_ces_known_output() -> None:
     assert pytest.approx(result[0]) == 1.5
 
 
+def test_compute_z_returns_float64_and_non_negative() -> None:
+    quality = np.array([[0.8, 1.2], [0.0, 2.5]], dtype=np.float32)
+    accessibility = np.array([[0.5, 0.3], [1.5, 0.0]], dtype=np.float32)
+    result = compute_z(quality, accessibility, rho=0.7)
+    assert result.dtype == np.float64
+    assert result.shape == quality.shape
+    assert np.all(result >= 0.0)
+
+
 def test_ces_monotonicity() -> None:
     base_quality = np.array([[0.5, 0.5]])
     better_quality = np.array([[0.6, 0.5]])
