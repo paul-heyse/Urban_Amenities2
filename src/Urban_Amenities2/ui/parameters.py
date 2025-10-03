@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import structlog
 
-from Urban_Amenities2.config.params import AUCSParams
+from Urban_Amenities2.config.params import AUCSParams, ModeConfig
 
 logger = structlog.get_logger()
 
@@ -49,23 +49,34 @@ class ParameterAdjuster:
         adjustable = {}
 
         # Subscore weights
-        adjustable["weight_ea"] = self.params.weights.ea
-        adjustable["weight_lca"] = self.params.weights.lca
-        adjustable["weight_muhaa"] = self.params.weights.muhaa
-        adjustable["weight_jea"] = self.params.weights.jea
-        adjustable["weight_morr"] = self.params.weights.morr
-        adjustable["weight_cte"] = self.params.weights.cte
-        adjustable["weight_sou"] = self.params.weights.sou
+        subscores = self.params.subscores
+        adjustable["weight_ea"] = subscores.EA
+        adjustable["weight_lca"] = subscores.LCA
+        adjustable["weight_muhaa"] = subscores.MUHAA
+        adjustable["weight_jea"] = subscores.JEA
+        adjustable["weight_morr"] = subscores.MORR
+        adjustable["weight_cte"] = subscores.CTE
+        adjustable["weight_sou"] = subscores.SOU
 
-        # Decay parameters (mode-specific)
-        adjustable["alpha_walk"] = self.params.modes.walk.alpha
-        adjustable["alpha_bike"] = self.params.modes.bike.alpha
-        adjustable["alpha_transit"] = self.params.modes.transit.alpha
-        adjustable["alpha_car"] = self.params.modes.car.alpha
+        def _mode_alpha(mode_name: str) -> float:
+            mode: ModeConfig | None = self.params.modes.get(mode_name)
+            if mode is None:
+                logger.warning("unknown_mode", mode=mode_name)
+                return 0.0
+            return getattr(mode, "decay_alpha", getattr(mode, "alpha", 0.0))
 
-        # Value of time
-        adjustable["vot_weekday"] = self.params.gtc.vot_weekday
-        adjustable["vot_weekend"] = self.params.gtc.vot_weekend
+        adjustable["alpha_walk"] = _mode_alpha("walk")
+        adjustable["alpha_bike"] = _mode_alpha("bike")
+        adjustable["alpha_transit"] = _mode_alpha("transit")
+        adjustable["alpha_car"] = _mode_alpha("car")
+
+        slices = list(self.params.time_slices)
+        if slices:
+            adjustable["vot_weekday"] = slices[0].vot_per_hour
+            adjustable["vot_weekend"] = slices[-1].vot_per_hour
+        else:
+            adjustable["vot_weekday"] = 0.0
+            adjustable["vot_weekend"] = 0.0
 
         return adjustable
 

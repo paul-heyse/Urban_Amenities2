@@ -13,6 +13,13 @@ AUCS 2.0 quantifies urban convenience by measuring multi-modal accessibility to 
 
 The implementation is decomposed into **15 change proposals**, each representing a logical capability or subscore. Changes have dependencies and should be implemented in the order specified below.
 
+## Testing & Quality Gates
+
+- Continuous integration enforces **≥95% line** and **≥90% branch** coverage across all first-party Python modules. Run `pytest -q --cov=src --cov-branch` locally before submitting changes.
+- Prefer the shared fixtures in `tests/conftest.py` when writing tests: they expose cached `CacheManager` instances, disk-backed `DataContext` objects with synthetic overlays, and HTTP stubs for OSRM/OTP clients to avoid brittle network calls.
+- When introducing unreachable guards or external failure paths, annotate them with `# pragma: no cover` alongside a rationale so reviewers understand intentional exclusions.
+- Coverage HTML reports (`coverage html`) should be generated during large refactors to highlight hotspots; attach artifacts to CI runs for reviewer reference when thresholds are at risk.
+
 ## Change Proposals
 
 ### **Phase 1: Foundation** (Weeks 1-3)
