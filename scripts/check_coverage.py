@@ -96,7 +96,9 @@ def append_job_summary(summary: CoverageSummary, package_rates: dict[str, float]
         handle.write("\n".join(lines) + "\n")
 
 
-def enforce_thresholds(summary: CoverageSummary, line_threshold: float, branch_threshold: float) -> None:
+def enforce_thresholds(
+    summary: CoverageSummary, line_threshold: float, branch_threshold: float
+) -> None:
     failures: list[str] = []
     if summary.line_percent + 1e-9 < line_threshold:
         failures.append(
@@ -163,9 +165,7 @@ def enforce_package_thresholds(
     for package, required in package_thresholds.items():
         observed = package_rates.get(package, 0.0)
         if observed + 1e-9 < required:
-            failures.append(
-                f"{package} coverage {observed:.2f}% is below required {required:.2f}%"
-            )
+            failures.append(f"{package} coverage {observed:.2f}% is below required {required:.2f}%")
     if failures:
         raise SystemExit("\n".join(failures))
 
@@ -196,7 +196,9 @@ def load_thresholds(config_path: Path | None) -> tuple[float | None, dict[str, f
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate pytest coverage thresholds")
-    parser.add_argument("--xml", type=Path, default=Path("coverage.xml"), help="Path to coverage XML report")
+    parser.add_argument(
+        "--xml", type=Path, default=Path("coverage.xml"), help="Path to coverage XML report"
+    )
     parser.add_argument(
         "--json", type=Path, default=None, help="Optional path to write a machine-readable summary"
     )

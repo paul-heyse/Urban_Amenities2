@@ -47,15 +47,11 @@ def test_aggregate_command_writes_scores(
     assert output.exists()
 
 
-def test_aggregate_command_handles_missing_file(
-    cli_runner: CliRunner, tmp_path: Path
-) -> None:
+def test_aggregate_command_handles_missing_file(cli_runner: CliRunner, tmp_path: Path) -> None:
     weights = tmp_path / "weights.json"
     _write_weights(weights)
     missing = tmp_path / "missing.csv"
-    result = cli_runner.invoke(
-        app, ["aggregate", str(missing), "--weights", str(weights)]
-    )
+    result = cli_runner.invoke(app, ["aggregate", str(missing), "--weights", str(weights)])
     assert result.exit_code == 1
     assert "File not found" in result.output
 

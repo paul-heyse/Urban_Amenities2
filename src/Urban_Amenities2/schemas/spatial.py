@@ -1,4 +1,5 @@
 """Pandera schemas for spatial datasets."""
+
 from __future__ import annotations
 
 import pandera as pa

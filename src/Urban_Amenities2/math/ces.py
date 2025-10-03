@@ -9,8 +9,7 @@ from numpy.typing import NDArray
 if TYPE_CHECKING:  # pragma: no cover - typing helper for numba decorator
     _F = TypeVar("_F", bound=Callable[..., NDArray[np.float64]])
 
-    def njit(*args: object, **kwargs: object) -> Callable[[_F], _F]:
-        ...
+    def njit(*args: object, **kwargs: object) -> Callable[[_F], _F]: ...
 
 else:
     from numba import njit  # type: ignore[import-untyped]

@@ -162,10 +162,7 @@ class SeasonalOutdoorsCalculator:
         ):
             joined = parks.merge(climate, on=id_column, how="left", suffixes=(None, "_climate"))
         LOGGER.info("sou_joined", rows=len(joined))
-        sigma_values = [
-            compute_sigma_out(row, self.config.climate)
-            for _, row in joined.iterrows()
-        ]
+        sigma_values = [compute_sigma_out(row, self.config.climate) for _, row in joined.iterrows()]
         joined["sigma_out"] = pd.Series(sigma_values, index=joined.index, dtype=float)
         joined[self.config.output_column] = (
             joined[self.config.parks_column].fillna(0.0) * joined["sigma_out"]

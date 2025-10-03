@@ -130,10 +130,16 @@ def compute_accessibility(
     merged = travel.merge(masses, left_on=config.destination_column, right_on="hub_id", how="left")
     merged = merged.dropna(subset=["mass"])
     if merged.empty:
-        return pd.DataFrame({config.id_column: pd.Series(dtype=str), "accessibility": pd.Series(dtype=float)})
-    merged[config.travel_time_column] = pd.to_numeric(merged[config.travel_time_column], errors="coerce").fillna(0.0)
+        return pd.DataFrame(
+            {config.id_column: pd.Series(dtype=str), "accessibility": pd.Series(dtype=float)}
+        )
+    merged[config.travel_time_column] = pd.to_numeric(
+        merged[config.travel_time_column], errors="coerce"
+    ).fillna(0.0)
     if config.impedance_column and config.impedance_column in merged.columns:
-        merged[config.impedance_column] = pd.to_numeric(merged[config.impedance_column], errors="coerce").fillna(0.0)
+        merged[config.impedance_column] = pd.to_numeric(
+            merged[config.impedance_column], errors="coerce"
+        ).fillna(0.0)
     merged["mass"] = pd.to_numeric(merged["mass"], errors="coerce").fillna(0.0)
     merged["gtc"] = merged.apply(lambda row: _generalised_cost(row, config), axis=1)
     merged["contribution"] = merged["mass"] * np.exp(-alpha * merged["gtc"])
@@ -162,9 +168,13 @@ def compute_airport_accessibility(
 
         def _lookup(airport_id: str) -> float:
             key = str(airport_id)
-            return weights_lookup.get(key, weights_lookup.get(key.upper(), weights_lookup.get(key.lower(), 1.0)))
+            return weights_lookup.get(
+                key, weights_lookup.get(key.upper(), weights_lookup.get(key.lower(), 1.0))
+            )
 
-        airports["mass"] = airports.apply(lambda row: row["mass"] * float(_lookup(row["airport_id"])), axis=1)
+        airports["mass"] = airports.apply(
+            lambda row: row["mass"] * float(_lookup(row["airport_id"])), axis=1
+        )
         airports["mass"] = _minmax(airports["mass"])
     airports.rename(columns={"airport_id": "hub_id"}, inplace=True)
     return compute_accessibility(travel, airports[["hub_id", "mass"]], config=config, alpha=alpha)
@@ -201,17 +211,23 @@ class MuhAAScore:
             alpha=self.config.airport_alpha,
             airport_weights=self.config.airport_weights,
         )
-        combined = pd.merge(hub_access, airport_access, on=id_column, how="outer", suffixes=("_hub", "_airport"))
-        combined[["accessibility_hub", "accessibility_airport"]] = combined[[
-            "accessibility_hub",
-            "accessibility_airport",
-        ]].fillna(0.0)
+        combined = pd.merge(
+            hub_access, airport_access, on=id_column, how="outer", suffixes=("_hub", "_airport")
+        )
+        combined[["accessibility_hub", "accessibility_airport"]] = combined[
+            [
+                "accessibility_hub",
+                "accessibility_airport",
+            ]
+        ].fillna(0.0)
         combined[self.config.output_column] = (
             combined["accessibility_hub"] * self.config.hub_contribution
             + combined["accessibility_airport"] * self.config.airport_contribution
         )
         combined[self.config.output_column] = combined[self.config.output_column].clip(0.0, 100.0)
-        return combined[[id_column, self.config.output_column, "accessibility_hub", "accessibility_airport"]]
+        return combined[
+            [id_column, self.config.output_column, "accessibility_hub", "accessibility_airport"]
+        ]
 
 
 __all__ = [

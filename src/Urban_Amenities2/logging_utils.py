@@ -24,9 +24,7 @@ __all__ = [
 ]
 
 
-_REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "request_id", default=None
-)
+_REQUEST_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
 
 
 def configure_logging(level: str = "INFO", *, log_file: str | Path | None = None) -> None:

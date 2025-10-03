@@ -39,7 +39,10 @@ def test_morr_aggregation() -> None:
     c5 = pd.DataFrame({"hex_id": ["a", "b"], "C5": [50.0, 10.0]})
     calculator = MobilityReliabilityCalculator(MorrConfig(weights=MorrWeights()))
     scores = calculator.compute(c1, c2, c3, c4, c5)
-    assert scores.loc[scores["hex_id"] == "a", "MORR"].iloc[0] > scores.loc[scores["hex_id"] == "b", "MORR"].iloc[0]
+    assert (
+        scores.loc[scores["hex_id"] == "a", "MORR"].iloc[0]
+        > scores.loc[scores["hex_id"] == "b", "MORR"].iloc[0]
+    )
 
 
 def test_component_calculations_cover_edge_cases() -> None:
@@ -65,15 +68,11 @@ def test_component_calculations_cover_edge_cases() -> None:
     c3 = compute_on_time_reliability(reliability)
     assert c3["C3"].iloc[0] == 95.0
 
-    redundancy = pd.DataFrame(
-        {"hex_id": ["a"], "transit_routes": [4], "road_routes": [3]}
-    )
+    redundancy = pd.DataFrame({"hex_id": ["a"], "transit_routes": [4], "road_routes": [3]})
     c4 = compute_network_redundancy(redundancy)
     assert 0 < c4["C4"].iloc[0] <= 100
 
-    micro = pd.DataFrame(
-        {"hex_id": ["a", "b"], "stations": [10, 0], "area_sqkm": [2.0, 2.0]}
-    )
+    micro = pd.DataFrame({"hex_id": ["a", "b"], "stations": [10, 0], "area_sqkm": [2.0, 2.0]})
     c5 = compute_micromobility_presence(micro)
     assert c5.loc[c5["hex_id"] == "a", "C5"].iloc[0] == 100.0
 

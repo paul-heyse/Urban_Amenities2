@@ -21,7 +21,9 @@ def merge_enrichment(
         frame = frame.merge(wikidata, on="poi_id", how="left")
         frame["brand_wd"] = frame["wikidata_qid"]
     if wikipedia is not None:
-        frame = frame.merge(wikipedia[["poi_id", "median_views", "popularity_z", "iqr"]], on="poi_id", how="left")
+        frame = frame.merge(
+            wikipedia[["poi_id", "median_views", "popularity_z", "iqr"]], on="poi_id", how="left"
+        )
     frame["quality_attrs"] = frame.apply(_build_quality_attrs, axis=1)
     if quality_scorer is not None:
         frame = quality_scorer.score(frame)

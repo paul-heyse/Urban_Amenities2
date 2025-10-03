@@ -16,7 +16,9 @@ def _scoring_config() -> QualityScoringConfig:
         component_weights={"size": 0.3, "popularity": 0.4, "brand": 0.15, "heritage": 0.15},
         z_clip_abs=3.0,
         opening_hours_bonus_xi=1.0,
-        category_defaults={"grocery": {"size": 2.0, "popularity": 1.0, "brand": 0.5, "heritage": 0.1}},
+        category_defaults={
+            "grocery": {"size": 2.0, "popularity": 1.0, "brand": 0.5, "heritage": 0.1}
+        },
         hours_defaults={"grocery": "standard", "cafe": "extended"},
     )
 

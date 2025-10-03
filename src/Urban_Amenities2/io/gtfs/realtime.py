@@ -162,7 +162,9 @@ class RealtimeConfig:
 
 
 class GTFSRealtimeIngestor:
-    def __init__(self, registry: SnapshotRegistry | None = None, config: RealtimeConfig | None = None):
+    def __init__(
+        self, registry: SnapshotRegistry | None = None, config: RealtimeConfig | None = None
+    ):
         self.registry = registry or SnapshotRegistry(Path("data/snapshots.jsonl"))
         self.config = config or RealtimeConfig()
 
@@ -206,10 +208,14 @@ class GTFSRealtimeIngestor:
         for route_id, group in grouped:
             avg_delay = group["delay_sec"].mean()
             on_time = (group["delay_sec"].abs() <= self.config.on_time_threshold_sec).mean()
-            records.append({"route_id": route_id, "avg_delay_sec": avg_delay, "on_time_share": on_time})
+            records.append(
+                {"route_id": route_id, "avg_delay_sec": avg_delay, "on_time_share": on_time}
+            )
         return pd.DataFrame.from_records(records)
 
-    def ingest(self, agency: Agency, output_path: Path = Path("data/processed/gtfs_reliability.parquet")) -> Path:
+    def ingest(
+        self, agency: Agency, output_path: Path = Path("data/processed/gtfs_reliability.parquet")
+    ) -> Path:
         all_trip_updates: list[pd.DataFrame] = []
         for url in agency.realtime_urls:
             payload = self.fetch(url)

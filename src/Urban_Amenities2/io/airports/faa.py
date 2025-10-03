@@ -48,4 +48,10 @@ def ingest_airports(
     return indexed
 
 
-__all__ = ["ingest_airports", "load_enplanements", "filter_states", "compute_weights", "index_airports"]
+__all__ = [
+    "ingest_airports",
+    "load_enplanements",
+    "filter_states",
+    "compute_weights",
+    "index_airports",
+]

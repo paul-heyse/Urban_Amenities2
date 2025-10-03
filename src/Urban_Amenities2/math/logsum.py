@@ -53,4 +53,10 @@ def time_weighted_accessibility(
     return np.asarray(np.tensordot(exp_utilities, weights_array, axes=([-1], [0])), dtype=float)
 
 
-__all__ = ["mode_utility", "nest_inclusive", "top_level_logsum", "ModeUtilityParams", "time_weighted_accessibility"]
+__all__ = [
+    "mode_utility",
+    "nest_inclusive",
+    "top_level_logsum",
+    "ModeUtilityParams",
+    "time_weighted_accessibility",
+]

@@ -33,8 +33,13 @@ def combine_registries(registries: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return combined
 
 
-def ingest_childcare(registries: dict[str, str | Path], output_path: Path = Path("data/processed/childcare.parquet")) -> pd.DataFrame:
-    frames = {state: (pd.read_parquet(path) if str(path).endswith(".parquet") else pd.read_csv(path)) for state, path in registries.items()}
+def ingest_childcare(
+    registries: dict[str, str | Path], output_path: Path = Path("data/processed/childcare.parquet")
+) -> pd.DataFrame:
+    frames = {
+        state: (pd.read_parquet(path) if str(path).endswith(".parquet") else pd.read_csv(path))
+        for state, path in registries.items()
+    }
     combined = combine_registries(frames)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.to_parquet(output_path)

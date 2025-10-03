@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/quality/checks.py
+# hypothesis_version: 6.140.2
+
+[0.0, 1.0, -180, 180, '_merge', 'aucstype', 'avg_pois_per_hex', 'both', 'completeness', 'completeness_check', 'consistency', 'consistency_check', 'coverage', 'coverage_check', 'data/quality_reports', 'dedupe_weight', 'enrichment_join_rate', 'generate_report', 'hex_count', 'hex_id', 'lat', 'left', 'lon', 'name', 'poi_id', 'pois_quality.json', 'utf-8', 'validity', 'validity_check', 'within_bounds']

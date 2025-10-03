@@ -92,9 +92,11 @@ def apply_brand_dedupe(
 
     stats = {
         "affected_ratio": float(affected_mask.mean()),
-        "avg_penalty": float(frame.loc[affected_mask, "brand_penalty"].mean())
-        if bool(affected_mask.any())
-        else 0.0,
+        "avg_penalty": (
+            float(frame.loc[affected_mask, "brand_penalty"].mean())
+            if bool(affected_mask.any())
+            else 0.0
+        ),
     }
     LOGGER.info(
         "brand_dedupe affected_ratio=%.3f avg_penalty=%.3f count=%d",

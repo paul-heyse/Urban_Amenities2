@@ -13,7 +13,9 @@ from ...versioning.snapshots import SnapshotRegistry
 
 LOGGER = get_logger("aucs.ingest.jobs.lodes")
 
-LODES_URL_TEMPLATE = "https://lehd.ces.census.gov/data/lodes/LODES8/{state}/wac/{state}_wac_S000_JT00_2020.csv.gz"
+LODES_URL_TEMPLATE = (
+    "https://lehd.ces.census.gov/data/lodes/LODES8/{state}/wac/{state}_wac_S000_JT00_2020.csv.gz"
+)
 
 
 @dataclass
@@ -58,8 +60,12 @@ class LODESIngestor:
         return merged
 
     def allocate_to_hex(self, frame: pd.DataFrame) -> pd.DataFrame:
-        points = points_to_hex(frame.rename(columns={"lat": "lat", "lon": "lon"}), hex_column="hex_id")
-        job_columns = [col for col in frame.columns if col.startswith("CNS") or col in {"C000", "CNS01"}]
+        points = points_to_hex(
+            frame.rename(columns={"lat": "lat", "lon": "lon"}), hex_column="hex_id"
+        )
+        job_columns = [
+            col for col in frame.columns if col.startswith("CNS") or col in {"C000", "CNS01"}
+        ]
         aggregated = points.groupby("hex_id")[job_columns].sum().reset_index()
         return aggregated
 

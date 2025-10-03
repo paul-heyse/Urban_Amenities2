@@ -51,7 +51,11 @@ def index_to_hex(gdf: gpd.GeoDataFrame) -> pd.DataFrame:
     return frame
 
 
-def ingest_padus(path: str | Path, states: Iterable[str], output_path: Path = Path("data/processed/parks.parquet")) -> pd.DataFrame:
+def ingest_padus(
+    path: str | Path,
+    states: Iterable[str],
+    output_path: Path = Path("data/processed/parks.parquet"),
+) -> pd.DataFrame:
     gdf = load_padus(path)
     filtered = filter_padus(gdf, states)
     indexed = index_to_hex(filtered)

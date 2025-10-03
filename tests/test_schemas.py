@@ -29,7 +29,9 @@ def test_poi_schema_valid() -> None:
             "quality_heritage": [65.0],
             "quality_hours_category": ["standard"],
             "quality_hours_bonus": [0.0],
-            "quality_components": [[{"size": 70.0, "popularity": 85.0, "brand": 60.0, "heritage": 65.0}]],
+            "quality_components": [
+                [{"size": 70.0, "popularity": 85.0, "brand": 60.0, "heritage": 65.0}]
+            ],
             "brand_penalty": [1.0],
             "brand_weight": [80.0],
         }
@@ -84,7 +86,9 @@ def test_validation_decorator() -> None:
             "quality_heritage": [65.0],
             "quality_hours_category": ["standard"],
             "quality_hours_bonus": [0.0],
-            "quality_components": [[{"size": 70.0, "popularity": 85.0, "brand": 60.0, "heritage": 65.0}]],
+            "quality_components": [
+                [{"size": 70.0, "popularity": 85.0, "brand": 60.0, "heritage": 65.0}]
+            ],
             "brand_penalty": [1.0],
             "brand_weight": [80.0],
         }

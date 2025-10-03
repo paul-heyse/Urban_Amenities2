@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 from ruamel.yaml import YAML
+
 
 def _copy_fixture(tmp_path: Path, fixture: Path) -> Path:
     target = tmp_path / fixture.name

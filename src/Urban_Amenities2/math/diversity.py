@@ -81,7 +81,9 @@ def compute_diversity(
     config = config or {}
     records: list[dict[str, object]] = []
     for keys, group in frame.groupby(list(group_columns)):
-        key_dict = dict(zip(group_columns, keys if isinstance(keys, tuple) else (keys,), strict=False))
+        key_dict = dict(
+            zip(group_columns, keys if isinstance(keys, tuple) else (keys,), strict=False)
+        )
         category = key_dict.get("aucstype") or key_dict.get("category") or "default"
         cfg = config.get(category, DiversityConfig())
         values = group.groupby(subtype_column)[value_column].sum()

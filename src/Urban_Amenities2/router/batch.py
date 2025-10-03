@@ -28,8 +28,17 @@ class SkimBuilder:
         self.config = config
         self.cache = Cache(str(config.cache_dir))
 
-    def _cache_key(self, origins: Sequence[tuple[float, float]], destinations: Sequence[tuple[float, float]]) -> str:
-        payload = json.dumps({"origins": origins, "destinations": destinations, "mode": self.config.mode, "period": self.config.period})
+    def _cache_key(
+        self, origins: Sequence[tuple[float, float]], destinations: Sequence[tuple[float, float]]
+    ) -> str:
+        payload = json.dumps(
+            {
+                "origins": origins,
+                "destinations": destinations,
+                "mode": self.config.mode,
+                "period": self.config.period,
+            }
+        )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def matrix(

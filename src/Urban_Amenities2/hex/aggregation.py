@@ -1,4 +1,5 @@
 """Spatial aggregation helpers built on top of H3."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable

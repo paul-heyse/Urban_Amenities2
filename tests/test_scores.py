@@ -83,7 +83,9 @@ def aggregation_frame() -> pd.DataFrame:
     )
 
 
-def test_essentials_access_deterministic(essentials_inputs: tuple[pd.DataFrame, pd.DataFrame, EssentialsAccessConfig]) -> None:
+def test_essentials_access_deterministic(
+    essentials_inputs: tuple[pd.DataFrame, pd.DataFrame, EssentialsAccessConfig],
+) -> None:
     pois, accessibility, config = essentials_inputs
     calculator = EssentialsAccessCalculator(config)
     scores, category_scores = calculator.compute(pois.copy(), accessibility.copy())
@@ -117,15 +119,17 @@ def test_essentials_access_deterministic(essentials_inputs: tuple[pd.DataFrame, 
         }
     )
     assert_frame_equal(
-        actual_category[[
-            "hex_id",
-            "category",
-            "V",
-            "satiation",
-            "diversity_multiplier",
-            "entropy",
-            "score",
-        ]],
+        actual_category[
+            [
+                "hex_id",
+                "category",
+                "V",
+                "satiation",
+                "diversity_multiplier",
+                "entropy",
+                "score",
+            ]
+        ],
         expected_category,
         rtol=1e-6,
         atol=1e-8,
@@ -144,7 +148,7 @@ def test_essentials_access_deterministic(essentials_inputs: tuple[pd.DataFrame, 
 
 
 def test_essentials_access_handles_non_numeric_inputs(
-    essentials_inputs: tuple[pd.DataFrame, pd.DataFrame, EssentialsAccessConfig]
+    essentials_inputs: tuple[pd.DataFrame, pd.DataFrame, EssentialsAccessConfig],
 ) -> None:
     pois, accessibility, config = essentials_inputs
     pois_with_strings = pois.copy()
@@ -241,7 +245,10 @@ def test_compute_total_aucs_uses_params_weights() -> None:
     params = _StubParams(weights)
     total = compute_total_aucs(subscores, params)  # type: ignore[arg-type]
     assert {"hex_id", "aucs"} <= set(total.columns)
-    assert total.loc[total["hex_id"] == "h1", "aucs"].iloc[0] > total.loc[total["hex_id"] == "h2", "aucs"].iloc[0]
+    assert (
+        total.loc[total["hex_id"] == "h1", "aucs"].iloc[0]
+        > total.loc[total["hex_id"] == "h2", "aucs"].iloc[0]
+    )
 
 
 @settings(deadline=None)
@@ -288,8 +295,7 @@ def test_essentials_access_property(records: list[tuple[str, str, float, float, 
     category_list = sorted(categories) or ["grocery"]
     config = EssentialsAccessConfig(
         categories=category_list,
-        category_params=
-        {
+        category_params={
             category: EssentialCategoryConfig(rho=1.0, kappa=0.5, diversity=DiversityConfig())
             for category in category_list
         },

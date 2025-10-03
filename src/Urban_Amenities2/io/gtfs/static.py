@@ -85,7 +85,9 @@ class GTFSStaticIngestor:
     def index_stops(self, stops: pd.DataFrame) -> pd.DataFrame:
         if stops.empty:
             return stops.assign(hex_id=[])
-        stops = points_to_hex(stops, lat_column="stop_lat", lon_column="stop_lon", hex_column="hex_id")
+        stops = points_to_hex(
+            stops, lat_column="stop_lat", lon_column="stop_lon", hex_column="hex_id"
+        )
         return stops
 
     def write_outputs(
@@ -112,7 +114,9 @@ class GTFSStaticIngestor:
             paths["headways"] = path
         return paths
 
-    def ingest(self, agency: Agency, session=None, output_dir: Path = Path("data/processed")) -> dict[str, Path]:
+    def ingest(
+        self, agency: Agency, session=None, output_dir: Path = Path("data/processed")
+    ) -> dict[str, Path]:
         path = self.download(agency, session=session)
         datasets = self.parse(path)
         return self.write_outputs(agency, datasets, output_dir=output_dir)

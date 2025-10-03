@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
-import sys
 import configparser
+import json
 import os
+import sys
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from datetime import datetime
@@ -13,6 +13,10 @@ from urllib.parse import urlparse
 import pandas as pd
 import pytest
 from requests import HTTPError
+
+pytest_plugins = [
+    "tests.config.conftest",
+]
 
 from Urban_Amenities2.cache.manager import CacheConfig, CacheManager
 from Urban_Amenities2.ui.config import UISettings
@@ -86,7 +90,6 @@ def _collect_line_rate(xml_root: ET.Element, package: str) -> float:
     if total == 0:
         return 0.0
     return (covered / total) * 100.0
-
 
 
 @pytest.fixture(scope="session")
@@ -332,7 +335,13 @@ def otp_stub_session() -> StubSession:
         "transfers": 1,
         "fare": {"fare": {"regular": {"amount": 2.5}}},
         "legs": [
-            {"mode": "WALK", "duration": 120, "distance": 200, "from": {"name": "A"}, "to": {"name": "B"}}
+            {
+                "mode": "WALK",
+                "duration": 120,
+                "distance": 200,
+                "from": {"name": "A"},
+                "to": {"name": "B"},
+            }
         ],
     }
     responses = {"post": {"data": {"plan": {"itineraries": [itinerary]}}}}
@@ -361,9 +370,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode) -
         rate = _collect_line_rate(root, package)
         metrics[package] = rate
         if rate + 1e-6 < required:
-            failures.append(
-                f"{package} coverage {rate:.2f}% is below required {required:.2f}%"
-            )
+            failures.append(f"{package} coverage {rate:.2f}% is below required {required:.2f}%")
 
     if reporter and metrics:
         reporter.write_sep("-", "module coverage summary")

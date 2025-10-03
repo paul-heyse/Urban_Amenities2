@@ -22,14 +22,18 @@ def completeness_check(pois: pd.DataFrame, required_columns: Iterable[str]) -> d
     return metrics
 
 
-def validity_check(pois: pd.DataFrame, lat_col: str = "lat", lon_col: str = "lon") -> dict[str, float]:
+def validity_check(
+    pois: pd.DataFrame, lat_col: str = "lat", lon_col: str = "lon"
+) -> dict[str, float]:
     if pois.empty:
         return {"within_bounds": 1.0}
     within = ((pois[lat_col].between(-90, 90)) & (pois[lon_col].between(-180, 180))).mean()
     return {"within_bounds": float(within)}
 
 
-def consistency_check(pois: pd.DataFrame, enrichment: pd.DataFrame | None = None) -> dict[str, float]:
+def consistency_check(
+    pois: pd.DataFrame, enrichment: pd.DataFrame | None = None
+) -> dict[str, float]:
     metrics: dict[str, float] = {
         "dedupe_weight_non_null": float(
             pois.get("dedupe_weight", pd.Series([1], dtype=float)).notna().mean()
@@ -58,4 +62,10 @@ def generate_report(
     return report
 
 
-__all__ = ["coverage_check", "completeness_check", "validity_check", "consistency_check", "generate_report"]
+__all__ = [
+    "coverage_check",
+    "completeness_check",
+    "validity_check",
+    "consistency_check",
+    "generate_report",
+]

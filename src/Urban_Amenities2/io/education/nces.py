@@ -10,7 +10,15 @@ from ...logging_utils import get_logger
 LOGGER = get_logger("aucs.ingest.education.nces")
 
 
-REQUIRED_COLUMNS = {"school_id", "name", "level", "enrollment", "student_teacher_ratio", "lat", "lon"}
+REQUIRED_COLUMNS = {
+    "school_id",
+    "name",
+    "level",
+    "enrollment",
+    "student_teacher_ratio",
+    "lat",
+    "lon",
+}
 
 
 def _normalise_frame(frame: pd.DataFrame, source: str) -> pd.DataFrame:
@@ -24,10 +32,16 @@ def _normalise_frame(frame: pd.DataFrame, source: str) -> pd.DataFrame:
         "TOTFTE": "teachers_fte",
         "PUPTCH": "student_teacher_ratio",
     }
-    frame = frame.rename(columns={key: value for key, value in rename_map.items() if key in frame.columns})
-    if "student_teacher_ratio" not in frame.columns and {"enrollment", "teachers_fte"}.issubset(frame.columns):
+    frame = frame.rename(
+        columns={key: value for key, value in rename_map.items() if key in frame.columns}
+    )
+    if "student_teacher_ratio" not in frame.columns and {"enrollment", "teachers_fte"}.issubset(
+        frame.columns
+    ):
         with pd.option_context("mode.use_inf_as_na", True):
-            frame["student_teacher_ratio"] = frame["enrollment"] / frame["teachers_fte"].replace({0: pd.NA})
+            frame["student_teacher_ratio"] = frame["enrollment"] / frame["teachers_fte"].replace(
+                {0: pd.NA}
+            )
     frame["source"] = source
     missing = REQUIRED_COLUMNS - set(frame.columns)
     if missing:
@@ -48,8 +62,16 @@ def ingest_schools(
     private_path: str | Path,
     output_path: Path = Path("data/processed/schools.parquet"),
 ) -> pd.DataFrame:
-    public = pd.read_parquet(public_path) if str(public_path).endswith(".parquet") else pd.read_csv(public_path)
-    private = pd.read_parquet(private_path) if str(private_path).endswith(".parquet") else pd.read_csv(private_path)
+    public = (
+        pd.read_parquet(public_path)
+        if str(public_path).endswith(".parquet")
+        else pd.read_csv(public_path)
+    )
+    private = (
+        pd.read_parquet(private_path)
+        if str(private_path).endswith(".parquet")
+        else pd.read_csv(private_path)
+    )
     combined = prepare_schools(public, private)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.to_parquet(output_path)

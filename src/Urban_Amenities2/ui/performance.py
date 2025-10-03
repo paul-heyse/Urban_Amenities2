@@ -122,13 +122,8 @@ class PerformanceMonitor:
 
     def get_all_stats(self) -> dict[str, dict[str, float]]:
         """Get statistics for all tracked metrics."""
-        return {
-            name: stats
-            for name in self.metrics
-            if (stats := self.get_stats(name)) is not None
-        }
+        return {name: stats for name in self.metrics if (stats := self.get_stats(name)) is not None}
 
 
 # Global performance monitor instance
 monitor = PerformanceMonitor()
-

@@ -44,7 +44,10 @@ def test_crosswalk_and_dedupe(tmp_path: Path) -> None:
     sample = pd.DataFrame(
         {
             "poi_id": ["1", "2"],
-            "primary_category": ["eat_and_drink.restaurant.italian_restaurant", "eat_and_drink.fast_food"],
+            "primary_category": [
+                "eat_and_drink.restaurant.italian_restaurant",
+                "eat_and_drink.fast_food",
+            ],
             "alternate_categories": [[], []],
             "operating_status": ["open", "open"],
             "lat": [39.0, 39.0],
@@ -101,13 +104,18 @@ def _create_gtfs_zip(path: Path) -> None:
             "calendar.txt",
             "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nWD,1,1,1,1,1,0,0,20240101,20241231\n",
         )
+
+
 def test_gtfs_pipeline(tmp_path: Path) -> None:
     registry = load_registry()
     assert any(agency.name.startswith("RTD") for agency in registry)
 
     gtfs_zip = tmp_path / "feed.zip"
     _create_gtfs_zip(gtfs_zip)
-    static = GTFSStaticIngestor(cache=GTFSCache(directory=tmp_path / "cache"), registry=SnapshotRegistry(tmp_path / "snap.jsonl"))
+    static = GTFSStaticIngestor(
+        cache=GTFSCache(directory=tmp_path / "cache"),
+        registry=SnapshotRegistry(tmp_path / "snap.jsonl"),
+    )
     agency = registry[0]
     agency.static_url = gtfs_zip.as_uri()
     outputs = static.ingest(agency, output_dir=tmp_path)
@@ -159,7 +167,12 @@ def test_climate_and_parks(tmp_path: Path) -> None:
     assert 0 <= comfort.loc[0, "sigma_out"] <= 1
 
     padus = gpd.GeoDataFrame(
-        {"Access": ["Open"], "State": ["CO"], "Unit_Name": ["Park"], "geometry": [Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])]},
+        {
+            "Access": ["Open"],
+            "State": ["CO"],
+            "Unit_Name": ["Park"],
+            "geometry": [Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])],
+        },
         crs="EPSG:4326",
     )
     parks = index_to_hex(padus)
@@ -236,6 +249,7 @@ def test_jobs_and_education(tmp_path: Path, monkeypatch) -> None:
 
     # Monkey-patch the LODES URL template to point to local file
     import Urban_Amenities2.io.jobs.lodes as lodes_module
+
     original_url = lodes_module.LODES_URL_TEMPLATE
     monkeypatch.setattr(lodes_module, "LODES_URL_TEMPLATE", str(lodes_csv))
 
@@ -250,8 +264,28 @@ def test_jobs_and_education(tmp_path: Path, monkeypatch) -> None:
     # Restore original
     monkeypatch.setattr(lodes_module, "LODES_URL_TEMPLATE", original_url)
 
-    public = pd.DataFrame({"NCESSCH": ["1"], "SCH_NAME": ["School"], "LAT": [39.0], "LON": [-104.0], "LEVEL": ["High"], "ENR_TOTAL": [100], "TOTFTE": [10]})
-    private = pd.DataFrame({"NCESSCH": ["2"], "SCH_NAME": ["Private"], "LAT": [39.1], "LON": [-104.1], "LEVEL": ["High"], "ENR_TOTAL": [50], "TOTFTE": [5]})
+    public = pd.DataFrame(
+        {
+            "NCESSCH": ["1"],
+            "SCH_NAME": ["School"],
+            "LAT": [39.0],
+            "LON": [-104.0],
+            "LEVEL": ["High"],
+            "ENR_TOTAL": [100],
+            "TOTFTE": [10],
+        }
+    )
+    private = pd.DataFrame(
+        {
+            "NCESSCH": ["2"],
+            "SCH_NAME": ["Private"],
+            "LAT": [39.1],
+            "LON": [-104.1],
+            "LEVEL": ["High"],
+            "ENR_TOTAL": [50],
+            "TOTFTE": [5],
+        }
+    )
     schools = prepare_schools(public, private)
     assert set(schools["hex_id"])  # hex IDs assigned
 
@@ -260,7 +294,11 @@ def test_jobs_and_education(tmp_path: Path, monkeypatch) -> None:
     universities = ipeds_weights(directory.merge(carnegie, on="unitid"))
     assert "q_u" in universities.columns
 
-    registries = {"CO": pd.DataFrame({"provider_id": [1], "name": ["Care"], "lat": [39.0], "lon": [-104.0], "capacity": [20]})}
+    registries = {
+        "CO": pd.DataFrame(
+            {"provider_id": [1], "name": ["Care"], "lat": [39.0], "lon": [-104.0], "capacity": [20]}
+        )
+    }
     childcare = combine_registries(registries)
     assert "hex_id" in childcare.columns
 
@@ -272,7 +310,16 @@ def test_jobs_and_education(tmp_path: Path, monkeypatch) -> None:
 def test_enrichment_and_quality(tmp_path: Path) -> None:
     class StubClient:
         def query(self, query: str) -> dict:
-            return {"results": {"bindings": [{"item": {"value": "http://www.wikidata.org/entity/Q1"}, "capacity": {"value": "500"}}]}}
+            return {
+                "results": {
+                    "bindings": [
+                        {
+                            "item": {"value": "http://www.wikidata.org/entity/Q1"},
+                            "capacity": {"value": "500"},
+                        }
+                    ]
+                }
+            }
 
     pois = pd.DataFrame(
         {
@@ -387,9 +434,13 @@ def test_noaa_comfort_handles_missing_values() -> None:
 
 def test_childcare_registry_missing_columns_raises() -> None:
     with pytest.raises(ValueError):
-        combine_registries({
-            "CO": pd.DataFrame({"provider_id": ["1"], "FacilityName": ["Missing"], "Latitude": [39.0]})
-        })
+        combine_registries(
+            {
+                "CO": pd.DataFrame(
+                    {"provider_id": ["1"], "FacilityName": ["Missing"], "Latitude": [39.0]}
+                )
+            }
+        )
 
 
 def test_merge_enrichment_handles_null_quality_attrs() -> None:

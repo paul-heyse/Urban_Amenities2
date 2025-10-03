@@ -25,7 +25,12 @@ def random_hex(resolution: int = 8) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path("data/outputs"), help="Directory for generated Parquet files")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("data/outputs"),
+        help="Directory for generated Parquet files",
+    )
     parser.add_argument("--count", type=int, default=1000, help="Number of hexes to generate")
     args = parser.parse_args()
 

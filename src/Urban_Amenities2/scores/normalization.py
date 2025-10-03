@@ -15,7 +15,9 @@ class NormalizationConfig:
     standard_target: float | None = None
 
 
-def percentile_normalize(frame: pd.DataFrame, group: str, value: str, config: NormalizationConfig) -> pd.DataFrame:
+def percentile_normalize(
+    frame: pd.DataFrame, group: str, value: str, config: NormalizationConfig
+) -> pd.DataFrame:
     records = []
     for _key, subset in frame.groupby(group):
         low = np.percentile(subset[value], config.lower_percentile)
@@ -39,7 +41,9 @@ def standard_normalize(frame: pd.DataFrame, value: str, target: float) -> pd.Dat
     return frame
 
 
-def normalize_scores(frame: pd.DataFrame, group: str, value: str, config: NormalizationConfig) -> pd.DataFrame:
+def normalize_scores(
+    frame: pd.DataFrame, group: str, value: str, config: NormalizationConfig
+) -> pd.DataFrame:
     if config.mode == "percentile":
         return percentile_normalize(frame, group, value, config)
     if config.mode == "standard":

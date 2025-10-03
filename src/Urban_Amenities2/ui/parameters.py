@@ -122,4 +122,3 @@ class ParameterAdjuster:
     def to_dict(self) -> dict[str, float]:
         """Export modified parameters as dictionary."""
         return self.modified_params.copy()
-

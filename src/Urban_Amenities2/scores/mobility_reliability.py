@@ -53,9 +53,9 @@ def compute_service_span(
     services["coverage_score"] = (
         services[[early_column, late_column, weekend_column]].sum(axis=1) / 3.0
     )
-    services[output_column] = (services[["hours_score", "coverage_score"]].mean(axis=1) * 100.0).clip(
-        0.0, 100.0
-    )
+    services[output_column] = (
+        services[["hours_score", "coverage_score"]].mean(axis=1) * 100.0
+    ).clip(0.0, 100.0)
     summary = services.groupby(HEX_ID)[output_column].max().reset_index()
     return summary
 
@@ -81,9 +81,11 @@ def compute_on_time_reliability(
     frame["weight"] = frame[frequency_column].clip(lower=0.0)
     grouped = frame.groupby(HEX_ID)
     weighted = grouped.apply(
-        lambda df: 0.0
-        if df["weight"].sum() == 0
-        else float(np.average(df[on_time_column].clip(0.0, 100.0), weights=df["weight"]))
+        lambda df: (
+            0.0
+            if df["weight"].sum() == 0
+            else float(np.average(df[on_time_column].clip(0.0, 100.0), weights=df["weight"]))
+        )
     )
     return weighted.reset_index().rename(columns={0: output_column})
 

@@ -1,4 +1,5 @@
 """Run manifest generation and storage."""
+
 from __future__ import annotations
 
 import json

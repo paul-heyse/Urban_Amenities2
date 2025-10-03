@@ -93,7 +93,11 @@ def build_feature_collection(
     frame: TabularData,
     properties: Sequence[str] | None = None,
 ) -> GeoJSONFeatureCollection:
-    requested = list(properties) if properties else [column for column in frame.columns if column != "hex_id"]
+    requested = (
+        list(properties)
+        if properties
+        else [column for column in frame.columns if column != "hex_id"]
+    )
     columns = ["hex_id", *requested]
     subset_obj = frame[[column for column in columns if column in frame.columns]]
     subset = cast(TabularData, subset_obj)
@@ -129,8 +133,7 @@ def export_csv(
     export_frame = frame.copy()
     if include_geometry and "lat" not in export_frame.columns:
         centroids = [
-            _hex_centroid(str(hex_id))
-            for hex_id in cast(Iterable[Any], export_frame["hex_id"])
+            _hex_centroid(str(hex_id)) for hex_id in cast(Iterable[Any], export_frame["hex_id"])
         ]
         export_frame["lat"] = [lat for lat, _ in centroids]
         export_frame["lon"] = [lon for _, lon in centroids]
@@ -203,4 +206,3 @@ __all__ = [
     "export_parquet",
     "export_shapefile",
 ]
-

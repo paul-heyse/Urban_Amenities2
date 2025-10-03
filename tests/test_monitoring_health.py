@@ -49,7 +49,11 @@ def test_run_health_checks_success(monkeypatch, tmp_path):
     monkeypatch.setattr("requests.post", fake_post)
 
     results = run_health_checks(
-        osrm_urls={"car": "http://osrm.car", "bike": "http://osrm.bike", "foot": "http://osrm.foot"},
+        osrm_urls={
+            "car": "http://osrm.car",
+            "bike": "http://osrm.bike",
+            "foot": "http://osrm.foot",
+        },
         otp_url="http://otp/graphql",
         params_path=params_path,
         data_paths=[(data_path, 7)],
@@ -75,7 +79,13 @@ def test_run_health_checks_warn_on_stale_data(monkeypatch, tmp_path):
     stale_path = tmp_path / "stale.parquet"
     stale_path.write_text("old")
     ninety_one_days = 91 * 24 * 3600
-    os.utime(stale_path, (stale_path.stat().st_atime - ninety_one_days, stale_path.stat().st_mtime - ninety_one_days))
+    os.utime(
+        stale_path,
+        (
+            stale_path.stat().st_atime - ninety_one_days,
+            stale_path.stat().st_mtime - ninety_one_days,
+        ),
+    )
 
     psutil_stub = types.SimpleNamespace(
         disk_usage=lambda _: types.SimpleNamespace(free=200 * 1024**3),

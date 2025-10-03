@@ -29,7 +29,9 @@ def layout(**_: Any) -> html.Div:
                 className="export-buttons",
                 children=[
                     html.Button("Download CSV", id="export-csv", className="btn btn-secondary"),
-                    html.Button("Download GeoJSON", id="export-geojson", className="btn btn-secondary"),
+                    html.Button(
+                        "Download GeoJSON", id="export-geojson", className="btn btn-secondary"
+                    ),
                 ],
             ),
             dcc.Download(id="download-data"),

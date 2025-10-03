@@ -54,9 +54,7 @@ class RateLimiter:
                 now = time.monotonic()
                 elapsed = now - self._timestamp
                 if elapsed > 0:
-                    self._tokens = min(
-                        self.capacity, self._tokens + elapsed * self.rate
-                    )
+                    self._tokens = min(self.capacity, self._tokens + elapsed * self.rate)
                 self._timestamp = now
                 if self._tokens >= 1.0:
                     self._tokens -= 1.0

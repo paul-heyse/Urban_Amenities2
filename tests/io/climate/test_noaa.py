@@ -34,7 +34,9 @@ class StubSession:
         self._responses = list(responses)
         self.calls: list[tuple[str, dict[str, Any], dict[str, Any] | None]] = []
 
-    def get(self, url: str, *, params: dict[str, Any], headers: dict[str, str] | None, timeout: int) -> StubResponse:
+    def get(
+        self, url: str, *, params: dict[str, Any], headers: dict[str, str] | None, timeout: int
+    ) -> StubResponse:
         self.calls.append((url, params, headers))
         if not self._responses:
             raise AssertionError("no responses configured")
@@ -112,13 +114,22 @@ def test_compute_comfort_index() -> None:
     ingestor = noaa.NoaaNormalsIngestor()
     comfort = ingestor.compute_comfort_index(frame)
     assert len(comfort) == 2
-    assert comfort.set_index("hex_id").loc["a", "sigma_out"] > comfort.set_index("hex_id").loc["b", "sigma_out"]
+    assert (
+        comfort.set_index("hex_id").loc["a", "sigma_out"]
+        > comfort.set_index("hex_id").loc["b", "sigma_out"]
+    )
 
 
 def test_ingest_writes_parquet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     response = StubResponse(
         [
-            {"station": "001", "month": "01", "MLY-TAVG-NORMAL": "10", "latitude": "40", "longitude": "-105"}
+            {
+                "station": "001",
+                "month": "01",
+                "MLY-TAVG-NORMAL": "10",
+                "latitude": "40",
+                "longitude": "-105",
+            }
         ]
     )
     session = StubSession([response])

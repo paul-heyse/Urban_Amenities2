@@ -18,7 +18,9 @@ def test_ingest_overture_places_invokes_ingestor(
     output = tmp_path / "output.parquet"
     calls: dict[str, Any] = {}
 
-    def fake_ingest_places(src: Path, crosswalk_path: Path, bbox: object, output_path: Path) -> None:
+    def fake_ingest_places(
+        src: Path, crosswalk_path: Path, bbox: object, output_path: Path
+    ) -> None:
         calls["arguments"] = {
             "src": src,
             "crosswalk": crosswalk_path,

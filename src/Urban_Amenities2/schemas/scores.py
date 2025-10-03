@@ -1,4 +1,5 @@
 """Pandera schemas describing AUCS scoring outputs."""
+
 from __future__ import annotations
 
 import pandera as pa

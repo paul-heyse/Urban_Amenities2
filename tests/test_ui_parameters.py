@@ -26,7 +26,15 @@ def test_parameter_adjuster_diff(default_params: AUCSParams) -> None:
 
 def test_parameter_adjuster_validation(default_params: AUCSParams) -> None:
     adjuster = ParameterAdjuster(default_params)
-    for key in ["weight_ea", "weight_lca", "weight_muhaa", "weight_jea", "weight_morr", "weight_cte", "weight_sou"]:
+    for key in [
+        "weight_ea",
+        "weight_lca",
+        "weight_muhaa",
+        "weight_jea",
+        "weight_morr",
+        "weight_cte",
+        "weight_sou",
+    ]:
         adjuster.update_parameter(key, adjuster.original_params[key])
     is_valid, message = adjuster.validate_weights()
     assert is_valid

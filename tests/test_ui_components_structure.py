@@ -66,7 +66,9 @@ def test_filter_and_parameter_panels() -> None:
 
     filter_panel = build_filter_panel(["CO"], ["Denver"], ["Denver County"])
     assert isinstance(filter_panel.children[0], html.Details)
-    dropdowns = [child for child in filter_panel.children[0].children if isinstance(child, dcc.Dropdown)]
+    dropdowns = [
+        child for child in filter_panel.children[0].children if isinstance(child, dcc.Dropdown)
+    ]
     assert len(dropdowns) == 3
 
     weights = {"aucs": 50.0, "ea": 50.0}
@@ -77,7 +79,11 @@ def test_filter_and_parameter_panels() -> None:
         if not isinstance(section, html.Details):
             continue
         parameter_list = next(
-            (child for child in section.children if isinstance(child, html.Div) and child.className == "parameter-list"),
+            (
+                child
+                for child in section.children
+                if isinstance(child, html.Div) and child.className == "parameter-list"
+            ),
             None,
         )
         assert parameter_list is not None
@@ -161,7 +167,9 @@ def test_send_file_delegates_to_dash(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
     captured: dict[str, object] = {}
 
-    def _fake_send_file(path_str: str, *, filename: str | None, type: str | None) -> dict[str, object]:
+    def _fake_send_file(
+        path_str: str, *, filename: str | None, type: str | None
+    ) -> dict[str, object]:
         captured["path"] = path_str
         captured["filename"] = filename
         captured["type"] = type

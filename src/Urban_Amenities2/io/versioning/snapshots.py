@@ -30,7 +30,9 @@ class SnapshotRegistry:
         latest = self.latest_for(source)
         if latest and latest.sha256 == sha:
             return latest
-        record = SnapshotRecord(source=source, url=url, sha256=sha, timestamp=datetime.utcnow().isoformat())
+        record = SnapshotRecord(
+            source=source, url=url, sha256=sha, timestamp=datetime.utcnow().isoformat()
+        )
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(record.to_json() + "\n")
         return record

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from importlib import import_module, reload
 from pathlib import Path
-from typing import Callable
 
 import dash
 import pandas as pd
 import pytest
 from dash import Dash, dcc, html
 
+from Urban_Amenities2.ui import callbacks as callbacks_module
 from Urban_Amenities2.ui.config import UISettings
 from Urban_Amenities2.ui.data_loader import DataContext, DatasetVersion
-from Urban_Amenities2.ui import callbacks as callbacks_module
 
 
 @pytest.fixture
@@ -80,7 +80,9 @@ def data_context(ui_settings: UISettings, tmp_path: Path) -> DataContext:
             "resolution": [9, 9],
         }
     )
-    context.version = DatasetVersion(identifier="test", created_at=pd.Timestamp(2024, 1, 1).to_pydatetime(), path=Path("."))
+    context.version = DatasetVersion(
+        identifier="test", created_at=pd.Timestamp(2024, 1, 1).to_pydatetime(), path=Path(".")
+    )
     context.base_resolution = 9
     context.bounds = (-105.0, 39.0, -104.0, 40.0)
     context.overlays = {"states": {"type": "FeatureCollection", "features": []}}
@@ -108,7 +110,9 @@ def test_home_layout_uses_context(dash_app, data_context, monkeypatch) -> None:
     assert getattr(summary_table, "id", None) == "summary-table"
 
 
-def test_data_management_layout_shows_version(dash_app, data_context, ui_settings, monkeypatch) -> None:
+def test_data_management_layout_shows_version(
+    dash_app, data_context, ui_settings, monkeypatch
+) -> None:
     data_management = import_module("Urban_Amenities2.ui.layouts.data_management")
     monkeypatch.setattr(data_management, "DATA_CONTEXT", data_context)
     monkeypatch.setattr(data_management, "SETTINGS", ui_settings)
@@ -166,7 +170,7 @@ def test_register_layouts_initialises_callbacks(monkeypatch, ui_settings) -> Non
             self.settings = settings
 
         @classmethod
-        def from_settings(cls, settings: UISettings) -> "_DummyContext":
+        def from_settings(cls, settings: UISettings) -> _DummyContext:
             instance = cls(settings)
             captured["context"] = instance
             captured["settings"] = settings
@@ -199,7 +203,9 @@ def test_register_layouts_initialises_callbacks(monkeypatch, ui_settings) -> Non
 
 
 def test_update_map_callback_builds_overlay_payload(monkeypatch, ui_settings) -> None:
-    captured_callbacks: list[tuple[tuple[object, ...], dict[str, object], Callable[..., object]]] = []
+    captured_callbacks: list[
+        tuple[tuple[object, ...], dict[str, object], Callable[..., object]]
+    ] = []
 
     def _capture_callback(app: Dash, *args: object, **kwargs: object):
         def decorator(func: callable) -> callable:
@@ -272,9 +278,7 @@ def test_update_map_callback_builds_overlay_payload(monkeypatch, ui_settings) ->
             self.filters.append((state, metro, county, score_range))
             return self.scores.iloc[[0]].copy()
 
-        def frame_for_resolution(
-            self, resolution: int, columns: list[str]
-        ) -> pd.DataFrame:
+        def frame_for_resolution(self, resolution: int, columns: list[str]) -> pd.DataFrame:
             frame = self.scores[columns + ["hex_id"]].copy()
             frame["count"] = 1
             return frame
@@ -329,4 +333,10 @@ def test_update_map_callback_builds_overlay_payload(monkeypatch, ui_settings) ->
     assert description == callbacks_module.SUBSCORE_DESCRIPTIONS["EA"]
     assert set(overlay_calls["selected"]) == {"states", "city_labels"}
     assert overlay_calls["opacity"] == 0.6
-    assert choropleth_calls["hover_columns"] == ["EA", "aucs", "count", "centroid_lat", "centroid_lon"]
+    assert choropleth_calls["hover_columns"] == [
+        "EA",
+        "aucs",
+        "count",
+        "centroid_lat",
+        "centroid_lon",
+    ]

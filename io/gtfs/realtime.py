@@ -34,12 +34,16 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             arrival_payload = payload.get("arrival")
             return cls(
                 stop_sequence=int(stop) if isinstance(stop, (int, float)) else None,
-                departure=_StopTimeEvent.from_dict(departure_payload)
-                if isinstance(departure_payload, dict)
-                else None,
-                arrival=_StopTimeEvent.from_dict(arrival_payload)
-                if isinstance(arrival_payload, dict)
-                else None,
+                departure=(
+                    _StopTimeEvent.from_dict(departure_payload)
+                    if isinstance(departure_payload, dict)
+                    else None
+                ),
+                arrival=(
+                    _StopTimeEvent.from_dict(arrival_payload)
+                    if isinstance(arrival_payload, dict)
+                    else None
+                ),
             )
 
     @dataclass
@@ -68,9 +72,11 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
                     if isinstance(item, dict)
                 ]
             return cls(
-                trip=_TripDescriptor.from_dict(trip_payload)
-                if isinstance(trip_payload, dict)
-                else None,
+                trip=(
+                    _TripDescriptor.from_dict(trip_payload)
+                    if isinstance(trip_payload, dict)
+                    else None
+                ),
                 stop_time_update=updates,
             )
 
@@ -85,9 +91,11 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for test environments
             trip_update_payload = payload.get("trip_update")
             return cls(
                 id=str(identifier) if identifier is not None else "",
-                trip_update=_TripUpdate.from_dict(trip_update_payload)
-                if isinstance(trip_update_payload, dict)
-                else None,
+                trip_update=(
+                    _TripUpdate.from_dict(trip_update_payload)
+                    if isinstance(trip_update_payload, dict)
+                    else None
+                ),
             )
 
     @dataclass

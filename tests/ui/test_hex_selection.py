@@ -34,9 +34,7 @@ def test_hex_selector_selection_flow(sample_scores: pd.DataFrame) -> None:
     assert selector.selected_hexes == []
 
 
-def test_hex_selector_get_details_and_neighbors(
-    sample_scores: pd.DataFrame, fake_h3
-) -> None:
+def test_hex_selector_get_details_and_neighbors(sample_scores: pd.DataFrame, fake_h3) -> None:
     selector = HexSelector(sample_scores)
     selector.select_hex("abc123")
 

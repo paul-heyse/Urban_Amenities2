@@ -51,7 +51,9 @@ def test_wikidata_enricher_enriches_dataframe() -> None:
             self.calls.append("called")
             return {"results": {"bindings": []}}
 
-    pois = pd.DataFrame({"poi_id": ["a", "b"], "name": ["One", "Two"], "lat": [1.0, 2.0], "lon": [3.0, 4.0]})
+    pois = pd.DataFrame(
+        {"poi_id": ["a", "b"], "name": ["One", "Two"], "lat": [1.0, 2.0], "lon": [3.0, 4.0]}
+    )
     client = RecordingClient()
     enricher = wikidata.WikidataEnricher(client=client)
     result = enricher.enrich(pois)

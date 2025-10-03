@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Iterable
 
 import pandas as pd
 import pytest
@@ -18,7 +18,7 @@ class FakeShape:
     def is_empty(self) -> bool:
         return not self.coordinates
 
-    def simplify(self, _tolerance: float, preserve_topology: bool = True) -> "FakeShape":
+    def simplify(self, _tolerance: float, preserve_topology: bool = True) -> FakeShape:
         return self
 
 

@@ -22,11 +22,9 @@ class _VirtualMemory(Protocol):
 
 
 class _PsutilModule(Protocol):
-    def disk_usage(self, path: str) -> _DiskUsage:
-        ...
+    def disk_usage(self, path: str) -> _DiskUsage: ...
 
-    def virtual_memory(self) -> _VirtualMemory:
-        ...
+    def virtual_memory(self) -> _VirtualMemory: ...
 
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -205,9 +203,7 @@ def _check_params(path: Path) -> HealthCheckResult:
     )
 
 
-def _check_data_paths(
-    data_paths: Sequence[tuple[Path, int | None]]
-) -> Iterable[HealthCheckResult]:
+def _check_data_paths(data_paths: Sequence[tuple[Path, int | None]]) -> Iterable[HealthCheckResult]:
     results: list[HealthCheckResult] = []
     for path, max_age in data_paths:
         name = f"data:{path.name}"

@@ -74,7 +74,11 @@ class RIDBIngestor:
             return frame.assign(hex_id=[])
         return points_to_hex(frame, lat_column="lat", lon_column="lon", hex_column="hex_id")
 
-    def ingest(self, states: Iterable[str], output_path: Path = Path("data/processed/recreation_areas.parquet")) -> pd.DataFrame:
+    def ingest(
+        self,
+        states: Iterable[str],
+        output_path: Path = Path("data/processed/recreation_areas.parquet"),
+    ) -> pd.DataFrame:
         frame = self.fetch(states)
         indexed = self.index_to_hex(frame)
         output_path.parent.mkdir(parents=True, exist_ok=True)

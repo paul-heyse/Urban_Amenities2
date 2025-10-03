@@ -96,9 +96,7 @@ class CacheManager:
             return data
         return gzip.decompress(data)
 
-    def get(
-        self, source: str, entity_type: str, entity_id: str, default: Any = None
-    ) -> Any | None:
+    def get(self, source: str, entity_type: str, entity_id: str, default: Any = None) -> Any | None:
         """
         Get a value from the cache.
 
@@ -256,4 +254,3 @@ class CacheManager:
 
         logger.info("cache_warmed", count=count)
         return count
-

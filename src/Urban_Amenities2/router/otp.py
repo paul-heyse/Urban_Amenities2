@@ -61,7 +61,11 @@ class OTPClient:
         itineraries = plan.get("itineraries") if isinstance(plan, Mapping) else None
         if not isinstance(itineraries, Sequence):
             return []
-        return [self._parse_itinerary(itinerary) for itinerary in itineraries if isinstance(itinerary, Mapping)]
+        return [
+            self._parse_itinerary(itinerary)
+            for itinerary in itineraries
+            if isinstance(itinerary, Mapping)
+        ]
 
     def _parse_itinerary(self, itinerary: Mapping[str, object]) -> dict[str, object]:
         walk = _as_float(itinerary.get("walkTime"))
@@ -71,9 +75,7 @@ class OTPClient:
         fare = 0.0
         if isinstance(fare_payload, Mapping):
             fare_amount = (
-                fare_payload.get("fare")
-                if isinstance(fare_payload.get("fare"), Mapping)
-                else None
+                fare_payload.get("fare") if isinstance(fare_payload.get("fare"), Mapping) else None
             )
             if isinstance(fare_amount, Mapping):
                 regular = fare_amount.get("regular")

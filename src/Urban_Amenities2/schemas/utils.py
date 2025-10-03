@@ -1,4 +1,5 @@
 """Utility decorators for schema validation in pipelines."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -10,7 +11,9 @@ import pandera as pa
 T = TypeVar("T")
 
 
-def validate_with_schema(schema: pa.DataFrameSchema) -> Callable[[Callable[..., T]], Callable[..., T]]:
+def validate_with_schema(
+    schema: pa.DataFrameSchema,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator that validates the first pandas DataFrame argument against a schema."""
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:

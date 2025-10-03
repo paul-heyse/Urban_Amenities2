@@ -53,6 +53,7 @@ def test_fetch_uses_cache_on_request_failure(tmp_path: Path, dummy_rate_limiter,
     }
     session = RecordingSession([StubResponse(payload)])
     _patch_retry(monkeypatch)
+
     class FixedDatetime(datetime):
         @classmethod
         def utcnow(cls) -> datetime:

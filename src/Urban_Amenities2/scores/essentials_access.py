@@ -90,8 +90,12 @@ class EssentialsAccessConfig:
                 diversity=_diversity_for(name),
             )
 
-        threshold_value = shortfall_threshold if shortfall_threshold is not None else _DEFAULT_SHORTFALL_THRESHOLD
-        penalty_value = shortfall_penalty if shortfall_penalty is not None else _DEFAULT_SHORTFALL_PENALTY
+        threshold_value = (
+            shortfall_threshold if shortfall_threshold is not None else _DEFAULT_SHORTFALL_THRESHOLD
+        )
+        penalty_value = (
+            shortfall_penalty if shortfall_penalty is not None else _DEFAULT_SHORTFALL_PENALTY
+        )
         cap_value = shortfall_cap if shortfall_cap is not None else _DEFAULT_SHORTFALL_CAP
         topk_value = top_k if top_k is not None else _DEFAULT_TOP_K
         batch_value = batch_size if batch_size is not None else _DEFAULT_BATCH_SIZE
@@ -144,7 +148,9 @@ class EssentialsAccessCalculator:
         hex_ids = data["hex_id"].unique()
         diversity_config = {}
         for category in self.config.categories:
-            params = self.config.category_params.get(category, EssentialCategoryConfig(1.0, 1.0, DiversityConfig()))
+            params = self.config.category_params.get(
+                category, EssentialCategoryConfig(1.0, 1.0, DiversityConfig())
+            )
             diversity_config[category] = params.diversity
         diversity = compute_diversity(
             data,
@@ -154,13 +160,24 @@ class EssentialsAccessCalculator:
             config=diversity_config,
         )
         category_frames: list[pd.DataFrame] = []
-        explainability: dict[str, dict[str, list[dict[str, object]]]] = {hex_id: {} for hex_id in hex_ids}
-        batches = [hex_ids] if self.config.batch_size <= 0 else [hex_ids[i : i + self.config.batch_size] for i in range(0, len(hex_ids), self.config.batch_size)]
+        explainability: dict[str, dict[str, list[dict[str, object]]]] = {
+            hex_id: {} for hex_id in hex_ids
+        }
+        batches = (
+            [hex_ids]
+            if self.config.batch_size <= 0
+            else [
+                hex_ids[i : i + self.config.batch_size]
+                for i in range(0, len(hex_ids), self.config.batch_size)
+            ]
+        )
         for batch_index, batch_hexes in enumerate(batches, start=1):
             LOGGER.info("ea_batch", batch=batch_index, total=len(batches), size=len(batch_hexes))
             batch_data = data[data["hex_id"].isin(batch_hexes)]
             for category in self.config.categories:
-                params = self.config.category_params.get(category, EssentialCategoryConfig(1.0, 1.0, DiversityConfig()))
+                params = self.config.category_params.get(
+                    category, EssentialCategoryConfig(1.0, 1.0, DiversityConfig())
+                )
                 cat_data = batch_data[batch_data["category"] == category]
                 if cat_data.empty:
                     empty = pd.DataFrame(
@@ -195,17 +212,30 @@ class EssentialsAccessCalculator:
                         "satiation": satiation_scores,
                     }
                 )
-                frame = frame.merge(diversity[diversity["category"] == category], on=["hex_id", "category"], how="left")
+                frame = frame.merge(
+                    diversity[diversity["category"] == category],
+                    on=["hex_id", "category"],
+                    how="left",
+                )
                 frame["diversity_multiplier"] = frame["diversity_multiplier"].fillna(1.0)
                 frame["entropy"] = frame["entropy"].fillna(0.0)
                 frame["score"] = np.clip(frame["satiation"] * frame["diversity_multiplier"], 0, 100)
                 category_frames.append(frame)
                 for hex_id in frame["hex_id"]:
-                    explainability.setdefault(hex_id, {})[category] = self._extract_top(cat_data, hex_id, category)
-        category_scores = pd.concat(category_frames, ignore_index=True) if category_frames else pd.DataFrame()
+                    explainability.setdefault(hex_id, {})[category] = self._extract_top(
+                        cat_data, hex_id, category
+                    )
+        category_scores = (
+            pd.concat(category_frames, ignore_index=True) if category_frames else pd.DataFrame()
+        )
         ea_records = []
         for hex_id, group in category_scores.groupby("hex_id"):
-            penalty = shortfall_penalty(group["score"], threshold=self.config.shortfall_threshold, per_miss=self.config.shortfall_penalty, cap=self.config.shortfall_cap)
+            penalty = shortfall_penalty(
+                group["score"],
+                threshold=self.config.shortfall_threshold,
+                per_miss=self.config.shortfall_penalty,
+                cap=self.config.shortfall_cap,
+            )
             mean_score = group["score"].mean() if not group.empty else 0.0
             final_score = max(mean_score - penalty, 0.0)
             ea_records.append(
@@ -220,7 +250,9 @@ class EssentialsAccessCalculator:
         ea_scores = pd.DataFrame.from_records(ea_records)
         return ea_scores, category_scores
 
-    def _extract_top(self, cat_data: pd.DataFrame, hex_id: str, category: str) -> list[dict[str, object]]:
+    def _extract_top(
+        self, cat_data: pd.DataFrame, hex_id: str, category: str
+    ) -> list[dict[str, object]]:
         subset = cat_data[cat_data["hex_id"] == hex_id]
         if subset.empty:
             return []

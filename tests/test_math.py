@@ -40,7 +40,9 @@ def test_compute_z_returns_float64_and_non_negative() -> None:
 def test_compute_z_compiles_numba_and_accepts_lists() -> None:
     quality = [[0.6, 0.2, 0.1]]
     accessibility = [[1.5, 0.5, 0.25]]
-    values = compute_z(np.asarray(quality, dtype=float), np.asarray(accessibility, dtype=float), rho=0.5)
+    values = compute_z(
+        np.asarray(quality, dtype=float), np.asarray(accessibility, dtype=float), rho=0.5
+    )
     assert values.shape == (1, 3)
     assert np.all(np.isfinite(values))
     assert getattr(compute_z, "signatures", [])  # numba registers signatures after compilation
@@ -176,12 +178,18 @@ def test_ces_aggregate_monotonic(pairs: list[tuple[float, float]], rho: float) -
     quality = np.array([pair[0] for pair in pairs], dtype=float)
     accessibility = np.array([pair[1] for pair in pairs], dtype=float)
     base = ces_aggregate(quality[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1)[0]
-    scaled = ces_aggregate((quality * 1.1)[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1)[0]
+    scaled = ces_aggregate(
+        (quality * 1.1)[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1
+    )[0]
     assert scaled >= base - 1e-8
 
 
 @settings(deadline=None)
-@given(ces_pair_strategy, st.floats(-0.9, 1.0, allow_nan=False, allow_infinity=False), st.floats(0.1, 4.0))
+@given(
+    ces_pair_strategy,
+    st.floats(-0.9, 1.0, allow_nan=False, allow_infinity=False),
+    st.floats(0.1, 4.0),
+)
 def test_ces_homogeneous_in_quality(
     pairs: list[tuple[float, float]], rho: float, scale: float
 ) -> None:
@@ -191,12 +199,18 @@ def test_ces_homogeneous_in_quality(
     assume(np.all(accessibility > 0))
     assume(abs(rho) > 1e-6)
     base = ces_aggregate(quality[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1)[0]
-    scaled = ces_aggregate((quality * scale)[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1)[0]
+    scaled = ces_aggregate(
+        (quality * scale)[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1
+    )[0]
     assert pytest.approx(scaled, rel=1e-6, abs=1e-6) == scale * base
 
 
 @settings(deadline=None)
-@given(ces_pair_strategy, st.floats(-0.9, 1.0, allow_nan=False, allow_infinity=False), st.floats(0.1, 4.0))
+@given(
+    ces_pair_strategy,
+    st.floats(-0.9, 1.0, allow_nan=False, allow_infinity=False),
+    st.floats(0.1, 4.0),
+)
 def test_ces_homogeneous_in_accessibility(
     pairs: list[tuple[float, float]], rho: float, scale: float
 ) -> None:
@@ -206,7 +220,9 @@ def test_ces_homogeneous_in_accessibility(
     assume(np.all(quality > 0))
     assume(abs(rho) > 1e-6)
     base = ces_aggregate(quality[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1)[0]
-    scaled = ces_aggregate(quality[np.newaxis, :], (accessibility * scale)[np.newaxis, :], rho, axis=1)[0]
+    scaled = ces_aggregate(
+        quality[np.newaxis, :], (accessibility * scale)[np.newaxis, :], rho, axis=1
+    )[0]
     assert pytest.approx(scaled, rel=1e-6, abs=1e-6) == scale * base
 
 
@@ -321,4 +337,7 @@ def test_mode_utility_returns_expected_types() -> None:
     comfort = np.array([0.5, 1.0])
     result = mode_utility(gtc, comfort, params)
     assert result.dtype == np.float64
-    assert pytest.approx(result[0]) == params.beta0 - params.alpha * gtc[0] + params.comfort_weight * comfort[0]
+    assert (
+        pytest.approx(result[0])
+        == params.beta0 - params.alpha * gtc[0] + params.comfort_weight * comfort[0]
+    )

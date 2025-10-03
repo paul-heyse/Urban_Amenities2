@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/hex_selection.py
+# hypothesis_version: 6.140.2
+
+[0.0, 'CTE', 'EA', 'JEA', 'LCA', 'MORR', 'MUHAA', 'SOU', 'aucs', 'category', 'centroid_lat', 'centroid_lon', 'county', 'cte', 'ea', 'h3', 'hex_already_selected', 'hex_deselected', 'hex_id', 'hex_not_found', 'hex_selected', 'jea', 'lat', 'lca', 'lon', 'metro', 'morr', 'muhaa', 'name', 'population', 'score', 'selection_cleared', 'sou', 'state', 'top_amenities', 'top_modes']

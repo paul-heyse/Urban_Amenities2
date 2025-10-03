@@ -96,13 +96,18 @@ class CategoryMatcher:
             return match.aucstype, match.group, match.notes
 
         matches = frame.apply(_resolve, axis=1)
-        result = pd.DataFrame(matches.tolist(), columns=[output_column, f"{output_column}_group", f"{output_column}_notes"])
+        result = pd.DataFrame(
+            matches.tolist(),
+            columns=[output_column, f"{output_column}_group", f"{output_column}_notes"],
+        )
         for column in result.columns:
             frame[column] = result[column]
         return frame
 
 
-def load_crosswalk(path: Path | str = Path("docs/AUCS place category crosswalk")) -> CategoryMatcher:
+def load_crosswalk(
+    path: Path | str = Path("docs/AUCS place category crosswalk"),
+) -> CategoryMatcher:
     """Load the AUCS crosswalk YAML from the provided documentation file."""
 
     path = Path(path)
@@ -156,7 +161,9 @@ def _normalise_category(category: str) -> tuple[str, ...]:
     if not category:
         return ()
     cleaned = category.replace("|", " ")
-    parts = [part.strip().lower().replace(" ", "_") for part in cleaned.replace(">", ".").split(".")]
+    parts = [
+        part.strip().lower().replace(" ", "_") for part in cleaned.replace(">", ".").split(".")
+    ]
     return tuple(part for part in parts if part)
 
 

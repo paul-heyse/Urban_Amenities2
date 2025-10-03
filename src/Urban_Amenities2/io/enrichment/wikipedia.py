@@ -71,9 +71,7 @@ class WikipediaClient:
                 return self._to_frame(cached)
             raise
         except requests.RequestException as exc:
-            LOGGER.warning(
-                "wikipedia_fetch_failed", title=self._safe_title(title), error=str(exc)
-            )
+            LOGGER.warning("wikipedia_fetch_failed", title=self._safe_title(title), error=str(exc))
             if cached is not None:
                 return self._to_frame(cached)
             raise

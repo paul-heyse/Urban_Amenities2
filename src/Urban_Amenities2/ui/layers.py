@@ -111,10 +111,7 @@ _OVERLAY_COLOR: dict[OverlayId, str] = {
 def basemap_options() -> list[BasemapOption]:
     """Return dropdown options for map styles."""
 
-    return [
-        {"label": meta["label"], "value": value}
-        for value, meta in _BASEMAP_STYLES.items()
-    ]
+    return [{"label": meta["label"], "value": value} for value, meta in _BASEMAP_STYLES.items()]
 
 
 def resolve_basemap_style(style: str | None) -> str:
@@ -262,7 +259,9 @@ def build_overlay_payload(
         stops = context.get_overlay("transit_stops")
         features = stops.get("features") if isinstance(stops, Mapping) else None
         if isinstance(features, Sequence):
-            _point_trace(features, "Transit stops", {"size": 9, "color": "#0ea5e9", "opacity": 0.85})
+            _point_trace(
+                features, "Transit stops", {"size": 9, "color": "#0ea5e9", "opacity": 0.85}
+            )
 
     if "city_labels" in selected_set:
         _point_trace(

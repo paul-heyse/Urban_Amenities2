@@ -172,11 +172,15 @@ class LeisureCultureAccessCalculator:
         if self.config.quality_column not in pois.columns:
             raise KeyError(f"pois dataframe missing '{self.config.quality_column}' column")
         frame = pois.copy()
-        frame[self.config.category_column] = frame[self.config.category_column].astype(str).str.lower()
+        frame[self.config.category_column] = (
+            frame[self.config.category_column].astype(str).str.lower()
+        )
         frame = frame[frame[self.config.category_column].isin(self.config.categories)]
         multiplier_col = self.config.novelty.multiplier_column
         if novelty is not None:
-            novelty_table = compute_novelty_table(novelty, self.config.novelty)[["poi_id", multiplier_col]]
+            novelty_table = compute_novelty_table(novelty, self.config.novelty)[
+                ["poi_id", multiplier_col]
+            ]
             frame = frame.merge(novelty_table, on="poi_id", how="left")
         else:
             frame[multiplier_col] = 1.0
@@ -219,16 +223,26 @@ class LeisureCultureAccessCalculator:
                     return float(np.exp(np.sum(weights * np.log(np.clip(quality, 1e-12, 1.0)))))
                 if abs(rho_value - 1.0) < 1e-6:
                     return float(np.sum(weights * quality))
-                return float(np.power(np.sum(weights * np.power(quality, rho_value)), 1.0 / rho_value))
+                return float(
+                    np.power(np.sum(weights * np.power(quality, rho_value)), 1.0 / rho_value)
+                )
 
-            intensity = group.groupby(id_column, dropna=False).apply(_aggregate, include_groups=False)
+            intensity = group.groupby(id_column, dropna=False).apply(
+                _aggregate, include_groups=False
+            )
             if intensity.empty:
                 continue
             exposure = np.maximum(intensity.to_numpy(dtype=float) * self.config.exposure_scale, 0.0)
             kappa = self.config.kappa_for(category)
             saturated = apply_satiation(exposure, kappa)
             for hex_id, value in zip(intensity.index, saturated, strict=False):
-                scores.append({id_column: hex_id, "category": category, "score": float(np.clip(value, 0.0, 100.0))})
+                scores.append(
+                    {
+                        id_column: hex_id,
+                        "category": category,
+                        "score": float(np.clip(value, 0.0, 100.0)),
+                    }
+                )
         if not scores:
             return pd.DataFrame({id_column: [], "category": [], "score": []})
         return pd.DataFrame(scores)
@@ -251,11 +265,15 @@ class LeisureCultureAccessCalculator:
         if np.all(value_array == 0):
             return 0.0
         if abs(rho) < 1e-6:
-            aggregated = float(np.exp(np.sum(weight_array * np.log(np.clip(value_array, 1e-12, 1.0)))))
+            aggregated = float(
+                np.exp(np.sum(weight_array * np.log(np.clip(value_array, 1e-12, 1.0))))
+            )
         elif abs(rho - 1.0) < 1e-6:
             aggregated = float(np.sum(weight_array * value_array))
         else:
-            aggregated = float(np.power(np.sum(weight_array * np.power(value_array, rho)), 1.0 / rho))
+            aggregated = float(
+                np.power(np.sum(weight_array * np.power(value_array, rho)), 1.0 / rho)
+            )
         return float(np.clip(aggregated * 100.0, 0.0, 100.0))
 
     def compute(
@@ -269,7 +287,9 @@ class LeisureCultureAccessCalculator:
         prepared = self._prepare_pois(pois, novelty)
         category_scores = self._category_scores(prepared, accessibility, id_column=id_column)
         if category_scores.empty:
-            empty = pd.DataFrame({id_column: [], self.config.output_column: [], "category_scores": []})
+            empty = pd.DataFrame(
+                {id_column: [], self.config.output_column: [], "category_scores": []}
+            )
             return empty, category_scores
         matrix = (
             category_scores.pivot(index=id_column, columns="category", values="score")
@@ -279,12 +299,15 @@ class LeisureCultureAccessCalculator:
         summary = matrix.copy()
         summary[self.config.output_column] = summary.apply(self._aggregate_cross_category, axis=1)
         summary["category_scores"] = summary.apply(
-            lambda row: {category: float(row[category]) for category in self.config.categories}, axis=1
+            lambda row: {category: float(row[category]) for category in self.config.categories},
+            axis=1,
         )
         summary = summary[[self.config.output_column, "category_scores"]]
         summary.index.name = id_column
         summary = summary.reset_index()
-        category_scores = category_scores.sort_values([id_column, "category"]).reset_index(drop=True)
+        category_scores = category_scores.sort_values([id_column, "category"]).reset_index(
+            drop=True
+        )
         LOGGER.info(
             "lca_compute",
             hexes=len(summary),

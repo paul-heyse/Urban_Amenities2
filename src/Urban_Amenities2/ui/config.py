@@ -21,15 +21,21 @@ class UISettings:
     secret_key: str = field(default_factory=lambda: os.getenv("UI_SECRET_KEY", "change-me"))
     mapbox_token: str | None = field(default_factory=lambda: os.getenv("MAPBOX_TOKEN"))
     cors_origins: list[str] = field(default_factory=lambda: _split_env("UI_CORS_ORIGINS", "*"))
-    enable_cors: bool = field(default_factory=lambda: os.getenv("UI_ENABLE_CORS", "true").lower() == "true")
+    enable_cors: bool = field(
+        default_factory=lambda: os.getenv("UI_ENABLE_CORS", "true").lower() == "true"
+    )
     data_path: Path = field(default_factory=lambda: Path(os.getenv("UI_DATA_PATH", "data/outputs")))
     log_level: str = field(default_factory=lambda: os.getenv("UI_LOG_LEVEL", "INFO"))
     title: str = field(default_factory=lambda: os.getenv("UI_TITLE", "Urban Amenities Explorer"))
     reload_interval_seconds: int = field(
         default_factory=lambda: int(os.getenv("UI_RELOAD_INTERVAL", "30"))
     )
-    hex_resolutions: list[int] = field(default_factory=lambda: _split_int_env("UI_HEX_RESOLUTIONS", "6,7,8,9"))
-    summary_percentiles: list[int] = field(default_factory=lambda: _split_int_env("UI_SUMMARY_PERCENTILES", "5,25,50,75,95"))
+    hex_resolutions: list[int] = field(
+        default_factory=lambda: _split_int_env("UI_HEX_RESOLUTIONS", "6,7,8,9")
+    )
+    summary_percentiles: list[int] = field(
+        default_factory=lambda: _split_int_env("UI_SUMMARY_PERCENTILES", "5,25,50,75,95")
+    )
 
     @classmethod
     def from_environment(cls) -> UISettings:

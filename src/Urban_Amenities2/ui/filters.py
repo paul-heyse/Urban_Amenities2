@@ -72,11 +72,13 @@ def get_filter_options(df: pd.DataFrame) -> dict[str, Any]:
         "states": sorted(df["state"].unique().tolist()) if "state" in df.columns else [],
         "metros": sorted(df["metro"].unique().tolist()) if "metro" in df.columns else [],
         "score_range": (
-            float(df["aucs"].min()),
-            float(df["aucs"].max()),
-        )
-        if "aucs" in df.columns and not df.empty
-        else (0.0, 0.0),
+            (
+                float(df["aucs"].min()),
+                float(df["aucs"].max()),
+            )
+            if "aucs" in df.columns and not df.empty
+            else (0.0, 0.0)
+        ),
         "land_uses": sorted(df["land_use"].unique().tolist()) if "land_use" in df.columns else [],
         "population_density_range": (
             (

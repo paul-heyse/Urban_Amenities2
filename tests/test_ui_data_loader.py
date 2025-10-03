@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 import pandas as pd
 import pytest
 
-from Urban_Amenities2.ui.data_loader import DataContext
 from tests.ui_factories import make_ui_settings, write_ui_dataset
+from Urban_Amenities2.ui.data_loader import DataContext
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def shapely_stub(monkeypatch: pytest.MonkeyPatch) -> None:
     class _DummyShape:
         is_empty = False
 
-        def simplify(self, *_args: object, **_kwargs: object) -> "_DummyShape":
+        def simplify(self, *_args: object, **_kwargs: object) -> _DummyShape:
             return self
 
     class _DummyLoader:
@@ -96,17 +96,15 @@ def test_refresh_prefers_latest_score_dataset(
     assert set(context.scores["state"].unique()) == {"NY", "NJ", "PA"}
 
 
-def test_refresh_handles_missing_scores(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_refresh_handles_missing_scores(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     data_dir = tmp_path / "ui-empty"
     data_dir.mkdir()
 
     settings = make_ui_settings(data_dir)
-    context = DataContext.from_settings(settings)
+    with caplog.at_level("WARNING", logger="ui.data"):
+        context = DataContext.from_settings(settings)
 
-    captured = capsys.readouterr()
-    assert "ui_scores_missing" in captured.out
+    assert any("ui_scores_missing" in record.message for record in caplog.records)
     assert context.version is None
     assert context.scores.empty
     assert context.metadata.empty

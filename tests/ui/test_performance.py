@@ -16,20 +16,19 @@ class FakeTime:
 
 
 def test_timer_logs_elapsed_time(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     fake_time = FakeTime()
     monkeypatch.setattr(performance, "time", fake_time)
 
-    with performance.timer("load-data"):
+    with caplog.at_level("INFO"), performance.timer("load-data"):
         pass
 
-    captured = capsys.readouterr()
-    assert "operation_timed" in captured.out
+    assert any("operation_timed" in message for message in caplog.messages)
 
 
 def test_profile_function_logs(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     fake_time = FakeTime()
     monkeypatch.setattr(performance, "time", fake_time)
@@ -38,10 +37,10 @@ def test_profile_function_logs(
     def add(a: int, b: int) -> int:
         return a + b
 
-    assert add(1, 2) == 3
+    with caplog.at_level("INFO"):
+        assert add(1, 2) == 3
 
-    captured = capsys.readouterr()
-    assert "function_profiled" in captured.out
+    assert any("function_profiled" in message for message in caplog.messages)
 
 
 def test_performance_monitor_statistics() -> None:

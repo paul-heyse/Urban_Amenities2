@@ -11,15 +11,13 @@ from .otp import OTPClient
 
 
 class OSRMClientProtocol(Protocol):
-    def route(self, coords: Sequence[tuple[float, float]]) -> OSRMRoute | Mapping[str, object]:
-        ...
+    def route(self, coords: Sequence[tuple[float, float]]) -> OSRMRoute | Mapping[str, object]: ...
 
     def table(
         self,
         sources: Sequence[tuple[float, float]],
         destinations: Sequence[tuple[float, float]],
-    ) -> OSRMTable | Mapping[str, object]:
-        ...
+    ) -> OSRMTable | Mapping[str, object]: ...
 
 
 @dataclass
@@ -68,9 +66,7 @@ class RoutingAPI:
             best = min(itineraries, key=_duration_key)
             duration_value = best.get("duration")
             duration_minutes = (
-                float(duration_value) / 60.0
-                if isinstance(duration_value, (int, float))
-                else 0.0
+                float(duration_value) / 60.0 if isinstance(duration_value, (int, float)) else 0.0
             )
             return RouteResult(
                 origin=origin,
@@ -100,9 +96,7 @@ class RoutingAPI:
         for i, origin in enumerate(origins):
             for j, destination in enumerate(destinations):
                 duration_value: float | None = (
-                    durations[i][j]
-                    if i < len(durations) and j < len(durations[i])
-                    else None
+                    durations[i][j] if i < len(durations) and j < len(durations[i]) else None
                 )
                 distance_value: float | None = (
                     distances[i][j]
@@ -117,7 +111,9 @@ class RoutingAPI:
                         "destination": destination,
                         "mode": mode,
                         "period": period,
-                        "duration_min": duration_value / 60.0 if duration_value is not None else None,
+                        "duration_min": (
+                            duration_value / 60.0 if duration_value is not None else None
+                        ),
                         "distance_m": distance_value,
                     }
                 )

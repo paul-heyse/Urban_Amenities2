@@ -343,7 +343,9 @@ class ErrandChainScorer:
         if missing:
             raise KeyError(f"mapping dataframe missing columns: {sorted(missing)}")
         records: list[dict[str, object]] = []
-        for (hex_id, hub_id, path_index), group in mapping.groupby(["hex_id", "hub_id", "path_index"]):
+        for (hex_id, hub_id, path_index), group in mapping.groupby(
+            ["hex_id", "hub_id", "path_index"]
+        ):
             for pair in self._config.pair_categories:
                 cat_a, cat_b = pair
                 subset_a = group[group["category"] == cat_a]

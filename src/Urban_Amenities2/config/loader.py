@@ -1,11 +1,13 @@
 """Utilities for loading AUCS parameter configuration from YAML."""
+
 from __future__ import annotations
 
 import hashlib
 import json
 from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping as TypingMapping
 from pathlib import Path
-from typing import Any, Mapping as TypingMapping
+from typing import Any
 
 from pydantic import ValidationError
 from ruamel.yaml import YAML
@@ -19,6 +21,7 @@ _yaml.default_flow_style = False
 
 class ParameterLoadError(ConfigurationError):
     """Raised when configuration files cannot be parsed or validated."""
+
 
 def _normalise(obj: Any) -> Any:
     """Convert nested Pydantic/complex objects to plain python for hashing."""
@@ -61,11 +64,7 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 def _merge_dicts(base: dict[str, Any], override: TypingMapping[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {key: _convert_to_builtin(value) for key, value in base.items()}
     for key, value in override.items():
-        if (
-            key in result
-            and isinstance(result[key], MutableMapping)
-            and isinstance(value, Mapping)
-        ):
+        if key in result and isinstance(result[key], MutableMapping) and isinstance(value, Mapping):
             result[key] = _merge_dicts(result[key], value)
         else:
             result[key] = _convert_to_builtin(value)
@@ -154,9 +153,7 @@ def load_and_document(path: str | Path) -> str:
     lines.append("")
     lines.append("Time slices:")
     for slice_cfg in params.time_slices:
-        lines.append(
-            f"  - {slice_cfg.id}: weight={slice_cfg.weight}, VOT={slice_cfg.vot_per_hour}"
-        )
+        lines.append(f"  - {slice_cfg.id}: weight={slice_cfg.weight}, VOT={slice_cfg.vot_per_hour}")
 
     derived_satiation = params.derived_satiation()
     if derived_satiation:

@@ -1,4 +1,5 @@
 """Urban Amenities core infrastructure package."""
+
 from __future__ import annotations
 
 from .config.loader import compute_param_hash, load_and_document, load_params

@@ -30,8 +30,12 @@ class DummyOSRM:
     def table(self, sources, destinations=None):
         self.table_calls += 1
         destinations = destinations or sources
-        durations = [[60.0 * (i + j + 1) for j in range(len(destinations))] for i in range(len(sources))]
-        distances = [[1000.0 * (i + j + 1) for j in range(len(destinations))] for i in range(len(sources))]
+        durations = [
+            [60.0 * (i + j + 1) for j in range(len(destinations))] for i in range(len(sources))
+        ]
+        distances = [
+            [1000.0 * (i + j + 1) for j in range(len(destinations))] for i in range(len(sources))
+        ]
         return OSRMTable(durations=durations, distances=distances)
 
 
@@ -181,9 +185,7 @@ def test_osrm_table_batches_concatenate_results() -> None:
             ]
             payload: dict[str, object] = {"code": "Ok", "durations": durations}
             if self.include_distances:
-                payload["distances"] = [
-                    [value * 100.0 for value in row] for row in durations
-                ]
+                payload["distances"] = [[value * 100.0 for value in row] for row in durations]
             return payload
 
     origins = [(-104.0, 39.0), (-105.0, 39.5), (-106.0, 40.0)]
@@ -218,7 +220,10 @@ def test_routing_matrix_handles_missing_distances() -> None:
 
 
 def test_routing_transit_requires_itinerary() -> None:
-    api = RoutingAPI({"car": DummyOSRM()}, otp_client=type("EmptyOTP", (), {"plan_trip": lambda self, *args, **kwargs: []})())
+    api = RoutingAPI(
+        {"car": DummyOSRM()},
+        otp_client=type("EmptyOTP", (), {"plan_trip": lambda self, *args, **kwargs: []})(),
+    )
     with pytest.raises(ValueError):
         api.route("transit", (-104.0, 39.0), (-105.0, 39.5))
 
@@ -227,8 +232,20 @@ def test_routing_api_selects_shortest_transit_itinerary() -> None:
     class DummyOTPShortest:
         def plan_trip(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             return [
-                {"duration": 1800.0, "walk_time": 120.0, "transit_time": 900.0, "wait_time": 300.0, "legs": []},
-                {"duration": 900.0, "walk_time": 60.0, "transit_time": 600.0, "wait_time": 180.0, "legs": []},
+                {
+                    "duration": 1800.0,
+                    "walk_time": 120.0,
+                    "transit_time": 900.0,
+                    "wait_time": 300.0,
+                    "legs": [],
+                },
+                {
+                    "duration": 900.0,
+                    "walk_time": 60.0,
+                    "transit_time": 600.0,
+                    "wait_time": 180.0,
+                    "legs": [],
+                },
             ]
 
     api = RoutingAPI({"car": DummyOSRM()}, otp_client=DummyOTPShortest())

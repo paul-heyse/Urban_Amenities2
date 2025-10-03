@@ -22,6 +22,7 @@ CARNEGIE_WEIGHTS: dict[str, float] = {
 
 def compute_weights(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.copy()
+
     def _weight(value: str) -> float:
         for key, weight in CARNEGIE_WEIGHTS.items():
             if value and key.lower() in value.lower():
@@ -49,8 +50,16 @@ def ingest_universities(
     carnegie_path: str | Path,
     output_path: Path = Path("data/processed/universities.parquet"),
 ) -> pd.DataFrame:
-    directory = pd.read_parquet(directory_path) if str(directory_path).endswith(".parquet") else pd.read_csv(directory_path)
-    carnegie = pd.read_parquet(carnegie_path) if str(carnegie_path).endswith(".parquet") else pd.read_csv(carnegie_path)
+    directory = (
+        pd.read_parquet(directory_path)
+        if str(directory_path).endswith(".parquet")
+        else pd.read_csv(directory_path)
+    )
+    carnegie = (
+        pd.read_parquet(carnegie_path)
+        if str(carnegie_path).endswith(".parquet")
+        else pd.read_csv(carnegie_path)
+    )
     prepared = prepare_universities(directory, carnegie)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prepared.to_parquet(output_path)

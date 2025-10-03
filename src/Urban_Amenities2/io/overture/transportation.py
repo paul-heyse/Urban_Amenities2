@@ -77,8 +77,8 @@ class _BigQueryQueryJob(Protocol):
 
 
 class _BigQueryClient(Protocol):
-    def query(self, query: str, job_config: Any | None = None) -> _BigQueryQueryJob:
-        ...
+    def query(self, query: str, job_config: Any | None = None) -> _BigQueryQueryJob: ...
+
 
 LOGGER = get_logger("aucs.ingest.transportation")
 
@@ -113,7 +113,9 @@ def read_transportation_from_bigquery(
     client: _BigQueryClient | None = None,
     classes: Iterable[str] | None = None,
 ) -> pd.DataFrame:
-    bigquery_client: _BigQueryClient = client or cast(_BigQueryClient, bigquery.Client(project=config.project))
+    bigquery_client: _BigQueryClient = client or cast(
+        _BigQueryClient, bigquery.Client(project=config.project)
+    )
     query = build_transportation_query(config, classes=classes)
     LOGGER.info("querying_overture_transport", query=query)
     result = bigquery_client.query(query)
@@ -128,22 +130,24 @@ def read_transportation_from_cloud(path: str | Path) -> pd.DataFrame:
         return pd.read_parquet(handle)
 
 
-def filter_transportation(frame: pd.DataFrame, classes: Iterable[str] | None = None) -> pd.DataFrame:
+def filter_transportation(
+    frame: pd.DataFrame, classes: Iterable[str] | None = None
+) -> pd.DataFrame:
     classes = set(classes or ALLOWED_CLASSES)
     return frame[frame["class"].isin(classes)].copy()
 
 
 def parse_geometry(frame: pd.DataFrame, geometry_column: str = "geometry") -> pd.DataFrame:
     converted = frame.copy()
-    converted[geometry_column] = [
-        _ensure_linestring(value) for value in converted[geometry_column]
-    ]
+    converted[geometry_column] = [_ensure_linestring(value) for value in converted[geometry_column]]
     return converted
 
 
 def index_segments(frame: pd.DataFrame, resolution: int = 9) -> pd.DataFrame:
     parsed = parse_geometry(frame)
-    return lines_to_hex(parsed, geometry_column="geometry", hex_column="hex_id", resolution=resolution)
+    return lines_to_hex(
+        parsed, geometry_column="geometry", hex_column="hex_id", resolution=resolution
+    )
 
 
 def export_mode_geojson(frame: pd.DataFrame, path: Path, mode_column: str) -> None:
@@ -155,7 +159,9 @@ def export_mode_geojson(frame: pd.DataFrame, path: Path, mode_column: str) -> No
     gdf.to_file(path=str(path), driver="GeoJSON")
 
 
-def export_networks(frame: pd.DataFrame, output_root: Path = Path("data/processed")) -> dict[str, Path]:
+def export_networks(
+    frame: pd.DataFrame, output_root: Path = Path("data/processed")
+) -> dict[str, Path]:
     mapping = {
         "car": ("mode_car", output_root / "network_car.geojson"),
         "foot": ("mode_foot", output_root / "network_foot.geojson"),
@@ -181,6 +187,8 @@ def prepare_transportation(frame: pd.DataFrame) -> pd.DataFrame:
     parsed = parse_geometry(filtered)
     modes = determine_modes(parsed)
     return modes
+
+
 __all__ = [
     "TransportationBigQueryConfig",
     "build_transportation_query",

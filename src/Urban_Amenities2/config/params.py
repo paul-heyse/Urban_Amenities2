@@ -1,4 +1,5 @@
 """Pydantic models describing AUCS 2.0 configuration."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -20,9 +21,15 @@ class _BaseConfig(BaseModel):
 class GridConfig(_BaseConfig):
     """Configuration for the spatial grid resolution and search limits."""
 
-    hex_size_m: float = Field(..., gt=0, description="Approximate edge length of the grid in metres")
-    isochrone_minutes: list[int] = Field(..., min_length=1, description="Minute values for isochrone rings")
-    search_cap_minutes: int = Field(..., gt=0, description="Maximum travel minutes to consider during searches")
+    hex_size_m: float = Field(
+        ..., gt=0, description="Approximate edge length of the grid in metres"
+    )
+    isochrone_minutes: list[int] = Field(
+        ..., min_length=1, description="Minute values for isochrone rings"
+    )
+    search_cap_minutes: int = Field(
+        ..., gt=0, description="Maximum travel minutes to consider during searches"
+    )
 
     @model_validator(mode="after")
     def _validate_isochrones(self) -> GridConfig:
@@ -46,8 +53,7 @@ class SubscoreWeights(_BaseConfig):
     @model_validator(mode="after")
     def _check_total(cls, values: SubscoreWeights) -> SubscoreWeights:
         total = sum(
-            getattr(values, field)
-            for field in ("EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU")
+            getattr(values, field) for field in ("EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU")
         )
         if round(total, 2) != 100.0:
             msg = f"Subscore weights must total 100, received {total:.2f}"
@@ -161,7 +167,9 @@ class CategoryConfig(_BaseConfig):
             if isinstance(self.satiation_kappa, (int, float)):
                 if self.satiation_kappa <= 0:
                     raise ValueError("Satiation kappa must be positive")
-                return {name: float(self.satiation_kappa) for name in self.essentials + self.leisure}
+                return {
+                    name: float(self.satiation_kappa) for name in self.essentials + self.leisure
+                }
             msg = "Direct satiation requires satiation_kappa values"
             raise ValueError(msg)
         if self.satiation_mode == "anchor":

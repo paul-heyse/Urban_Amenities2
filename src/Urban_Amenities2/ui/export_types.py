@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Literal, Mapping, Protocol, Sequence, TypedDict, runtime_checkable
+from typing import (
+    Any,
+    Literal,
+    Protocol,
+    TypedDict,
+    runtime_checkable,
+)
 
 JsonPrimitive = str | int | float | bool | None
 JsonValue = JsonPrimitive | Sequence["JsonValue"] | Mapping[str, "JsonValue"]
@@ -43,9 +50,9 @@ class TabularData(Protocol):
 
     def __len__(self) -> int: ...
 
-    def copy(self) -> "TabularData": ...
+    def copy(self) -> TabularData: ...
 
-    def __getitem__(self, key: str | Sequence[str]) -> TabularSeries | "TabularData": ...
+    def __getitem__(self, key: str | Sequence[str]) -> TabularSeries | TabularData: ...
 
     def __setitem__(self, key: str, value: Iterable[Any]) -> None: ...
 
@@ -66,7 +73,7 @@ class TabularData(Protocol):
         *,
         columns: Mapping[str, str] | None = None,
         inplace: bool = False,
-    ) -> "TabularData" | None: ...
+    ) -> TabularData | None: ...
 
 
 class GeoDataExporter(TabularData, Protocol):
@@ -84,12 +91,13 @@ class GeoPandasModule(Protocol):
 
 
 class PandasModule(Protocol):
-    def DataFrame(self, data: Mapping[str, Iterable[Any]] | Sequence[Mapping[str, Any]] | None = None) -> TabularData: ...
+    def DataFrame(
+        self, data: Mapping[str, Iterable[Any]] | Sequence[Mapping[str, Any]] | None = None
+    ) -> TabularData: ...
 
     def read_parquet(self, path: Path, columns: Sequence[str] | None = None) -> TabularData: ...
 
-    class Series(TabularSeries):
-        ...
+    class Series(TabularSeries): ...
 
 
 __all__ = [

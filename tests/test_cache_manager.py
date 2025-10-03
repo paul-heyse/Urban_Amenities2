@@ -65,7 +65,9 @@ def test_cache_invalidate_and_clear(cache_manager: CacheManager) -> None:
     assert cache_manager.get("wikidata", "entity", "Q1") is None
 
 
-def test_cache_get_error_returns_default(cache_manager: CacheManager, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cache_get_error_returns_default(
+    cache_manager: CacheManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def faulty_get(key: str) -> bytes:
         raise RuntimeError("boom")
 
@@ -73,7 +75,9 @@ def test_cache_get_error_returns_default(cache_manager: CacheManager, monkeypatc
     assert cache_manager.get("wikidata", "entity", "broken", default={}) == {}
 
 
-def test_cache_serialisation_errors(cache_manager: CacheManager, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cache_serialisation_errors(
+    cache_manager: CacheManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def bad_dumps(value: Any) -> str:
         raise TypeError("no serialise")
 

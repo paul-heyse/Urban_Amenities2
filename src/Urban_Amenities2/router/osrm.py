@@ -169,9 +169,7 @@ class OSRMClient:
         return OSRMTable(durations=durations, distances=distance_matrix)
 
 
-def _concatenate_rows(
-    rows: Sequence[Sequence[Sequence[float | None]]]
-) -> list[list[float | None]]:
+def _concatenate_rows(rows: Sequence[Sequence[Sequence[float | None]]]) -> list[list[float | None]]:
     if not rows:
         return []
     expected_rows = len(rows[0])

@@ -1,4 +1,5 @@
 """Pandera schemas for travel time and itinerary datasets."""
+
 from __future__ import annotations
 
 import pandera as pa

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Mapping
 
 import pytest
 from ruamel.yaml import YAML
@@ -33,7 +31,9 @@ def test_load_params_malformed_yaml(tmp_path: Path) -> None:
     assert "Failed to parse" in str(excinfo.value)
 
 
-def test_load_params_missing_section(minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML) -> None:
+def test_load_params_missing_section(
+    minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML
+) -> None:
     data = yaml_loader.load(minimal_config_file.read_text())
     data.pop("grid")
     missing = tmp_path / "missing.yml"
@@ -44,7 +44,9 @@ def test_load_params_missing_section(minimal_config_file: Path, tmp_path: Path, 
     assert "grid" in str(excinfo.value)
 
 
-def test_load_params_with_override(minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML) -> None:
+def test_load_params_with_override(
+    minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML
+) -> None:
     override_data = {"grid": {"hex_size_m": 320}}
     override_path = tmp_path / "override.yml"
     with override_path.open("w", encoding="utf-8") as handle:
@@ -59,7 +61,9 @@ def test_load_params_env_override(minimal_config_file: Path) -> None:
     assert params.grid.hex_size_m == 375
 
 
-def test_load_params_precedence(minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML) -> None:
+def test_load_params_precedence(
+    minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML
+) -> None:
     override_data = {"grid": {"hex_size_m": 260}}
     override_path = tmp_path / "override.yml"
     with override_path.open("w", encoding="utf-8") as handle:
@@ -77,7 +81,9 @@ def test_load_params_invalid_type(invalid_type_config_file: Path) -> None:
     assert "number" in message.lower()
 
 
-def test_param_hash_changes_with_override(minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML) -> None:
+def test_param_hash_changes_with_override(
+    minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML
+) -> None:
     params, original_hash = load_params(minimal_config_file)
     override_data = {"grid": {"hex_size_m": params.grid.hex_size_m + 10}}
     override_path = tmp_path / "override.yml"

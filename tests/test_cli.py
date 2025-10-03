@@ -38,7 +38,9 @@ def test_routing_compute_skims_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert output.exists()
 
 
-def test_routing_compute_skims_cli_with_osrm_base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_routing_compute_skims_cli_with_osrm_base_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     origins = tmp_path / "origins.csv"
     origins.write_text("id,lat,lon\nA,39.0,-104.0\n", encoding="utf-8")
     destinations = tmp_path / "destinations.csv"
@@ -82,7 +84,9 @@ def test_routing_compute_skims_cli_with_osrm_base_url(tmp_path: Path, monkeypatc
     assert pytest.approx(1000.0) == frame.loc[0, "distance_m"]
 
 
-def test_routing_compute_skims_cli_missing_column(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_routing_compute_skims_cli_missing_column(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     origins = tmp_path / "origins.csv"
     origins.write_text("id,lat\nA,39.0\n", encoding="utf-8")
     destinations = tmp_path / "destinations.csv"

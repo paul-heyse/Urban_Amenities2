@@ -1,4 +1,5 @@
 """Error classification helpers for AUCS pipelines."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

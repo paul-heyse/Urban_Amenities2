@@ -129,7 +129,9 @@ def test_overlay_payload_and_choropleth(sample_hexes: list[str]) -> None:
             }
         ],
     }
-    payload = build_overlay_payload(["states", "transit_stops", "city_labels"], context, opacity=0.5)
+    payload = build_overlay_payload(
+        ["states", "transit_stops", "city_labels"], context, opacity=0.5
+    )
     assert payload.layers
     assert any(trace.name == "City labels" for trace in payload.traces)
     assert payload.traces

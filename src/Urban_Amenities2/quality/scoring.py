@@ -108,7 +108,9 @@ class QualityScorer:
             },
             index=frame.index,
         )
-        base_quality = sum(component_scores[f"quality_{name}"] * self.weights[name] for name in _COMPONENTS)
+        base_quality = sum(
+            component_scores[f"quality_{name}"] * self.weights[name] for name in _COMPONENTS
+        )
 
         hours_category = _classify_hours(frame, categories, self.config.hours_defaults)
         bonus = np.array([HOURS_BONUS_MAP.get(value, 0.0) for value in hours_category])
@@ -166,7 +168,9 @@ def summarize_quality(frame: pd.DataFrame, category_col: str = "aucstype") -> pd
         summary = summary.merge(
             (
                 frame.assign(_hours=hours)
-                .groupby([category_col, "_hours"])["poi_id" if "poi_id" in frame.columns else category_col]
+                .groupby([category_col, "_hours"])[
+                    "poi_id" if "poi_id" in frame.columns else category_col
+                ]
                 .count()
                 .unstack(fill_value=0)
                 .rename(columns=lambda value: f"count_{value}")
@@ -177,8 +181,16 @@ def summarize_quality(frame: pd.DataFrame, category_col: str = "aucstype") -> pd
         for column in ("count_24_7", "count_extended"):
             if column not in summary.columns:
                 summary[column] = 0
-        summary["share_24_7"] = summary["count_24_7"].div(summary["count"].where(summary["count"] > 0, np.nan)).fillna(0.0)
-        summary["share_extended"] = summary["count_extended"].div(summary["count"].where(summary["count"] > 0, np.nan)).fillna(0.0)
+        summary["share_24_7"] = (
+            summary["count_24_7"]
+            .div(summary["count"].where(summary["count"] > 0, np.nan))
+            .fillna(0.0)
+        )
+        summary["share_extended"] = (
+            summary["count_extended"]
+            .div(summary["count"].where(summary["count"] > 0, np.nan))
+            .fillna(0.0)
+        )
         summary = summary.drop(columns=[col for col in summary.columns if col.startswith("count_")])
     else:
         summary["share_24_7"] = 0.0
@@ -202,7 +214,14 @@ def build_scoring_config(
 
 def _compute_size_metric(frame: pd.DataFrame) -> pd.Series:
     candidates = []
-    for column in ("square_footage", "size_sqft", "floor_area", "seating_capacity", "collection_size", "capacity"):
+    for column in (
+        "square_footage",
+        "size_sqft",
+        "floor_area",
+        "seating_capacity",
+        "collection_size",
+        "capacity",
+    ):
         if column in frame.columns:
             candidates.append(pd.to_numeric(frame[column], errors="coerce"))
     if not candidates:
@@ -215,7 +234,13 @@ def _compute_size_metric(frame: pd.DataFrame) -> pd.Series:
 
 def _compute_popularity_metric(frame: pd.DataFrame) -> pd.Series:
     candidates = []
-    for column in ("median_views", "pageviews", "weekly_pageviews", "sitelinks_count", "popularity_z"):
+    for column in (
+        "median_views",
+        "pageviews",
+        "weekly_pageviews",
+        "sitelinks_count",
+        "popularity_z",
+    ):
         if column in frame.columns:
             series = pd.to_numeric(frame[column], errors="coerce")
             if column == "popularity_z":
@@ -232,7 +257,12 @@ def _compute_heritage_metric(frame: pd.DataFrame) -> pd.Series:
     heritage = np.zeros(len(frame), dtype=float)
     if "heritage_status" in frame.columns:
         heritage += frame["heritage_status"].notna().astype(float) * 2.0
-        heritage += frame["heritage_status"].astype(str).str.contains("unesco", case=False, na=False).astype(float)
+        heritage += (
+            frame["heritage_status"]
+            .astype(str)
+            .str.contains("unesco", case=False, na=False)
+            .astype(float)
+        )
     for column in ("is_museum", "is_library", "is_historic"):
         if column in frame.columns:
             heritage += frame[column].fillna(0).astype(float)
@@ -265,7 +295,9 @@ def _score_component(
     defaults = config.category_defaults or {}
     scored = pd.Series(np.zeros(len(values), dtype=float), index=values.index)
     for category, group in values.groupby(categories):
-        default = defaults.get(category, {}).get(component) if isinstance(defaults, Mapping) else None
+        default = (
+            defaults.get(category, {}).get(component) if isinstance(defaults, Mapping) else None
+        )
         if default is not None:
             filled = group.fillna(float(default))
         else:

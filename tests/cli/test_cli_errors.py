@@ -20,5 +20,3 @@ def test_aggregate_invalid_path(cli_runner: CliRunner, tmp_path: Path) -> None:
     result = cli_runner.invoke(app, ["aggregate", str(missing), "--weights", str(weights)])
     assert result.exit_code == 1
     assert "File not found" in result.output
-
-

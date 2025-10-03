@@ -54,7 +54,9 @@ class AccessibilityMatrixBuilder:
         utilities = np.zeros_like(gtc_array)
         for mode, params in self.config.mode_params.items():
             k = mode_index[mode]
-            utilities[:, :, k, :] = mode_utility(gtc_array[:, :, k, :], comfort_array[:, :, k, :], params)
+            utilities[:, :, k, :] = mode_utility(
+                gtc_array[:, :, k, :], comfort_array[:, :, k, :], params
+            )
         nest_values = []
         for nest in self.config.nests.values():
             indices = [mode_index[mode] for mode in nest.modes if mode in mode_index]

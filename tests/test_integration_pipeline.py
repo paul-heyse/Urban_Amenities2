@@ -26,7 +26,9 @@ def test_parameter_to_schema_pipeline() -> None:
             "quality_heritage": [60.0],
             "quality_hours_category": ["standard"],
             "quality_hours_bonus": [0.0],
-            "quality_components": [[{"size": 65.0, "popularity": 80.0, "brand": 50.0, "heritage": 60.0}]],
+            "quality_components": [
+                [{"size": 65.0, "popularity": 80.0, "brand": 50.0, "heritage": 60.0}]
+            ],
             "brand_penalty": [1.0],
             "brand_weight": [1.0],
         }

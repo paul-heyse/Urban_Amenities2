@@ -71,7 +71,9 @@ def _configure_server(server: Any, settings: UISettings) -> None:
         cors_module = import_module("flask_cors")
         cors_module.CORS(server, resources={r"/*": {"origins": settings.cors_origins}})
 
-    route = cast(Callable[[str], Callable[[Callable[..., Response]], Callable[..., Response]]], server.route)
+    route = cast(
+        Callable[[str], Callable[[Callable[..., Response]], Callable[..., Response]]], server.route
+    )
 
     @route("/health")
     def _healthcheck() -> Response:  # pragma: no cover - simple HTTP response
@@ -83,4 +85,3 @@ def _configure_server(server: Any, settings: UISettings) -> None:
     if gunicorn_logger.handlers:
         server.logger.handlers = gunicorn_logger.handlers
         server.logger.setLevel(gunicorn_logger.level)
-

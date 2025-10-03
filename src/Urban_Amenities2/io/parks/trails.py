@@ -20,7 +20,10 @@ def sample_line(line: LineString, samples: int = 5) -> list[tuple[float, float]]
     if samples <= 1:
         midpoint = line.interpolate(0.5, normalized=True)
         return [(midpoint.y, midpoint.x)]
-    return [(point.y, point.x) for point in (line.interpolate(i / (samples - 1), normalized=True) for i in range(samples))]
+    return [
+        (point.y, point.x)
+        for point in (line.interpolate(i / (samples - 1), normalized=True) for i in range(samples))
+    ]
 
 
 def index_trails(gdf: gpd.GeoDataFrame, samples: int = 5) -> pd.DataFrame:
@@ -38,7 +41,9 @@ def index_trails(gdf: gpd.GeoDataFrame, samples: int = 5) -> pd.DataFrame:
     return frame
 
 
-def ingest_trails(path: str | Path, output_path: Path = Path("data/processed/trails.parquet")) -> pd.DataFrame:
+def ingest_trails(
+    path: str | Path, output_path: Path = Path("data/processed/trails.parquet")
+) -> pd.DataFrame:
     gdf = load_trails(path)
     indexed = index_trails(gdf)
     output_path.parent.mkdir(parents=True, exist_ok=True)

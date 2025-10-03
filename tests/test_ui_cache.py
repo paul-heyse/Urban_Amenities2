@@ -99,6 +99,7 @@ def test_cache_ttl(cache_manager):
 
     # Wait for expiration
     import time
+
     time.sleep(2)
 
     # Should be expired
@@ -112,9 +113,7 @@ def test_cache_compression(temp_cache_dir):
     cache_compressed = CacheManager(config_compressed)
 
     # Create cache without compression
-    config_uncompressed = CacheConfig(
-        cache_dir=temp_cache_dir / "uncompressed", compression=False
-    )
+    config_uncompressed = CacheConfig(cache_dir=temp_cache_dir / "uncompressed", compression=False)
     cache_uncompressed = CacheManager(config_uncompressed)
 
     # Store same large data in both
@@ -164,4 +163,3 @@ def test_cache_clear(cache_manager):
     assert cache_manager.get("wikidata", "entity", "Q2") is None
     # DiskCache clear() removes data but disk space may persist
     assert len(list(cache_manager.cache.iterkeys())) == 0
-

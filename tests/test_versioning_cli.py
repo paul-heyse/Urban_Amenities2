@@ -42,7 +42,9 @@ def test_cli_config_validate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 def test_cli_run_init(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     runner = CliRunner()
     monkeypatch.setattr("Urban_Amenities2.cli.main.RUN_STORAGE", tmp_path / "runs.jsonl")
-    result = runner.invoke(app, ["run", "init", "configs/params_default.yml", "--git-commit", "abc"])
+    result = runner.invoke(
+        app, ["run", "init", "configs/params_default.yml", "--git-commit", "abc"]
+    )
     assert result.exit_code == 0
     list_result = runner.invoke(app, ["run", "list"])
     assert "hash" in list_result.stdout or "run" in list_result.stdout

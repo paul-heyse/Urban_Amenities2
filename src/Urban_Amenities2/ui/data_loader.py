@@ -37,7 +37,9 @@ def _import_h3() -> Any:
     return import_module("h3")
 
 
-def _import_shapely_modules() -> tuple[Any, Callable[[object], dict[str, object]], Callable[[Sequence[object]], object]]:
+def _import_shapely_modules() -> (
+    tuple[Any, Callable[[object], dict[str, object]], Callable[[Sequence[object]], object]]
+):
     shapely_wkt = import_module("shapely.wkt")
     shapely_geometry = import_module("shapely.geometry")
     shapely_ops = import_module("shapely.ops")
@@ -141,11 +143,7 @@ class DataContext:
                 available=[candidate.identifier for candidate in versions],
             )
             return
-        if (
-            not force
-            and self.version is not None
-            and self.version.identifier == target.identifier
-        ):
+        if not force and self.version is not None and self.version.identifier == target.identifier:
             return
 
         LOGGER.info("ui_loading_dataset", version=target.identifier)
@@ -233,7 +231,11 @@ class DataContext:
     def summarise(self, columns: Iterable[str] | None = None) -> TabularData:
         if len(self.scores) == 0:
             return cast(TabularData, pd.DataFrame())
-        columns = list(columns) if columns else ["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
+        columns = (
+            list(columns)
+            if columns
+            else ["aucs", "EA", "LCA", "MUHAA", "JEA", "MORR", "CTE", "SOU"]
+        )
         summary: dict[str, dict[str, float]] = {}
         percentiles = [p / 100.0 for p in self.settings.summary_percentiles]
         for column in columns:
@@ -464,10 +466,7 @@ class DataContext:
             for value, group in merged.groupby(column):
                 if not value or len(group) == 0:
                     continue
-                shapes = [
-                    shapely_wkt.loads(wkt)
-                    for wkt in group["geometry_wkt"].dropna().unique()
-                ]
+                shapes = [shapely_wkt.loads(wkt) for wkt in group["geometry_wkt"].dropna().unique()]
                 if not shapes:
                     continue
                 geometry = unary_union(shapes)

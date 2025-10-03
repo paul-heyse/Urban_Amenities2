@@ -78,8 +78,8 @@ class _BigQueryQueryJob(Protocol):
 
 
 class _BigQueryClient(Protocol):
-    def query(self, query: str, job_config: Any | None = None) -> _BigQueryQueryJob:
-        ...
+    def query(self, query: str, job_config: Any | None = None) -> _BigQueryQueryJob: ...
+
 
 LOGGER = get_logger("aucs.ingest.overture")
 
@@ -97,7 +97,9 @@ class BigQueryConfig:
         return f"`{self.project}.{self.dataset}.{self.table}`"
 
 
-def build_bigquery_query(config: BigQueryConfig, state: str | None = None, bbox: BBox | None = None) -> str:
+def build_bigquery_query(
+    config: BigQueryConfig, state: str | None = None, bbox: BBox | None = None
+) -> str:
     where: list[str] = ["operating_status = 'open'"]
     if state:
         where.append("address_components.administrative_area = @state")
@@ -127,17 +129,15 @@ def read_places_from_bigquery(
     state: str | None = None,
     bbox: BBox | None = None,
 ) -> pd.DataFrame:
-    bigquery_client: _BigQueryClient = client or cast(_BigQueryClient, bigquery.Client(project=config.project))
+    bigquery_client: _BigQueryClient = client or cast(
+        _BigQueryClient, bigquery.Client(project=config.project)
+    )
     job_config = bigquery.QueryJobConfig()
     if state:
-        job_config.query_parameters.append(
-            bigquery.ScalarQueryParameter("state", "STRING", state)
-        )
+        job_config.query_parameters.append(bigquery.ScalarQueryParameter("state", "STRING", state))
     if bbox:
         polygon = _bbox_to_wkt(bbox)
-        job_config.query_parameters.append(
-            bigquery.ScalarQueryParameter("bbox", "STRING", polygon)
-        )
+        job_config.query_parameters.append(bigquery.ScalarQueryParameter("bbox", "STRING", polygon))
     query = build_bigquery_query(config, state=state, bbox=bbox)
     LOGGER.info("querying_overture_bigquery", query=query)
     job = bigquery_client.query(query, job_config=job_config)
@@ -158,7 +158,12 @@ def read_places_from_cloud(path: str | Path, bbox: BBox | None = None) -> pd.Dat
 
 def apply_bbox_filter(frame: pd.DataFrame, bbox: BBox) -> pd.DataFrame:
     min_lon, min_lat, max_lon, max_lat = bbox
-    mask = (frame["lon"] >= min_lon) & (frame["lon"] <= max_lon) & (frame["lat"] >= min_lat) & (frame["lat"] <= max_lat)
+    mask = (
+        (frame["lon"] >= min_lon)
+        & (frame["lon"] <= max_lon)
+        & (frame["lat"] >= min_lat)
+        & (frame["lat"] <= max_lat)
+    )
     return frame[mask]
 
 
@@ -181,7 +186,9 @@ def extract_fields(frame: pd.DataFrame) -> pd.DataFrame:
     }
     extracted = frame[[col for col in columns if col in frame.columns]].rename(columns=columns)
     if "categories" not in extracted.columns and "primary_category" in extracted.columns:
-        extracted["categories"] = extracted["primary_category"].apply(lambda value: [value] if isinstance(value, str) else [])
+        extracted["categories"] = extracted["primary_category"].apply(
+            lambda value: [value] if isinstance(value, str) else []
+        )
     return extracted
 
 
@@ -198,17 +205,33 @@ class PlacesPipeline:
     ) -> gpd.GeoDataFrame:
         working = filter_operating(frame)
         working = extract_fields(working)
-        working = self.matcher.assign(working, primary_column="primary_category", alternate_column="alternate_categories")
+        working = self.matcher.assign(
+            working, primary_column="primary_category", alternate_column="alternate_categories"
+        )
         deduped = deduplicate_pois(working, config=self.dedupe_config)
-        hexed = points_to_hex(deduped, lat_column="lat", lon_column="lon", hex_column="hex_id", resolution=hex_resolution)
-        geo = gpd.GeoDataFrame(hexed, geometry=[Point(lon, lat) for lat, lon in zip(hexed["lat"], hexed["lon"], strict=False)], crs="EPSG:4326")
+        hexed = points_to_hex(
+            deduped,
+            lat_column="lat",
+            lon_column="lon",
+            hex_column="hex_id",
+            resolution=hex_resolution,
+        )
+        geo = gpd.GeoDataFrame(
+            hexed,
+            geometry=[
+                Point(lon, lat) for lat, lon in zip(hexed["lat"], hexed["lon"], strict=False)
+            ],
+            crs="EPSG:4326",
+        )
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             geo.to_parquet(output_path)
         return geo
 
 
-def load_default_pipeline(crosswalk_path: Path | str = Path("docs/AUCS place category crosswalk")) -> PlacesPipeline:
+def load_default_pipeline(
+    crosswalk_path: Path | str = Path("docs/AUCS place category crosswalk"),
+) -> PlacesPipeline:
     matcher = load_crosswalk(crosswalk_path)
     return PlacesPipeline(matcher=matcher)
 

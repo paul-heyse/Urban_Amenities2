@@ -10,7 +10,9 @@ from dash import dcc, html
 from ..types import SliderTooltip
 
 
-def build_filter_panel(states: Sequence[str], metros: Sequence[str], counties: Sequence[str]) -> html.Div:
+def build_filter_panel(
+    states: Sequence[str], metros: Sequence[str], counties: Sequence[str]
+) -> html.Div:
     return html.Div(
         className="filter-panel",
         children=[
@@ -18,14 +20,22 @@ def build_filter_panel(states: Sequence[str], metros: Sequence[str], counties: S
                 open=True,
                 children=[
                     html.Summary("Filters"),
-                    dcc.Dropdown(states, multi=True, id="state-filter", placeholder="Select states"),
-                    dcc.Dropdown(metros, multi=True, id="metro-filter", placeholder="Select metro areas"),
-                    dcc.Dropdown(counties, multi=True, id="county-filter", placeholder="Select counties"),
+                    dcc.Dropdown(
+                        states, multi=True, id="state-filter", placeholder="Select states"
+                    ),
+                    dcc.Dropdown(
+                        metros, multi=True, id="metro-filter", placeholder="Select metro areas"
+                    ),
+                    dcc.Dropdown(
+                        counties, multi=True, id="county-filter", placeholder="Select counties"
+                    ),
                     dcc.RangeSlider(0, 100, step=1, value=[0, 100], id="score-range"),
                     html.Div(
                         className="filter-actions",
                         children=[
-                            html.Button("Apply Filters", id="apply-filters", className="btn btn-primary"),
+                            html.Button(
+                                "Apply Filters", id="apply-filters", className="btn btn-primary"
+                            ),
                             html.Button("Clear", id="clear-filters", className="btn btn-link"),
                         ],
                     ),
@@ -68,7 +78,9 @@ def build_parameter_panel(default_weights: Mapping[str, float]) -> html.Div:
                     html.Div(
                         className="parameter-actions",
                         children=[
-                            html.Button("Recalculate", id="recalculate", className="btn btn-success"),
+                            html.Button(
+                                "Recalculate", id="recalculate", className="btn btn-success"
+                            ),
                             html.Button("Reset", id="reset-params", className="btn btn-secondary"),
                         ],
                     ),

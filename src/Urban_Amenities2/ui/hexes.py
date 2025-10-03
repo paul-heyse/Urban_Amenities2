@@ -154,7 +154,9 @@ class HexSpatialIndex:
         self._geom_map = dict(zip(geometries, self.geometries["hex_id"], strict=False))
         self._box = box
 
-    def query_bbox(self, lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> list[str]:
+    def query_bbox(
+        self, lon_min: float, lat_min: float, lon_max: float, lat_max: float
+    ) -> list[str]:
         if self._tree is None or self._box is None:
             frame = self.geometries
             mask = (

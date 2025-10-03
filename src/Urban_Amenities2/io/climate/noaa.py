@@ -63,22 +63,31 @@ class NoaaNormalsIngestor:
         normalised = frame.rename(columns=rename)
         normalised["month"] = normalised["month"].astype(int)
         if "precip_probability" in normalised.columns:
-            normalised["precip_probability"] = normalised["precip_probability"].astype(float) / 100.0
+            normalised["precip_probability"] = (
+                normalised["precip_probability"].astype(float) / 100.0
+            )
         if "tavg_c" in normalised.columns:
             normalised["tavg_c"] = normalised["tavg_c"].astype(float)
         if "wind_mps" in normalised.columns:
             normalised["wind_mps"] = normalised["wind_mps"].astype(float)
         return normalised
 
-    def fetch_states(self, states: Iterable[str], session: requests.Session | None = None) -> pd.DataFrame:
+    def fetch_states(
+        self, states: Iterable[str], session: requests.Session | None = None
+    ) -> pd.DataFrame:
         frames = [self.fetch(state, session=session) for state in states]
         return pd.concat(frames, ignore_index=True)
 
     def interpolate_to_hex(self, frame: pd.DataFrame, resolution: int = 9) -> pd.DataFrame:
         if frame.empty:
-            return pd.DataFrame(columns=["hex_id", "month", "tavg_c", "precip_probability", "wind_mps"])
+            return pd.DataFrame(
+                columns=["hex_id", "month", "tavg_c", "precip_probability", "wind_mps"]
+            )
         frame = frame.copy()
-        frame["hex_id"] = [latlon_to_hex(row["latitude"], row["longitude"], resolution) for _, row in frame.iterrows()]
+        frame["hex_id"] = [
+            latlon_to_hex(row["latitude"], row["longitude"], resolution)
+            for _, row in frame.iterrows()
+        ]
         return frame
 
     def compute_comfort_index(self, frame: pd.DataFrame) -> pd.DataFrame:
@@ -87,7 +96,9 @@ class NoaaNormalsIngestor:
         records: list[dict[str, object]] = []
         for (hex_id, month), group in frame.groupby(["hex_id", "month"]):
             temp = group["tavg_c"].mean() if "tavg_c" in group else None
-            precip_prob = group["precip_probability"].mean() if "precip_probability" in group else None
+            precip_prob = (
+                group["precip_probability"].mean() if "precip_probability" in group else None
+            )
             wind = group["wind_mps"].mean() if "wind_mps" in group else None
             sigma = _comfortable_fraction(temp, precip_prob, wind)
             records.append({"hex_id": hex_id, "month": month, "sigma_out": sigma})
@@ -107,7 +118,9 @@ class NoaaNormalsIngestor:
         return comfort
 
 
-def _comfortable_fraction(temp: float | None, precip_prob: float | None, wind: float | None) -> float:
+def _comfortable_fraction(
+    temp: float | None, precip_prob: float | None, wind: float | None
+) -> float:
     if temp is None:
         return 1.0
     temp_ok = 1.0 if 10.0 <= temp <= 27.0 else 0.0

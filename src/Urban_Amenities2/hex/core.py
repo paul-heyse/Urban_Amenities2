@@ -1,4 +1,5 @@
 """Core utilities for working with H3 hexagons."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable

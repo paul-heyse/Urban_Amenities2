@@ -1,4 +1,5 @@
 """Data snapshot tracking utilities."""
+
 from __future__ import annotations
 
 import json

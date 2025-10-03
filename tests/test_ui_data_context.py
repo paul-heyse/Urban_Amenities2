@@ -7,10 +7,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tests.ui_factories import write_overlay_file, write_ui_dataset
 from Urban_Amenities2.ui.config import UISettings
 from Urban_Amenities2.ui.data_loader import DataContext
 from Urban_Amenities2.ui.hexes import HexGeometryCache
-from tests.ui_factories import write_overlay_file, write_ui_dataset
 
 
 def test_hex_geometry_cache_caches_entries() -> None:
@@ -30,7 +30,9 @@ def test_hex_geometry_cache_caches_entries() -> None:
     assert set(cache.store) == {"8928308280fffff"}
 
 
-def test_data_context_to_geojson_returns_feature_collection(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_data_context_to_geojson_returns_feature_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     context = DataContext(settings=UISettings())
     context.geometries = pd.DataFrame(
         {
@@ -59,7 +61,9 @@ def test_data_context_to_geojson_returns_feature_collection(monkeypatch: pytest.
                     "type": "Feature",
                     "geometry": {
                         "type": "Polygon",
-                        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
+                        "coordinates": [
+                            [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]
+                        ],
                     },
                     "properties": {"aucs": 75.0},
                 }
@@ -113,11 +117,14 @@ def test_data_context_builds_typed_overlays(monkeypatch: pytest.MonkeyPatch) -> 
             "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
         }
 
-    monkeypatch.setattr("Urban_Amenities2.ui.data_loader.import_module", lambda name: {
-        "shapely.wkt": _DummyLoader,
-        "shapely.ops": type("_Ops", (), {"unary_union": staticmethod(_dummy_union)}),
-        "shapely.geometry": type("_Geom", (), {"mapping": staticmethod(_dummy_mapping)}),
-    }[name])
+    monkeypatch.setattr(
+        "Urban_Amenities2.ui.data_loader.import_module",
+        lambda name: {
+            "shapely.wkt": _DummyLoader,
+            "shapely.ops": type("_Ops", (), {"unary_union": staticmethod(_dummy_union)}),
+            "shapely.geometry": type("_Geom", (), {"mapping": staticmethod(_dummy_mapping)}),
+        }[name],
+    )
 
     context._build_overlays(force=True)
     payload = context.get_overlay("states")
