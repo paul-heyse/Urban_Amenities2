@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import configparser
 import json
 import os
 import sys
@@ -63,15 +64,22 @@ def parse_coverage(xml_path: Path) -> CoverageSummary:
     )
 
 
-def write_summary(summary: CoverageSummary, output: Path | None) -> None:
+def write_summary(
+    summary: CoverageSummary,
+    output: Path | None,
+    package_rates: dict[str, float] | None = None,
+) -> None:
     if output is None:
         return
     output.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(summary.to_dict(), indent=2, sort_keys=True)
+    payload_dict: dict[str, float | int | dict[str, float]] = summary.to_dict()
+    if package_rates:
+        payload_dict["packages"] = {k: round(v, 2) for k, v in package_rates.items()}
+    payload = json.dumps(payload_dict, indent=2, sort_keys=True)
     output.write_text(payload + "\n", encoding="utf-8")
 
 
-def append_job_summary(summary: CoverageSummary) -> None:
+def append_job_summary(summary: CoverageSummary, package_rates: dict[str, float]) -> None:
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary_file:
         return
@@ -80,6 +88,10 @@ def append_job_summary(summary: CoverageSummary) -> None:
         f"- Line coverage: {summary.line_percent:.2f}% ({summary.lines_covered}/{summary.lines_valid})",
         f"- Branch coverage: {summary.branch_percent:.2f}% ({summary.branches_covered}/{summary.branches_valid})",
     ]
+    if package_rates:
+        lines.append("- Package coverage:")
+        for package, rate in sorted(package_rates.items()):
+            lines.append(f"  - {package}: {rate:.2f}%")
     with Path(summary_file).open("a", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
 
@@ -97,8 +109,89 @@ def enforce_thresholds(summary: CoverageSummary, line_threshold: float, branch_t
             f"Branch coverage {summary.branch_percent:.2f}% is below required {branch_threshold:.2f}%"
         )
     if failures:
-        message = "\n".join(failures)
-        raise SystemExit(message)
+        raise SystemExit("\n".join(failures))
+
+
+def collect_package_rates(xml_root: ET.Element, packages: dict[str, float]) -> dict[str, float]:
+    results: dict[str, float] = {}
+    for package in packages:
+        total = 0
+        covered = 0
+        candidates = {package}
+        if "." in package:
+            candidates.add(package.split(".", 1)[1])
+        package_names: set[str] = set()
+        for pkg in xml_root.findall(".//package"):
+            name = pkg.get("name", "")
+            for candidate in candidates:
+                if name == candidate or name.startswith(f"{candidate}."):
+                    package_names.add(name)
+                    break
+        processed: set[str] = set()
+        queue = list(package_names)
+        while queue:
+            pkg_name = queue.pop()
+            if pkg_name in processed:
+                continue
+            processed.add(pkg_name)
+            for cls in xml_root.findall(f".//package[@name='{pkg_name}']/classes/class"):
+                for line in cls.findall("lines/line"):
+                    total += 1
+                    hits = line.get("hits", "0")
+                    try:
+                        if int(hits) > 0:
+                            covered += 1
+                    except ValueError:
+                        continue
+            prefix = f"{pkg_name}."
+            for nested in xml_root.findall(".//package"):
+                nested_name = nested.get("name", "")
+                if nested_name.startswith(prefix) and nested_name not in processed:
+                    queue.append(nested_name)
+        if total == 0:
+            results[package] = 0.0
+        else:
+            results[package] = (covered / total) * 100.0
+    return results
+
+
+def enforce_package_thresholds(
+    package_rates: dict[str, float],
+    package_thresholds: dict[str, float],
+) -> None:
+    failures: list[str] = []
+    for package, required in package_thresholds.items():
+        observed = package_rates.get(package, 0.0)
+        if observed + 1e-9 < required:
+            failures.append(
+                f"{package} coverage {observed:.2f}% is below required {required:.2f}%"
+            )
+    if failures:
+        raise SystemExit("\n".join(failures))
+
+
+def load_thresholds(config_path: Path | None) -> tuple[float | None, dict[str, float]]:
+    if config_path is None:
+        return None, {}
+    parser = configparser.ConfigParser()
+    parser.optionxform = str
+    if not config_path.exists():
+        return None, {}
+    parser.read(config_path, encoding="utf-8")
+    if not parser.has_section("thresholds"):
+        return None, {}
+    overall = None
+    packages: dict[str, float] = {}
+    for key, value in parser.items("thresholds"):
+        try:
+            numeric = float(value)
+        except ValueError:
+            continue
+        if key.lower() == "overall":
+            overall = numeric
+        else:
+            packages[key] = numeric
+    return overall, packages
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -108,9 +201,15 @@ def main(argv: list[str] | None = None) -> int:
         "--json", type=Path, default=None, help="Optional path to write a machine-readable summary"
     )
     parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path(".coveragerc"),
+        help="Path to coverage configuration file with threshold metadata",
+    )
+    parser.add_argument(
         "--line-threshold",
         type=float,
-        default=95.0,
+        default=None,
         help="Minimum acceptable line coverage percentage",
     )
     parser.add_argument(
@@ -122,6 +221,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     summary = parse_coverage(args.xml)
+    overall_threshold, package_thresholds = load_thresholds(args.config)
+    line_threshold = args.line_threshold if args.line_threshold is not None else overall_threshold
+    if line_threshold is None:
+        line_threshold = 95.0
     print(
         f"Line coverage: {summary.line_percent:.2f}% ({summary.lines_covered}/{summary.lines_valid})",
         file=sys.stderr,
@@ -130,9 +233,18 @@ def main(argv: list[str] | None = None) -> int:
         f"Branch coverage: {summary.branch_percent:.2f}% ({summary.branches_covered}/{summary.branches_valid})",
         file=sys.stderr,
     )
-    write_summary(summary, args.json)
-    append_job_summary(summary)
-    enforce_thresholds(summary, args.line_threshold, args.branch_threshold)
+    package_rates: dict[str, float] = {}
+    if package_thresholds:
+        xml_root = ET.parse(args.xml).getroot()
+        package_rates = collect_package_rates(xml_root, package_thresholds)
+        for package, rate in sorted(package_rates.items()):
+            print(f"{package}: {rate:.2f}%", file=sys.stderr)
+
+    write_summary(summary, args.json, package_rates)
+    append_job_summary(summary, package_rates)
+    enforce_thresholds(summary, float(line_threshold), args.branch_threshold)
+    if package_thresholds:
+        enforce_package_thresholds(package_rates, package_thresholds)
     return 0
 
 

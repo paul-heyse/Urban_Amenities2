@@ -167,7 +167,7 @@ ignore = ["E501"]  # line length handled by black
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-q --strict-markers --strict-config --cov=Urban_Amenities2 --cov=Urban_Amenities2.math --cov=Urban_Amenities2.scores --cov-report=term-missing --cov-report=xml --cov-branch --cov-fail-under=95"
+addopts = "-q --strict-markers --strict-config --cov=src/Urban_Amenities2 --cov-config=.coveragerc --cov-report=term-missing --cov-report=xml --cov-branch --cov-fail-under=95"
 testpaths = ["tests"]
 pythonpath = ["src"]
 

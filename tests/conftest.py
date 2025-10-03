@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import sys
+import configparser
+import os
+import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +22,71 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+
+
+def _load_package_thresholds() -> dict[str, float]:
+    config_path = ROOT / ".coveragerc"
+    parser = configparser.ConfigParser()
+    parser.optionxform = str
+    if not config_path.exists():
+        return {}
+    try:
+        parser.read(config_path, encoding="utf-8")
+    except OSError:
+        return {}
+    if not parser.has_section("thresholds"):
+        return {}
+    thresholds: dict[str, float] = {}
+    for key, value in parser.items("thresholds"):
+        if key.lower() == "overall":
+            continue
+        try:
+            thresholds[key] = float(value)
+        except ValueError:
+            continue
+    return thresholds
+
+
+def _collect_line_rate(xml_root: ET.Element, package: str) -> float:
+    total = 0
+    covered = 0
+    candidates = {package}
+    if "." in package:
+        candidates.add(package.split(".", 1)[1])
+    package_names: set[str] = set()
+    for pkg in xml_root.findall(".//package"):
+        name = pkg.get("name", "")
+        for candidate in candidates:
+            if name == candidate or name.startswith(f"{candidate}."):
+                package_names.add(name)
+                break
+    if not package_names:
+        return 0.0
+    processed: set[str] = set()
+    queue = list(package_names)
+    while queue:
+        pkg_name = queue.pop()
+        if pkg_name in processed:
+            continue
+        processed.add(pkg_name)
+        for cls in xml_root.findall(f".//package[@name='{pkg_name}']/classes/class"):
+            for line in cls.findall("lines/line"):
+                total += 1
+                hits = line.get("hits", "0")
+                try:
+                    if int(hits) > 0:
+                        covered += 1
+                except ValueError:
+                    continue
+        prefix = f"{pkg_name}."
+        for nested in xml_root.findall(".//package"):
+            nested_name = nested.get("name", "")
+            if nested_name.startswith(prefix) and nested_name not in processed:
+                queue.append(nested_name)
+    if total == 0:
+        return 0.0
+    return (covered / total) * 100.0
+
 
 
 @pytest.fixture(scope="session")
@@ -269,3 +337,49 @@ def otp_stub_session() -> StubSession:
     }
     responses = {"post": {"data": {"plan": {"itineraries": [itinerary]}}}}
     return StubSession(responses)
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: pytest.ExitCode) -> None:
+    if os.environ.get("PYTEST_DISABLE_COVERAGE_CHECKS"):
+        return
+    xml_path = ROOT / "coverage.xml"
+    if not xml_path.exists():
+        return
+    thresholds = _load_package_thresholds()
+    if not thresholds:
+        return
+    try:
+        root = ET.parse(xml_path).getroot()
+    except ET.ParseError:
+        return
+
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    metrics: dict[str, float] = {}
+    failures: list[str] = []
+    for package, required in thresholds.items():
+        rate = _collect_line_rate(root, package)
+        metrics[package] = rate
+        if rate + 1e-6 < required:
+            failures.append(
+                f"{package} coverage {rate:.2f}% is below required {required:.2f}%"
+            )
+
+    if reporter and metrics:
+        reporter.write_sep("-", "module coverage summary")
+        for package in sorted(metrics):
+            reporter.write_line(
+                f"{package}: {metrics[package]:.2f}% (target {thresholds[package]:.2f}%)"
+            )
+
+    if failures:
+        if reporter:
+            reporter.write_sep("-", "coverage threshold failures")
+            for message in failures:
+                reporter.write_line(message)
+        failed_code = pytest.ExitCode.TESTS_FAILED
+        if isinstance(exitstatus, pytest.ExitCode):
+            if exitstatus.value < failed_code.value:
+                session.exitstatus = failed_code
+        else:
+            session.exitstatus = max(int(exitstatus), failed_code.value)
