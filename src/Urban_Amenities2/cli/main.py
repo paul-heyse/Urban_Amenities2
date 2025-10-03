@@ -211,6 +211,7 @@ def config_validate(path: Path) -> None:
         typer.echo(f"Configuration {path} is valid")
     except ParameterLoadError as exc:
         logger.error("config_validate_failed", path=str(path), error=str(exc))
+        typer.echo(f"Error: {exc}")
         raise typer.Exit(code=1) from exc
 
 
@@ -220,6 +221,7 @@ def config_show(path: Path) -> None:
         summary = load_and_document(path)
     except ParameterLoadError as exc:
         logger.error("config_show_failed", path=str(path), error=str(exc))
+        typer.echo(f"Error: {exc}")
         raise typer.Exit(code=1) from exc
     typer.echo(summary)
 
@@ -379,9 +381,18 @@ def cli_aggregate(
     run_id: str | None = typer.Option(None, help="Run identifier to annotate outputs"),
     report_path: Path | None = typer.Option(None, help="Optional QA HTML report"),
 ) -> None:
-    frame = _load_table(subscores, "hex_id")
+    try:
+        frame = _load_table(subscores, "hex_id")
+    except FileNotFoundError as exc:
+        logger.error("aggregate_input_missing", path=str(subscores))
+        typer.echo(f"Error: File not found: {subscores}")
+        raise typer.Exit(code=1) from exc
     weight_config = WeightConfig(_parse_weights(weights))
-    aggregated = aggregate_scores(frame, value_column="aucs", weight_config=weight_config)
+    try:
+        aggregated = aggregate_scores(frame, value_column="aucs", weight_config=weight_config)
+    except KeyboardInterrupt as exc:
+        typer.echo("Operation cancelled by user")
+        raise typer.Exit(code=1) from exc
     aggregated["run_id"] = run_id or "manual"
     aggregated["generated_at"] = datetime.utcnow().isoformat()
     write_scores(aggregated, output)
