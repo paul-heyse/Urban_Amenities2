@@ -143,3 +143,48 @@ def test_ingest_writes_parquet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     comfort = ingestor.ingest(["CO"], session=session, output_path=output_path)  # type: ignore[arg-type]
     assert output_path.exists()
     assert not comfort.empty
+
+
+def test_fetch_states_combines_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    responses = [
+        StubResponse(
+            [
+                {
+                    "station": "001",
+                    "month": "01",
+                    "MLY-TAVG-NORMAL": "10",
+                    "latitude": "40",
+                    "longitude": "-105",
+                }
+            ]
+        ),
+        StubResponse(
+            [
+                {
+                    "station": "002",
+                    "month": "02",
+                    "MLY-TAVG-NORMAL": "5",
+                    "latitude": "41",
+                    "longitude": "-104",
+                }
+            ]
+        ),
+    ]
+    session = StubSession(responses)
+    registry = DummyRegistry()
+    ingestor = noaa.NoaaNormalsIngestor(registry=registry)
+    frame = ingestor.fetch_states(["CO", "UT"], session=session)  # type: ignore[arg-type]
+    assert len(frame) == 2
+    assert registry.snapshots and len(registry.snapshots) == 2
+
+
+def test_interpolate_to_hex_empty_returns_expected_columns() -> None:
+    ingestor = noaa.NoaaNormalsIngestor()
+    result = ingestor.interpolate_to_hex(pd.DataFrame())
+    assert list(result.columns) == ["hex_id", "month", "tavg_c", "precip_probability", "wind_mps"]
+
+
+def test_compute_comfort_index_handles_empty_frame() -> None:
+    ingestor = noaa.NoaaNormalsIngestor()
+    result = ingestor.compute_comfort_index(pd.DataFrame())
+    assert list(result.columns) == ["hex_id", "month", "sigma_out"]
