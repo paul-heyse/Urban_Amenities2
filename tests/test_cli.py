@@ -134,3 +134,9 @@ def test_aggregate_and_export_cli(tmp_path: Path) -> None:
     assert export_result.exit_code == 0, export_result.output
     geojson = json.loads(export_path.read_text())
     assert geojson["features"], "GeoJSON export should include features"
+    for feature in geojson["features"]:
+        properties = feature["properties"]
+        assert isinstance(properties, dict)
+        for key, value in properties.items():
+            assert isinstance(key, str)
+            assert not isinstance(value, (pd.Series, pd.Index))

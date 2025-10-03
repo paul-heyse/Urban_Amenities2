@@ -3,8 +3,10 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from collections.abc import Mapping, MutableMapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Lock
+from types import TracebackType
+from typing import Literal
 
 import numpy as np
 from structlog.typing import FilteringBoundLogger
@@ -38,15 +40,32 @@ class MetricSummary:
         return data
 
 
+@dataclass(slots=True)
+class _ServiceBucket:
+    durations: list[float] = field(default_factory=list)
+    success: int = 0
+    failure: int = 0
+
+    def record(self, duration: float, *, success: bool) -> None:
+        self.durations.append(duration)
+        if success:
+            self.success += 1
+        else:
+            self.failure += 1
+
+    def clear(self) -> None:
+        self.durations.clear()
+        self.success = 0
+        self.failure = 0
+
+
 class MetricsCollector:
     """In-memory metrics collector suitable for unit tests and batch jobs."""
 
     def __init__(self) -> None:
         self._timings: MutableMapping[str, list[float]] = defaultdict(list)
         self._throughput: MutableMapping[str, list[float]] = defaultdict(list)
-        self._service: MutableMapping[str, dict[str, list[float] | int]] = defaultdict(
-            lambda: {"durations": [], "success": 0, "failure": 0}
-        )
+        self._service: MutableMapping[str, _ServiceBucket] = {}
         self._lock = Lock()
 
     def record_timing(self, name: str, duration: float, *, count: int | None = None) -> None:
@@ -60,11 +79,12 @@ class MetricsCollector:
     def record_service_call(self, name: str, duration: float, *, success: bool) -> None:
         if duration < 0:
             raise ValueError("duration must be non-negative")
-        bucket = self._service[name]
         with self._lock:
-            bucket.setdefault("durations", []).append(float(duration))
-            key = "success" if success else "failure"
-            bucket[key] = int(bucket.get(key, 0)) + 1
+            bucket = self._service.get(name)
+            if bucket is None:
+                bucket = _ServiceBucket()
+                self._service[name] = bucket
+            bucket.record(float(duration), success=success)
 
     def record_throughput(self, name: str, rows_processed: int, duration: float) -> None:
         if duration <= 0:
@@ -93,10 +113,10 @@ class MetricsCollector:
             bucket = self._service.get(name)
         if not bucket:
             return None
-        durations = np.asarray(bucket.get("durations", ()), dtype=float)
+        durations = np.asarray(bucket.durations, dtype=float)
         summary: dict[str, float] = {
-            "success": float(bucket.get("success", 0)),
-            "failure": float(bucket.get("failure", 0)),
+            "success": float(bucket.success),
+            "failure": float(bucket.failure),
         }
         if durations.size:
             summary["p50"] = float(np.percentile(durations, 50))
@@ -125,6 +145,20 @@ class MetricsCollector:
             self._timings.clear()
             self._throughput.clear()
             self._service.clear()
+
+    def record(
+        self,
+        name: str,
+        duration: float,
+        *,
+        count: int | None = None,
+        success: bool | None = None,
+    ) -> None:
+        """Record a timing and optional service outcome in a single call."""
+
+        self.record_timing(name, duration, count=count)
+        if success is not None:
+            self.record_service_call(name, duration, success=success)
 
 
 METRICS = MetricsCollector()
@@ -155,7 +189,12 @@ class OperationTracker:
             self.logger.info("operation_start", operation=self.name, items=self.items, **self.extra)
         return self
 
-    def __exit__(self, exc_type, exc, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> Literal[False]:
         duration = time.perf_counter() - (self._start or time.perf_counter())
         self.metrics.record_timing(self.name, duration, count=self.items)
         if self.logger is not None:

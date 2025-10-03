@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable as IterableABC
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
 import typer
 
 from ..calibration.essentials import sensitivity_analysis
@@ -26,9 +26,9 @@ from ..io.versioning.snapshots import SnapshotRegistry
 from ..logging_utils import configure_logging, get_logger
 from ..math.diversity import DiversityConfig
 from ..monitoring.health import HealthStatus, format_report, overall_status, run_health_checks
-from ..router.api import RoutingAPI
+from ..router.api import OSRMClientProtocol, RoutingAPI
 from ..router.batch import BatchConfig, SkimBuilder
-from ..router.osrm import OSRMClient, OSRMConfig
+from ..router.osrm import OSRMClient, OSRMConfig, OSRMLeg, OSRMRoute, OSRMTable
 from ..schemas.scores import EAOutputSchema
 from ..scores.aggregation import WeightConfig, aggregate_scores
 from ..scores.essentials_access import (
@@ -111,7 +111,7 @@ def cli_healthcheck(
         logger.warning("healthcheck_warning", status=status.value)
 
 
-def _parse_bbox(bbox: str | None):
+def _parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
     if not bbox:
         return None
     parts = [float(part) for part in bbox.split(",")]
@@ -135,15 +135,15 @@ def _json_safe(value: object) -> object:
         return value.isoformat()
     if isinstance(value, (pd.Series, pd.Index)):
         return [_json_safe(item) for item in value.tolist()]
-    if isinstance(value, dict):
-        return {key: _json_safe(val) for key, val in value.items()}
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(val) for key, val in value.items()}
     if isinstance(value, IterableABC) and not isinstance(value, (str, bytes)):
         return [_json_safe(item) for item in value]
     return value
 
 
-def _sanitize_properties(record: dict[str, object]) -> dict[str, object]:
-    return {key: _json_safe(value) for key, value in record.items()}
+def _sanitize_properties(record: Mapping[str, object]) -> dict[str, object]:
+    return {str(key): _json_safe(value) for key, value in record.items()}
 
 
 def _load_coords(path: Path, id_column: str) -> dict[str, tuple[float, float]]:
@@ -164,35 +164,35 @@ def _haversine(origin: tuple[float, float], destination: tuple[float, float]) ->
     return 6371000 * c
 
 
-class GreatCircleOSRM:
+class GreatCircleOSRM(OSRMClientProtocol):
     def __init__(self, mode: str):
         self.mode = mode
 
     def _speed(self) -> float:
         return {"car": 15.0, "bike": 5.0, "foot": 1.4}.get(self.mode, 10.0)
 
-    def route(self, coords: Sequence[tuple[float, float]]):
+    def route(self, coords: Sequence[tuple[float, float]]) -> OSRMRoute:
         distance = _haversine(coords[0], coords[-1])
         duration = distance / self._speed()
-        return {"duration": duration, "distance": distance, "legs": []}
+        return OSRMRoute(duration=duration, distance=distance, legs=[])
 
     def table(
         self,
         sources: Sequence[tuple[float, float]],
         destinations: Sequence[tuple[float, float]],
-    ) -> dict:
-        durations = []
-        distances = []
+    ) -> OSRMTable:
+        durations: list[list[float | None]] = []
+        distances: list[list[float | None]] = []
         for origin in sources:
-            row_duration = []
-            row_distance = []
+            row_duration: list[float | None] = []
+            row_distance: list[float | None] = []
             for destination in destinations:
                 dist = _haversine(origin, destination)
                 row_distance.append(dist)
                 row_duration.append(dist / self._speed())
             durations.append(row_duration)
             distances.append(row_distance)
-        return {"durations": durations, "distances": distances}
+        return OSRMTable(durations=durations, distances=distances)
 
 
 def _parse_weights(value: str) -> dict[str, float]:
@@ -467,6 +467,7 @@ def routing_compute_skims(
 ) -> None:
     origin_coords = _load_coords(origins_path, "id")
     dest_coords = _load_coords(destinations_path, "id")
+    client: OSRMClientProtocol
     if osrm_base_url:
         client = OSRMClient(OSRMConfig(base_url=osrm_base_url, profile=mode))
     else:

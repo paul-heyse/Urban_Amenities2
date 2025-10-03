@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -36,7 +36,7 @@ class OTPClient:
     ) -> list[dict[str, object]]:
         query = _build_plan_query()
         departure = departure or datetime.utcnow()
-        variables = {
+        variables: dict[str, object] = {
             "from": {"lat": origin[1], "lon": origin[0]},
             "to": {"lat": destination[1], "lon": destination[0]},
             "modes": list(modes),
@@ -51,29 +51,49 @@ class OTPClient:
         )
         response.raise_for_status()
         payload = response.json()
+        if not isinstance(payload, Mapping):
+            raise OTPError("OTP response payload is not a mapping")
         if "errors" in payload:
             LOGGER.warning("otp_error", errors=payload["errors"])
             raise OTPError(str(payload["errors"]))
-        itineraries = payload.get("data", {}).get("plan", {}).get("itineraries", [])
-        return [self._parse_itinerary(itinerary) for itinerary in itineraries]
+        data = payload.get("data")
+        plan = data.get("plan") if isinstance(data, Mapping) else None
+        itineraries = plan.get("itineraries") if isinstance(plan, Mapping) else None
+        if not isinstance(itineraries, Sequence):
+            return []
+        return [self._parse_itinerary(itinerary) for itinerary in itineraries if isinstance(itinerary, Mapping)]
 
-    def _parse_itinerary(self, itinerary: dict) -> dict[str, object]:
-        walk = itinerary.get("walkTime", 0)
-        transit = itinerary.get("transitTime", 0)
-        wait = itinerary.get("waitingTime", 0)
-        fare = itinerary.get("fare", {}).get("fare", {}).get("regular", {}).get("amount", 0)
+    def _parse_itinerary(self, itinerary: Mapping[str, object]) -> dict[str, object]:
+        walk = _as_float(itinerary.get("walkTime"))
+        transit = _as_float(itinerary.get("transitTime"))
+        wait = _as_float(itinerary.get("waitingTime"))
+        fare_payload = itinerary.get("fare")
+        fare = 0.0
+        if isinstance(fare_payload, Mapping):
+            fare_amount = (
+                fare_payload.get("fare")
+                if isinstance(fare_payload.get("fare"), Mapping)
+                else None
+            )
+            if isinstance(fare_amount, Mapping):
+                regular = fare_amount.get("regular")
+                if isinstance(regular, Mapping):
+                    fare = _as_float(regular.get("amount"))
+        legs_payload = itinerary.get("legs")
+        leg_entries = legs_payload if isinstance(legs_payload, Sequence) else ()
         legs = [
             {
-                "mode": leg.get("mode"),
-                "duration": leg.get("duration"),
-                "distance": leg.get("distance"),
-                "from": leg.get("from", {}).get("name"),
-                "to": leg.get("to", {}).get("name"),
+                "mode": leg.get("mode") if isinstance(leg.get("mode"), str) else None,
+                "duration": _as_float(leg.get("duration")),
+                "distance": _as_float(leg.get("distance")),
+                "from": _extract_name(leg.get("from")),
+                "to": _extract_name(leg.get("to")),
             }
-            for leg in itinerary.get("legs", [])
+            for leg in leg_entries
+            if isinstance(leg, Mapping)
         ]
         return {
-            "duration": itinerary.get("duration"),
+            "duration": _as_float(itinerary.get("duration")),
             "walk_time": walk,
             "transit_time": transit,
             "wait_time": wait,
@@ -115,3 +135,17 @@ def _build_plan_query() -> str:
 
 
 __all__ = ["OTPClient", "OTPConfig", "OTPError"]
+
+
+def _as_float(value: object) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return 0.0
+
+
+def _extract_name(payload: object) -> str | None:
+    if isinstance(payload, Mapping):
+        name = payload.get("name")
+        if isinstance(name, str):
+            return name
+    return None

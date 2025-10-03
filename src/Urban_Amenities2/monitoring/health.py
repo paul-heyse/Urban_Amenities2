@@ -8,13 +8,38 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
 
 import requests
 
-try:  # pragma: no cover - optional dependency fallback
-    import psutil  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover - fallback path
-    psutil = None  # type: ignore
+
+class _DiskUsage(Protocol):
+    free: int
+
+
+class _VirtualMemory(Protocol):
+    available: int
+
+
+class _PsutilModule(Protocol):
+    def disk_usage(self, path: str) -> _DiskUsage:
+        ...
+
+    def virtual_memory(self) -> _VirtualMemory:
+        ...
+
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import psutil as _psutil_type  # type: ignore[import-untyped]
+
+    PSUTIL: _PsutilModule | None = cast(_PsutilModule, _psutil_type)
+else:
+    try:  # pragma: no cover - optional dependency fallback
+        import psutil as _psutil_import  # type: ignore[import-untyped]
+    except ModuleNotFoundError:  # pragma: no cover - fallback path
+        PSUTIL: _PsutilModule | None = None
+    else:
+        PSUTIL = cast(_PsutilModule, _psutil_import)
 
 from ..config.loader import ParameterLoadError, load_params
 
@@ -224,10 +249,11 @@ def _check_data_paths(
 
 
 def _check_disk_space(min_gb: float) -> HealthCheckResult:
-    if psutil is not None:
-        usage_free = psutil.disk_usage(Path.cwd().anchor).free
+    anchor = Path.cwd().anchor or str(Path.cwd())
+    if PSUTIL is not None:
+        usage_free = PSUTIL.disk_usage(anchor).free
     else:  # pragma: no cover - fallback path
-        usage_free = shutil.disk_usage(Path.cwd().anchor).free
+        usage_free = shutil.disk_usage(anchor).free
     free_gb = usage_free / 1024**3
     if free_gb < min_gb:
         return HealthCheckResult(
@@ -245,13 +271,13 @@ def _check_disk_space(min_gb: float) -> HealthCheckResult:
 
 
 def _check_memory(min_gb: float) -> HealthCheckResult:
-    if psutil is None:  # pragma: no cover - fallback path
+    if PSUTIL is None:  # pragma: no cover - fallback path
         return HealthCheckResult(
             name="memory",
             status=HealthStatus.WARNING,
             message="psutil not installed; memory availability unknown",
         )
-    virtual = psutil.virtual_memory()
+    virtual = PSUTIL.virtual_memory()
     available_gb = virtual.available / 1024**3
     if available_gb < min_gb:
         return HealthCheckResult(

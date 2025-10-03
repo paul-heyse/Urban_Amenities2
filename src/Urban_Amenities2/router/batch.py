@@ -6,8 +6,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-import pandas as pd
-from diskcache import Cache
+import pandas as pd  # type: ignore[import-untyped]
+from diskcache import Cache  # type: ignore[import-untyped]
 
 from ..logging_utils import get_logger
 from .api import RoutingAPI

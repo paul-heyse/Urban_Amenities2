@@ -1,0 +1,1376 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/docs/ROUTING_TYPING.md b/docs/ROUTING_TYPING.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..70e21d66a8798456c44e1ab3daf4d1842b7c565c
+--- /dev/null
++++ b/docs/ROUTING_TYPING.md
+@@ -0,0 +1,39 @@
++# Routing Typing Conventions
++
++The routing stack exposes typed interfaces so `mypy` can validate request and
++response handling without relying on implicit `Any` conversions.
++
++## OSRM client
++- `OSRMClient.route` returns an `OSRMRoute` dataclass containing the scalar
++  duration (seconds), optional distance (metres), and a list of `OSRMLeg`
++  entries. Each leg exposes typed duration/distance fields and non-numeric
++  payloads from OSRM are rejected during parsing.
++- `OSRMClient.table` returns an `OSRMTable` dataclass. Duration and distance
++  matrices are represented as `list[list[float | None]]`, preserving
++  reachability gaps without widening to `Any`.
++- Batched table calls reuse the same dataclasses so downstream code can rely on
++  consistent types irrespective of OSRM limits.
++
++## Great-circle fallback
++- The CLI fallback (`GreatCircleOSRM`) mirrors the OSRM dataclasses, ensuring
++  callers can switch between real and synthetic clients without adjusting type
++  expectations.
++
++## Monitoring collectors
++- `MetricsCollector.record_timing`, `record_service_call`, and the convenience
++  `record` helper all return `None` and persist floats in dedicated dataclasses
++  (`_ServiceBucket`). This avoids union-heavy dictionaries while keeping
++  summaries fully typed.
++
++## CLI sanitisation
++- `_sanitize_properties` accepts any `Mapping[str, object]` and always returns a
++  `dict[str, object]` populated with JSON-safe scalars, sequences, or nested
++  dictionaries. Tests cover the GeoJSON export path to guarantee sanitised
++  properties stay typed.
++
++## Validation
++Run the targeted type checks before shipping routing changes:
++
++```bash
++mypy src/Urban_Amenities2/router src/Urban_Amenities2/monitoring src/Urban_Amenities2/cli --warn-unused-ignores
++```
+diff --git a/openspec/changes/update-routing-type-safety/tasks.md b/openspec/changes/update-routing-type-safety/tasks.md
+index 09dac1707283c9bfe983c6157e6d9b72c38d8310..a4db2f59b5756267117d9ffacaf36e383d8be11d 100644
+--- a/openspec/changes/update-routing-type-safety/tasks.md
++++ b/openspec/changes/update-routing-type-safety/tasks.md
+@@ -1,6 +1,6 @@
+ ## 1. Routing & monitoring typing
+-- [ ] 1.1 Formalize OSRM request/response schemas (typed params, parsed tables) and refactor `_concatenate_rows` helpers.
+-- [ ] 1.2 Replace union-heavy accumulators in `monitoring/metrics.py` with typed data classes or protocol-backed collectors; ensure `metrics.record()` returns `None`.
+-- [ ] 1.3 Annotate `monitoring/health.py` optional psutil import using typed fallbacks consistent with new typing strategy.
+-- [ ] 1.4 Update CLI export sanitisation to operate on `dict[str, object]` payloads and adjust tests to cover typed result.
+-- [ ] 1.5 Run targeted typing checks (`mypy src/Urban_Amenities2/router src/Urban_Amenities2/monitoring src/Urban_Amenities2/cli --warn-unused-ignores`) and document routing typing conventions.
++- [x] 1.1 Formalize OSRM request/response schemas (typed params, parsed tables) and refactor `_concatenate_rows` helpers.
++- [x] 1.2 Replace union-heavy accumulators in `monitoring/metrics.py` with typed data classes or protocol-backed collectors; ensure `metrics.record()` returns `None`.
++- [x] 1.3 Annotate `monitoring/health.py` optional psutil import using typed fallbacks consistent with new typing strategy.
++- [x] 1.4 Update CLI export sanitisation to operate on `dict[str, object]` payloads and adjust tests to cover typed result.
++- [x] 1.5 Run targeted typing checks (`mypy src/Urban_Amenities2/router src/Urban_Amenities2/monitoring src/Urban_Amenities2/cli --warn-unused-ignores`) and document routing typing conventions.
+diff --git a/src/Urban_Amenities2/cli/main.py b/src/Urban_Amenities2/cli/main.py
+index 0737a155418ff9aa9e40bc4d1d95d2bf97803110..21fde507cf74c7b93248d022ac7e52e934b6bb00 100644
+--- a/src/Urban_Amenities2/cli/main.py
++++ b/src/Urban_Amenities2/cli/main.py
+@@ -1,56 +1,56 @@
+ # ruff: noqa: B008
+ from __future__ import annotations
+
+ import json
+ from collections.abc import Iterable as IterableABC
+-from collections.abc import Sequence
++from collections.abc import Mapping, Sequence
+ from datetime import datetime
+ from pathlib import Path
+
+ import numpy as np
+-import pandas as pd
++import pandas as pd  # type: ignore[import-untyped]
+ import typer
+
+ from ..calibration.essentials import sensitivity_analysis
+ from ..config.loader import ParameterLoadError, load_and_document, load_params
+ from ..export.parquet import summary_statistics, write_explainability, write_scores
+ from ..export.reports import build_report
+ from ..hex.core import hex_boundary, hex_neighbors, latlon_to_hex
+ from ..io.gtfs.realtime import GTFSRealtimeIngestor
+ from ..io.gtfs.registry import load_registry
+ from ..io.gtfs.static import GTFSStaticIngestor
+ from ..io.overture.places import ingest_places
+ from ..io.overture.transportation import export_networks, prepare_transportation
+ from ..io.quality.checks import generate_report
+ from ..io.versioning.snapshots import SnapshotRegistry
+ from ..logging_utils import configure_logging, get_logger
+ from ..math.diversity import DiversityConfig
+ from ..monitoring.health import HealthStatus, format_report, overall_status, run_health_checks
+-from ..router.api import RoutingAPI
++from ..router.api import OSRMClientProtocol, RoutingAPI
+ from ..router.batch import BatchConfig, SkimBuilder
+-from ..router.osrm import OSRMClient, OSRMConfig
++from ..router.osrm import OSRMClient, OSRMConfig, OSRMLeg, OSRMRoute, OSRMTable
+ from ..schemas.scores import EAOutputSchema
+ from ..scores.aggregation import WeightConfig, aggregate_scores
+ from ..scores.essentials_access import (
+     EssentialCategoryConfig,
+     EssentialsAccessCalculator,
+     EssentialsAccessConfig,
+ )
+ from ..scores.explainability import top_contributors
+ from ..versioning.manifest import create_run_manifest, get_manifest, list_manifests
+
+ app = typer.Typer(help="AUCS utilities")
+ configure_logging()
+ logger = get_logger("aucs.cli")
+
+ RUN_STORAGE = Path("runs/manifests.jsonl")
+
+ config_app = typer.Typer(help="Configuration utilities")
+ hex_app = typer.Typer(help="Hexagon helpers")
+ run_app = typer.Typer(help="Run manifest management")
+ ingest_app = typer.Typer(help="Data ingestion")
+ data_app = typer.Typer(help="Data quality and snapshots")
+ score_app = typer.Typer(help="Scoring commands")
+ calibrate_app = typer.Typer(help="Calibration utilities")
+ routing_app = typer.Typer(help="Routing tools")
+
+@@ -89,132 +89,132 @@ def cli_healthcheck(
+     min_memory_gb: float = typer.Option(8.0, "--min-memory-gb", help="Minimum system memory in GB"),
+ ) -> None:
+     if data_max_age and len(data_max_age) != len(data):
+         raise typer.BadParameter("Provide --data-max-age for each --data entry")
+     data_requirements = [
+         (path, data_max_age[idx] if idx < len(data_max_age) else None)
+         for idx, path in enumerate(data)
+     ]
+     results = run_health_checks(
+         osrm_urls={"car": osrm_car, "bike": osrm_bike, "foot": osrm_foot},
+         otp_url=otp_url,
+         params_path=params,
+         data_paths=data_requirements,
+         min_disk_gb=min_disk_gb,
+         min_memory_gb=min_memory_gb,
+     )
+     typer.echo(format_report(results))
+     status = overall_status(results)
+     if status == HealthStatus.CRITICAL:
+         logger.error("healthcheck_failed", status=status.value)
+         raise typer.Exit(code=1)
+     if status == HealthStatus.WARNING:
+         logger.warning("healthcheck_warning", status=status.value)
+
+
+-def _parse_bbox(bbox: str | None):
++def _parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
+     if not bbox:
+         return None
+     parts = [float(part) for part in bbox.split(",")]
+     if len(parts) != 4:
+         raise typer.BadParameter("bbox must be min_lon,min_lat,max_lon,max_lat")
+     return parts[0], parts[1], parts[2], parts[3]
+
+
+ def _load_table(path: Path, id_column: str) -> pd.DataFrame:
+     if path.suffix == ".parquet":
+         return pd.read_parquet(path)
+     return pd.read_csv(path)
+
+
+ def _json_safe(value: object) -> object:
+     if isinstance(value, np.generic):
+         return value.item()
+     if isinstance(value, np.ndarray):
+         return [_json_safe(item) for item in value.tolist()]
+     if isinstance(value, pd.Timestamp):
+         return value.isoformat()
+     if isinstance(value, (pd.Series, pd.Index)):
+         return [_json_safe(item) for item in value.tolist()]
+-    if isinstance(value, dict):
+-        return {key: _json_safe(val) for key, val in value.items()}
++    if isinstance(value, Mapping):
++        return {str(key): _json_safe(val) for key, val in value.items()}
+     if isinstance(value, IterableABC) and not isinstance(value, (str, bytes)):
+         return [_json_safe(item) for item in value]
+     return value
+
+
+-def _sanitize_properties(record: dict[str, object]) -> dict[str, object]:
+-    return {key: _json_safe(value) for key, value in record.items()}
++def _sanitize_properties(record: Mapping[str, object]) -> dict[str, object]:
++    return {str(key): _json_safe(value) for key, value in record.items()}
+
+
+ def _load_coords(path: Path, id_column: str) -> dict[str, tuple[float, float]]:
+     table = _load_table(path, id_column)
+     return {row[id_column]: (row["lon"], row["lat"]) for _, row in table.iterrows()}
+
+
+ def _haversine(origin: tuple[float, float], destination: tuple[float, float]) -> float:
+     from math import asin, cos, radians, sin, sqrt
+
+     lon1, lat1 = origin
+     lon2, lat2 = destination
+     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+     dlon = lon2 - lon1
+     dlat = lat2 - lat1
+     a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+     c = 2 * asin(sqrt(a))
+     return 6371000 * c
+
+
+-class GreatCircleOSRM:
++class GreatCircleOSRM(OSRMClientProtocol):
+     def __init__(self, mode: str):
+         self.mode = mode
+
+     def _speed(self) -> float:
+         return {"car": 15.0, "bike": 5.0, "foot": 1.4}.get(self.mode, 10.0)
+
+-    def route(self, coords: Sequence[tuple[float, float]]):
++    def route(self, coords: Sequence[tuple[float, float]]) -> OSRMRoute:
+         distance = _haversine(coords[0], coords[-1])
+         duration = distance / self._speed()
+-        return {"duration": duration, "distance": distance, "legs": []}
++        return OSRMRoute(duration=duration, distance=distance, legs=[])
+
+     def table(
+         self,
+         sources: Sequence[tuple[float, float]],
+         destinations: Sequence[tuple[float, float]],
+-    ) -> dict:
+-        durations = []
+-        distances = []
++    ) -> OSRMTable:
++        durations: list[list[float | None]] = []
++        distances: list[list[float | None]] = []
+         for origin in sources:
+-            row_duration = []
+-            row_distance = []
++            row_duration: list[float | None] = []
++            row_distance: list[float | None] = []
+             for destination in destinations:
+                 dist = _haversine(origin, destination)
+                 row_distance.append(dist)
+                 row_duration.append(dist / self._speed())
+             durations.append(row_duration)
+             distances.append(row_distance)
+-        return {"durations": durations, "distances": distances}
++        return OSRMTable(durations=durations, distances=distances)
+
+
+ def _parse_weights(value: str) -> dict[str, float]:
+     candidate = Path(value)
+     if candidate.exists():
+         payload = json.loads(candidate.read_text(encoding="utf-8"))
+     else:
+         payload = json.loads(value)
+     return {key: float(weight) for key, weight in payload.items()}
+
+
+ @config_app.command("validate")
+ def config_validate(path: Path) -> None:
+     try:
+         load_params(path)
+         typer.echo(f"Configuration {path} is valid")
+     except ParameterLoadError as exc:
+         logger.error("config_validate_failed", path=str(path), error=str(exc))
+         raise typer.Exit(code=1) from exc
+
+
+ @config_app.command("show")
+ def config_show(path: Path) -> None:
+     try:
+         summary = load_and_document(path)
+@@ -445,50 +445,51 @@ def cli_export(
+             boundary.append(boundary[0])
+         features.append(
+             {
+                 "type": "Feature",
+                 "geometry": {"type": "Polygon", "coordinates": [boundary]},
+                 "properties": properties,
+             }
+         )
+     collection = {"type": "FeatureCollection", "features": features}
+     output.parent.mkdir(parents=True, exist_ok=True)
+     output.write_text(json.dumps(collection, indent=2), encoding="utf-8")
+     typer.echo(f"Wrote GeoJSON to {output}")
+
+
+ @routing_app.command("compute-skims")
+ def routing_compute_skims(
+     origins_path: Path = typer.Argument(..., help="Origins table with columns id, lat, lon"),
+     destinations_path: Path = typer.Argument(..., help="Destinations table"),
+     output_path: Path = typer.Option(Path("data/processed/skims.parquet"), help="Output path"),
+     mode: str = typer.Option("car", help="Mode"),
+     period: str | None = typer.Option(None, help="Period label"),
+     osrm_base_url: str | None = typer.Option(None, help="Optional OSRM base URL"),
+ ) -> None:
+     origin_coords = _load_coords(origins_path, "id")
+     dest_coords = _load_coords(destinations_path, "id")
++    client: OSRMClientProtocol
+     if osrm_base_url:
+         client = OSRMClient(OSRMConfig(base_url=osrm_base_url, profile=mode))
+     else:
+         client = GreatCircleOSRM(mode)
+     api = RoutingAPI({mode: client})
+     builder = SkimBuilder(api, BatchConfig(mode=mode, period=period))
+     frame = builder.matrix(list(origin_coords.values()), list(dest_coords.values()))
+     origin_keys = list(origin_coords.keys())
+     dest_keys = list(dest_coords.keys())
+     frame["origin_id"] = frame["origin_index"].map(lambda idx: origin_keys[idx])
+     frame["destination_id"] = frame["destination_index"].map(lambda idx: dest_keys[idx])
+     builder.write_parquet(frame, output_path)
+
+
+ @score_app.command("ea")
+ def score_ea(
+     pois_path: Path = typer.Argument(..., help="POI parquet"),
+     accessibility_path: Path = typer.Argument(..., help="Accessibility parquet"),
+     output: Path = typer.Option(Path("data/processed/ea_scores.parquet"), help="Output path"),
+     category_output: Path | None = typer.Option(None, help="Optional category scores output"),
+     hex_id: str | None = typer.Option(None, help="Optional hex filter"),
+ ) -> None:
+     pois = pd.read_parquet(pois_path)
+     accessibility = pd.read_parquet(accessibility_path)
+     if hex_id:
+diff --git a/src/Urban_Amenities2/monitoring/health.py b/src/Urban_Amenities2/monitoring/health.py
+index 7799254d3c138469063eb3a66c79a0a720499758..59fb062df769adc85a5576b165d25e74dcb8011b 100644
+--- a/src/Urban_Amenities2/monitoring/health.py
++++ b/src/Urban_Amenities2/monitoring/health.py
+@@ -1,42 +1,67 @@
+ """Health check utilities for routing services and data readiness."""
+
+ from __future__ import annotations
+
+ import shutil
+ from collections.abc import Iterable, Mapping, Sequence
+ from dataclasses import dataclass
+ from datetime import datetime
+ from enum import Enum
+ from pathlib import Path
++from typing import TYPE_CHECKING, Protocol, cast
+
+ import requests
+
+-try:  # pragma: no cover - optional dependency fallback
+-    import psutil  # type: ignore
+-except ModuleNotFoundError:  # pragma: no cover - fallback path
+-    psutil = None  # type: ignore
++
++class _DiskUsage(Protocol):
++    free: int
++
++
++class _VirtualMemory(Protocol):
++    available: int
++
++
++class _PsutilModule(Protocol):
++    def disk_usage(self, path: str) -> _DiskUsage:
++        ...
++
++    def virtual_memory(self) -> _VirtualMemory:
++        ...
++
++
++if TYPE_CHECKING:  # pragma: no cover - typing only
++    import psutil as _psutil_type  # type: ignore[import-untyped]
++
++    PSUTIL: _PsutilModule | None = cast(_PsutilModule, _psutil_type)
++else:
++    try:  # pragma: no cover - optional dependency fallback
++        import psutil as _psutil_import  # type: ignore[import-untyped]
++    except ModuleNotFoundError:  # pragma: no cover - fallback path
++        PSUTIL: _PsutilModule | None = None
++    else:
++        PSUTIL = cast(_PsutilModule, _psutil_import)
+
+ from ..config.loader import ParameterLoadError, load_params
+
+ __all__ = [
+     "HealthCheckResult",
+     "HealthStatus",
+     "format_report",
+     "overall_status",
+     "run_health_checks",
+ ]
+
+
+ class HealthStatus(str, Enum):
+     OK = "ok"
+     WARNING = "warning"
+     CRITICAL = "critical"
+
+
+ @dataclass(slots=True)
+ class HealthCheckResult:
+     name: str
+     status: HealthStatus
+     message: str
+     details: dict[str, object] | None = None
+
+@@ -202,78 +227,79 @@ def _check_data_paths(
+             continue
+         modified = datetime.fromtimestamp(path.stat().st_mtime)
+         age_days = (datetime.utcnow() - modified).days
+         if age_days > max_age:
+             results.append(
+                 HealthCheckResult(
+                     name=name,
+                     status=HealthStatus.WARNING,
+                     message="Data is stale",
+                     details={"age_days": age_days, "max_age_days": max_age},
+                 )
+             )
+         else:
+             results.append(
+                 HealthCheckResult(
+                     name=name,
+                     status=HealthStatus.OK,
+                     message="Data fresh",
+                     details={"age_days": age_days},
+                 )
+             )
+     return results
+
+
+ def _check_disk_space(min_gb: float) -> HealthCheckResult:
+-    if psutil is not None:
+-        usage_free = psutil.disk_usage(Path.cwd().anchor).free
++    anchor = Path.cwd().anchor or str(Path.cwd())
++    if PSUTIL is not None:
++        usage_free = PSUTIL.disk_usage(anchor).free
+     else:  # pragma: no cover - fallback path
+-        usage_free = shutil.disk_usage(Path.cwd().anchor).free
++        usage_free = shutil.disk_usage(anchor).free
+     free_gb = usage_free / 1024**3
+     if free_gb < min_gb:
+         return HealthCheckResult(
+             name="disk",
+             status=HealthStatus.CRITICAL,
+             message="Insufficient disk space",
+             details={"free_gb": round(free_gb, 2), "required_gb": min_gb},
+         )
+     return HealthCheckResult(
+         name="disk",
+         status=HealthStatus.OK,
+         message="Disk space sufficient",
+         details={"free_gb": round(free_gb, 2)},
+     )
+
+
+ def _check_memory(min_gb: float) -> HealthCheckResult:
+-    if psutil is None:  # pragma: no cover - fallback path
++    if PSUTIL is None:  # pragma: no cover - fallback path
+         return HealthCheckResult(
+             name="memory",
+             status=HealthStatus.WARNING,
+             message="psutil not installed; memory availability unknown",
+         )
+-    virtual = psutil.virtual_memory()
++    virtual = PSUTIL.virtual_memory()
+     available_gb = virtual.available / 1024**3
+     if available_gb < min_gb:
+         return HealthCheckResult(
+             name="memory",
+             status=HealthStatus.CRITICAL,
+             message="Insufficient memory available",
+             details={"available_gb": round(available_gb, 2), "required_gb": min_gb},
+         )
+     return HealthCheckResult(
+         name="memory",
+         status=HealthStatus.OK,
+         message="Memory available",
+         details={"available_gb": round(available_gb, 2)},
+     )
+
+
+ def format_report(results: Sequence[HealthCheckResult]) -> str:
+     lines = []
+     for result in results:
+         icon = _STATUS_ICON.get(result.status, "-")
+         line = f"{icon} {result.name}: {result.message}"
+         lines.append(line)
+         if result.details:
+             for key, value in result.details.items():
+                 lines.append(f"    • {key}: {value}")
+diff --git a/src/Urban_Amenities2/monitoring/metrics.py b/src/Urban_Amenities2/monitoring/metrics.py
+index dc80bf1faaa69934fa5a2e6880a4620129964d71..85d785d1a319c590f900ab94a3b2351aaabf12e9 100644
+--- a/src/Urban_Amenities2/monitoring/metrics.py
++++ b/src/Urban_Amenities2/monitoring/metrics.py
+@@ -1,183 +1,222 @@
+ from __future__ import annotations
+
+ import time
+ from collections import defaultdict
+ from collections.abc import Mapping, MutableMapping
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
+ from threading import Lock
++from types import TracebackType
++from typing import Literal
+
+ import numpy as np
+ from structlog.typing import FilteringBoundLogger
+
+ from ..logging_utils import get_logger
+
+ LOGGER = get_logger("aucs.metrics")
+
+
+ @dataclass(slots=True)
+ class MetricSummary:
+     """Aggregate statistics for a metric bucket."""
+
+     count: int
+     total_duration: float
+     p50: float
+     p95: float
+     p99: float
+     throughput: float | None = None
+
+     def as_dict(self) -> dict[str, float]:
+         data = {
+             "count": float(self.count),
+             "total_duration": self.total_duration,
+             "p50": self.p50,
+             "p95": self.p95,
+             "p99": self.p99,
+         }
+         if self.throughput is not None:
+             data["throughput_per_second"] = self.throughput
+         return data
+
+
++@dataclass(slots=True)
++class _ServiceBucket:
++    durations: list[float] = field(default_factory=list)
++    success: int = 0
++    failure: int = 0
++
++    def record(self, duration: float, *, success: bool) -> None:
++        self.durations.append(duration)
++        if success:
++            self.success += 1
++        else:
++            self.failure += 1
++
++    def clear(self) -> None:
++        self.durations.clear()
++        self.success = 0
++        self.failure = 0
++
++
+ class MetricsCollector:
+     """In-memory metrics collector suitable for unit tests and batch jobs."""
+
+     def __init__(self) -> None:
+         self._timings: MutableMapping[str, list[float]] = defaultdict(list)
+         self._throughput: MutableMapping[str, list[float]] = defaultdict(list)
+-        self._service: MutableMapping[str, dict[str, list[float] | int]] = defaultdict(
+-            lambda: {"durations": [], "success": 0, "failure": 0}
+-        )
++        self._service: MutableMapping[str, _ServiceBucket] = {}
+         self._lock = Lock()
+
+     def record_timing(self, name: str, duration: float, *, count: int | None = None) -> None:
+         if duration < 0:
+             raise ValueError("duration must be non-negative")
+         with self._lock:
+             self._timings[name].append(float(duration))
+             if count is not None and duration > 0:
+                 self._throughput[name].append(count / duration)
+
+     def record_service_call(self, name: str, duration: float, *, success: bool) -> None:
+         if duration < 0:
+             raise ValueError("duration must be non-negative")
+-        bucket = self._service[name]
+         with self._lock:
+-            bucket.setdefault("durations", []).append(float(duration))
+-            key = "success" if success else "failure"
+-            bucket[key] = int(bucket.get(key, 0)) + 1
++            bucket = self._service.get(name)
++            if bucket is None:
++                bucket = _ServiceBucket()
++                self._service[name] = bucket
++            bucket.record(float(duration), success=success)
+
+     def record_throughput(self, name: str, rows_processed: int, duration: float) -> None:
+         if duration <= 0:
+             raise ValueError("duration must be positive")
+         with self._lock:
+             self._throughput[name].append(rows_processed / duration)
+
+     def timing_summary(self, name: str) -> MetricSummary | None:
+         with self._lock:
+             durations = list(self._timings.get(name, ()))
+             throughput = list(self._throughput.get(name, ()))
+         if not durations:
+             return None
+         array = np.asarray(durations, dtype=float)
+         return MetricSummary(
+             count=len(durations),
+             total_duration=float(array.sum()),
+             p50=float(np.percentile(array, 50)),
+             p95=float(np.percentile(array, 95)),
+             p99=float(np.percentile(array, 99)),
+             throughput=float(np.mean(throughput)) if throughput else None,
+         )
+
+     def service_summary(self, name: str) -> dict[str, float] | None:
+         with self._lock:
+             bucket = self._service.get(name)
+         if not bucket:
+             return None
+-        durations = np.asarray(bucket.get("durations", ()), dtype=float)
++        durations = np.asarray(bucket.durations, dtype=float)
+         summary: dict[str, float] = {
+-            "success": float(bucket.get("success", 0)),
+-            "failure": float(bucket.get("failure", 0)),
++            "success": float(bucket.success),
++            "failure": float(bucket.failure),
+         }
+         if durations.size:
+             summary["p50"] = float(np.percentile(durations, 50))
+             summary["p95"] = float(np.percentile(durations, 95))
+             summary["p99"] = float(np.percentile(durations, 99))
+         return summary
+
+     def serialise(self) -> dict[str, Mapping[str, float]]:
+         payload: dict[str, Mapping[str, float]] = {}
+         with self._lock:
+             timing_keys = list(self._timings)
+         for name in timing_keys:
+             summary = self.timing_summary(name)
+             if summary is not None:
+                 payload[f"timing:{name}"] = summary.as_dict()
+         with self._lock:
+             service_keys = list(self._service)
+         for name in service_keys:
+             service = self.service_summary(name)
+             if service is not None:
+                 payload[f"service:{name}"] = service
+         return payload
+
+     def clear(self) -> None:
+         with self._lock:
+             self._timings.clear()
+             self._throughput.clear()
+             self._service.clear()
+
++    def record(
++        self,
++        name: str,
++        duration: float,
++        *,
++        count: int | None = None,
++        success: bool | None = None,
++    ) -> None:
++        """Record a timing and optional service outcome in a single call."""
++
++        self.record_timing(name, duration, count=count)
++        if success is not None:
++            self.record_service_call(name, duration, success=success)
++
+
+ METRICS = MetricsCollector()
+
+
+ class OperationTracker:
+     """Context manager that logs and records metrics for an operation."""
+
+     def __init__(
+         self,
+         name: str,
+         *,
+         metrics: MetricsCollector | None = None,
+         logger: FilteringBoundLogger | None = None,
+         items: int | None = None,
+         extra: Mapping[str, object] | None = None,
+     ) -> None:
+         self.name = name
+         self.metrics = metrics or METRICS
+         self.logger = logger or LOGGER
+         self.items = items
+         self.extra = dict(extra or {})
+         self._start: float | None = None
+
+     def __enter__(self) -> OperationTracker:
+         self._start = time.perf_counter()
+         if self.logger is not None:
+             self.logger.info("operation_start", operation=self.name, items=self.items, **self.extra)
+         return self
+
+-    def __exit__(self, exc_type, exc, exc_tb) -> None:
++    def __exit__(
++        self,
++        exc_type: type[BaseException] | None,
++        exc: BaseException | None,
++        exc_tb: TracebackType | None,
++    ) -> Literal[False]:
+         duration = time.perf_counter() - (self._start or time.perf_counter())
+         self.metrics.record_timing(self.name, duration, count=self.items)
+         if self.logger is not None:
+             event = "operation_error" if exc else "operation_complete"
+             context = {"operation": self.name, "duration_seconds": duration}
+             if self.items is not None:
+                 context["items"] = self.items
+             context.update(self.extra)
+             if exc:
+                 context["error"] = repr(exc)
+             self.logger.info(event, **context)
+         return False
+
+
+ def track_operation(
+     name: str,
+     *,
+     metrics: MetricsCollector | None = None,
+     logger: FilteringBoundLogger | None = None,
+     items: int | None = None,
+     extra: Mapping[str, object] | None = None,
+ ) -> OperationTracker:
+     """Helper to create an :class:`OperationTracker` context manager."""
+
+     return OperationTracker(name, metrics=metrics, logger=logger, items=items, extra=extra)
+diff --git a/src/Urban_Amenities2/router/api.py b/src/Urban_Amenities2/router/api.py
+index 350faf50694570df49ff5398a05a3579bfd696d9..f9edbe3a486e4146a4d7dbac4fe1785b77df8a0c 100644
+--- a/src/Urban_Amenities2/router/api.py
++++ b/src/Urban_Amenities2/router/api.py
+@@ -1,98 +1,137 @@
+ from __future__ import annotations
+
+-from collections.abc import Sequence
++from collections.abc import Mapping, Sequence
+ from dataclasses import dataclass
++from typing import Protocol
+
+-import pandas as pd
++import pandas as pd  # type: ignore[import-untyped]
+
+-from .osrm import OSRMClient
++from .osrm import OSRMRoute, OSRMTable
+ from .otp import OTPClient
+
+
++class OSRMClientProtocol(Protocol):
++    def route(self, coords: Sequence[tuple[float, float]]) -> OSRMRoute:
++        ...
++
++    def table(
++        self,
++        sources: Sequence[tuple[float, float]],
++        destinations: Sequence[tuple[float, float]],
++    ) -> OSRMTable:
++        ...
++
++
+ @dataclass
+ class RouteResult:
+     origin: tuple[float, float]
+     destination: tuple[float, float]
+     mode: str
+     period: str | None
+     duration_min: float
+     distance_m: float | None
+-    metadata: dict
++    metadata: dict[str, object]
+
+
+ class RoutingAPI:
+     def __init__(
+         self,
+-        osrm_clients: dict[str, OSRMClient],
++        osrm_clients: Mapping[str, OSRMClientProtocol],
+         otp_client: OTPClient | None = None,
+     ):
+-        self.osrm_clients = osrm_clients
++        self.osrm_clients: dict[str, OSRMClientProtocol] = dict(osrm_clients)
+         self.otp_client = otp_client
+
+     def route(
+         self,
+         mode: str,
+         origin: tuple[float, float],
+         destination: tuple[float, float],
+         period: str | None = None,
+     ) -> RouteResult:
+         if mode in self.osrm_clients:
+             result = self.osrm_clients[mode].route([origin, destination])
+             return RouteResult(
+                 origin=origin,
+                 destination=destination,
+                 mode=mode,
+                 period=period,
+-                duration_min=result["duration"] / 60.0,
+-                distance_m=result.get("distance"),
+-                metadata={"legs": result.get("legs", [])},
++                duration_min=result.duration / 60.0,
++                distance_m=result.distance,
++                metadata={
++                    "legs": [
++                        {"duration": leg.duration, "distance": leg.distance}
++                        for leg in result.legs
++                    ]
++                },
+             )
+         if mode == "transit" and self.otp_client:
+             itineraries = self.otp_client.plan_trip(origin, destination, ["TRANSIT", "WALK"])
+             if not itineraries:
+                 raise ValueError("No itinerary returned")
+-            best = min(itineraries, key=lambda item: item.get("duration", float("inf")))
++            best = min(itineraries, key=_duration_key)
++            duration_value = best.get("duration")
++            duration_minutes = (
++                float(duration_value) / 60.0
++                if isinstance(duration_value, (int, float))
++                else 0.0
++            )
+             return RouteResult(
+                 origin=origin,
+                 destination=destination,
+                 mode=mode,
+                 period=period,
+-                duration_min=best.get("duration", 0) / 60.0,
++                duration_min=duration_minutes,
+                 distance_m=None,
+-                metadata=best,
++                metadata=dict(best),
+             )
+         raise ValueError(f"Unsupported mode {mode}")
+
+     def matrix(
+         self,
+         mode: str,
+         origins: Sequence[tuple[float, float]],
+         destinations: Sequence[tuple[float, float]],
+         period: str | None = None,
+     ) -> pd.DataFrame:
+         if mode not in self.osrm_clients:
+             raise ValueError("Matrix computation currently supported for OSRM-backed modes only")
+         result = self.osrm_clients[mode].table(origins, destinations)
+-        durations = result.get("durations", []) or []
+-        distances = result.get("distances") or []
++        durations = result.durations
++        distances = result.distances or []
+         records: list[dict[str, object]] = []
+         for i, origin in enumerate(origins):
+             for j, destination in enumerate(destinations):
+-                duration = durations[i][j] if i < len(durations) and j < len(durations[i]) else None
+-                distance = distances[i][j] if distances and i < len(distances) and j < len(distances[i]) else None
++                duration_value: float | None = (
++                    durations[i][j]
++                    if i < len(durations) and j < len(durations[i])
++                    else None
++                )
++                distance_value: float | None = (
++                    distances[i][j]
++                    if distances and i < len(distances) and j < len(distances[i])
++                    else None
++                )
+                 records.append(
+                     {
+                         "origin_index": i,
+                         "destination_index": j,
+                         "origin": origin,
+                         "destination": destination,
+                         "mode": mode,
+                         "period": period,
+-                        "duration_min": duration / 60.0 if duration is not None else None,
+-                        "distance_m": distance,
++                        "duration_min": duration_value / 60.0 if duration_value is not None else None,
++                        "distance_m": distance_value,
+                     }
+                 )
+         return pd.DataFrame.from_records(records)
+
+
++def _duration_key(payload: Mapping[str, object]) -> float:
++    value = payload.get("duration")
++    if isinstance(value, (int, float)):
++        return float(value)
++    return float("inf")
++
++
+ __all__ = ["RoutingAPI", "RouteResult"]
+diff --git a/src/Urban_Amenities2/router/batch.py b/src/Urban_Amenities2/router/batch.py
+index a5daf406d784a5025bbceead23b5f5e73d3493c0..2c18d2fc277d183f50f0baeb1dddc6e3d8266b0e 100644
+--- a/src/Urban_Amenities2/router/batch.py
++++ b/src/Urban_Amenities2/router/batch.py
+@@ -1,35 +1,35 @@
+ from __future__ import annotations
+
+ import hashlib
+ import json
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+ from pathlib import Path
+
+-import pandas as pd
+-from diskcache import Cache
++import pandas as pd  # type: ignore[import-untyped]
++from diskcache import Cache  # type: ignore[import-untyped]
+
+ from ..logging_utils import get_logger
+ from .api import RoutingAPI
+
+ LOGGER = get_logger("aucs.router.batch")
+
+
+ @dataclass
+ class BatchConfig:
+     cache_dir: Path = Path("data/cache/skims")
+     mode: str = "car"
+     period: str | None = None
+
+
+ class SkimBuilder:
+     def __init__(self, api: RoutingAPI, config: BatchConfig):
+         self.api = api
+         self.config = config
+         self.cache = Cache(str(config.cache_dir))
+
+     def _cache_key(self, origins: Sequence[tuple[float, float]], destinations: Sequence[tuple[float, float]]) -> str:
+         payload = json.dumps({"origins": origins, "destinations": destinations, "mode": self.config.mode, "period": self.config.period})
+         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+     def matrix(
+diff --git a/src/Urban_Amenities2/router/osrm.py b/src/Urban_Amenities2/router/osrm.py
+index 4aa7993ae38e10ef8c084785807eb2a56e7795b9..458a3e2d25dfbd5506bfa05d79daa5a5f589b1ef 100644
+--- a/src/Urban_Amenities2/router/osrm.py
++++ b/src/Urban_Amenities2/router/osrm.py
+@@ -1,113 +1,200 @@
+ from __future__ import annotations
+
+-from collections.abc import Sequence
++from collections.abc import Mapping, Sequence
+ from dataclasses import dataclass
+
+ import requests
+
+ from ..logging_utils import get_logger
+
+ LOGGER = get_logger("aucs.router.osrm")
+
+
+-@dataclass
++@dataclass(slots=True)
+ class OSRMConfig:
+     base_url: str
+     profile: str = "car"
+     timeout: int = 30
+     max_matrix: int = 100
+
+
++@dataclass(slots=True)
++class OSRMLeg:
++    duration: float
++    distance: float | None
++
++
++@dataclass(slots=True)
++class OSRMRoute:
++    duration: float
++    distance: float | None
++    legs: list[OSRMLeg]
++
++
++@dataclass(slots=True)
++class OSRMTable:
++    durations: list[list[float | None]]
++    distances: list[list[float | None]] | None
++
++
+ class RoutingError(RuntimeError):
+     """Raised when routing fails."""
+
+
+ class OSRMClient:
+     def __init__(self, config: OSRMConfig, session: requests.Session | None = None):
+         self.config = config
+         self.session = session or requests.Session()
+
+     def _format_coords(self, coords: Sequence[tuple[float, float]]) -> str:
+         return ";".join(f"{lon},{lat}" for lon, lat in coords)
+
+-    def _request(self, path: str, params: dict[str, object] | None = None) -> dict:
++    def _request(
++        self, path: str, params: Mapping[str, str | int | float] | None = None
++    ) -> dict[str, object]:
+         url = f"{self.config.base_url.rstrip('/')}/{path}"
+         response = self.session.get(url, params=params, timeout=self.config.timeout)
+         response.raise_for_status()
+         payload = response.json()
++        if not isinstance(payload, dict):
++            raise RoutingError("OSRM response payload is not a JSON object")
+         code = payload.get("code")
+         if code and code != "Ok":
+             LOGGER.warning("osrm_error", path=path, code=code, message=payload.get("message"))
+             raise RoutingError(payload.get("message", "OSRM request failed"))
+         return payload
+
+-    def route(self, coords: Sequence[tuple[float, float]]):
++    def route(self, coords: Sequence[tuple[float, float]]) -> OSRMRoute:
+         if len(coords) < 2:
+             raise ValueError("At least two coordinates required")
+         path = f"route/v1/{self.config.profile}/{self._format_coords(coords)}"
+-        payload = self._request(path, params={"annotations": "duration,distance", "overview": "false"})
++        params = {"annotations": "duration,distance", "overview": "false"}
++        payload = self._request(path, params=params)
+         routes = payload.get("routes", [])
++        if not isinstance(routes, Sequence):
++            raise RoutingError("No route found")
+         if not routes:
+             raise RoutingError("No route found")
+-        route = routes[0]
+-        return {
+-            "duration": route.get("duration"),
+-            "distance": route.get("distance"),
+-            "legs": route.get("legs", []),
+-        }
++        route_payload = routes[0]
++        if not isinstance(route_payload, Mapping):
++            raise RoutingError("Route payload malformed")
++        duration = _coerce_float(route_payload.get("duration"))
++        if duration is None:
++            raise RoutingError("Route duration missing from OSRM payload")
++        distance = _coerce_float(route_payload.get("distance"))
++        legs = _parse_legs(route_payload.get("legs"))
++        return OSRMRoute(duration=duration, distance=distance, legs=legs)
+
+     def table(
+         self,
+         sources: Sequence[tuple[float, float]],
+         destinations: Sequence[tuple[float, float]] | None = None,
+-    ) -> dict:
++    ) -> OSRMTable:
+         destinations = destinations or sources
+         if len(sources) > self.config.max_matrix or len(destinations) > self.config.max_matrix:
+             return self._table_batched(sources, destinations)
+         coords = list(sources) + list(destinations)
+         path = f"table/v1/{self.config.profile}/{self._format_coords(coords)}"
+         source_indexes = list(range(len(sources)))
+         dest_indexes = list(range(len(sources), len(coords)))
+-        params = {"sources": ";".join(map(str, source_indexes)), "destinations": ";".join(map(str, dest_indexes))}
+-        payload = self._request(path, params=params)
+-        return {
+-            "durations": payload.get("durations"),
+-            "distances": payload.get("distances"),
++        params = {
++            "sources": ";".join(map(str, source_indexes)),
++            "destinations": ";".join(map(str, dest_indexes)),
+         }
++        payload = self._request(path, params=params)
++        durations = _parse_matrix(payload.get("durations"))
++        if durations is None:
++            raise RoutingError("Duration matrix missing from OSRM table response")
++        distances = _parse_matrix(payload.get("distances"))
++        return OSRMTable(durations=durations, distances=distances)
+
+     def _table_batched(
+         self,
+         sources: Sequence[tuple[float, float]],
+         destinations: Sequence[tuple[float, float]],
+-    ) -> dict:
+-        durations: list[list[float]] = []
+-        distances: list[list[float]] = []
++    ) -> OSRMTable:
++        durations: list[list[float | None]] = []
++        distances: list[list[float | None]] = []
+         for start in range(0, len(sources), self.config.max_matrix):
+             batch_sources = sources[start : start + self.config.max_matrix]
+-            row_durations: list[list[float]] = []
+-            row_distances: list[list[float]] = []
++            row_durations: list[list[list[float | None]]] = []
++            row_distances: list[list[list[float | None]]] = []
+             for dest_start in range(0, len(destinations), self.config.max_matrix):
+                 batch_destinations = destinations[dest_start : dest_start + self.config.max_matrix]
+                 result = self.table(batch_sources, batch_destinations)
+-                row_durations.append(result.get("durations", []))
+-                if "distances" in result:
+-                    row_distances.append(result["distances"])
++                row_durations.append(result.durations)
++                if result.distances is not None:
++                    row_distances.append(result.distances)
+             durations.extend(_concatenate_rows(row_durations))
+             if row_distances:
+                 distances.extend(_concatenate_rows(row_distances))
+-        return {"durations": durations, "distances": distances or None}
++        distance_matrix: list[list[float | None]] | None = distances or None
++        return OSRMTable(durations=durations, distances=distance_matrix)
+
+
+-def _concatenate_rows(rows: list[list[list[float]]]) -> list[list[float]]:
++def _concatenate_rows(
++    rows: Sequence[Sequence[Sequence[float | None]]]
++) -> list[list[float | None]]:
+     if not rows:
+         return []
+-    result: list[list[float]] = []
+-    for row_idx in range(len(rows[0])):
+-        combined: list[float] = []
++    expected_rows = len(rows[0])
++    result: list[list[float | None]] = []
++    for row_idx in range(expected_rows):
++        combined: list[float | None] = []
+         for block in rows:
++            if len(block) != expected_rows:
++                raise RoutingError("Inconsistent OSRM table row block size")
+             combined.extend(block[row_idx])
+         result.append(combined)
+     return result
+
+
+-__all__ = ["OSRMClient", "OSRMConfig", "RoutingError"]
++def _coerce_float(value: object) -> float | None:
++    if isinstance(value, (int, float)):
++        return float(value)
++    return None
++
++
++def _parse_legs(payload: object) -> list[OSRMLeg]:
++    if not isinstance(payload, Sequence):
++        return []
++    legs: list[OSRMLeg] = []
++    for entry in payload:
++        if not isinstance(entry, Mapping):
++            continue
++        duration = _coerce_float(entry.get("duration"))
++        distance = _coerce_float(entry.get("distance"))
++        if duration is not None:
++            legs.append(OSRMLeg(duration=duration, distance=distance))
++    return legs
++
++
++def _parse_matrix(payload: object) -> list[list[float | None]] | None:
++    if payload is None:
++        return None
++    if not isinstance(payload, Sequence):
++        return None
++    matrix: list[list[float | None]] = []
++    for row in payload:
++        if not isinstance(row, Sequence):
++            return None
++        parsed_row: list[float | None] = []
++        for value in row:
++            if isinstance(value, (int, float)):
++                parsed_row.append(float(value))
++            elif value is None:
++                parsed_row.append(None)
++            else:
++                raise RoutingError("Matrix contains non-numeric value")
++        matrix.append(parsed_row)
++    return matrix
++
++
++__all__ = [
++    "OSRMClient",
++    "OSRMConfig",
++    "OSRMLeg",
++    "OSRMRoute",
++    "OSRMTable",
++    "RoutingError",
++]
+diff --git a/src/Urban_Amenities2/router/otp.py b/src/Urban_Amenities2/router/otp.py
+index 079f94bddd6aee230b6f7514660f3278692915c2..99d0d2e57b00f01a2a41e97b6d5e11f7ce0f413d 100644
+--- a/src/Urban_Amenities2/router/otp.py
++++ b/src/Urban_Amenities2/router/otp.py
+@@ -1,117 +1,151 @@
+ from __future__ import annotations
+
+-from collections.abc import Sequence
++from collections.abc import Mapping, Sequence
+ from dataclasses import dataclass
+ from datetime import datetime
+
+ import requests
+
+ from ..logging_utils import get_logger
+
+ LOGGER = get_logger("aucs.router.otp")
+
+
+ @dataclass
+ class OTPConfig:
+     base_url: str
+     timeout: int = 30
+
+
+ class OTPError(RuntimeError):
+     pass
+
+
+ class OTPClient:
+     def __init__(self, config: OTPConfig, session: requests.Session | None = None):
+         self.config = config
+         self.session = session or requests.Session()
+
+     def plan_trip(
+         self,
+         origin: tuple[float, float],
+         destination: tuple[float, float],
+         modes: Sequence[str],
+         departure: datetime | None = None,
+         max_itineraries: int = 3,
+     ) -> list[dict[str, object]]:
+         query = _build_plan_query()
+         departure = departure or datetime.utcnow()
+-        variables = {
++        variables: dict[str, object] = {
+             "from": {"lat": origin[1], "lon": origin[0]},
+             "to": {"lat": destination[1], "lon": destination[0]},
+             "modes": list(modes),
+             "date": departure.strftime("%Y-%m-%d"),
+             "time": departure.strftime("%H:%M"),
+             "numItineraries": max_itineraries,
+         }
+         response = self.session.post(
+             self.config.base_url,
+             json={"query": query, "variables": variables},
+             timeout=self.config.timeout,
+         )
+         response.raise_for_status()
+         payload = response.json()
++        if not isinstance(payload, Mapping):
++            raise OTPError("OTP response payload is not a mapping")
+         if "errors" in payload:
+             LOGGER.warning("otp_error", errors=payload["errors"])
+             raise OTPError(str(payload["errors"]))
+-        itineraries = payload.get("data", {}).get("plan", {}).get("itineraries", [])
+-        return [self._parse_itinerary(itinerary) for itinerary in itineraries]
+-
+-    def _parse_itinerary(self, itinerary: dict) -> dict[str, object]:
+-        walk = itinerary.get("walkTime", 0)
+-        transit = itinerary.get("transitTime", 0)
+-        wait = itinerary.get("waitingTime", 0)
+-        fare = itinerary.get("fare", {}).get("fare", {}).get("regular", {}).get("amount", 0)
++        data = payload.get("data")
++        plan = data.get("plan") if isinstance(data, Mapping) else None
++        itineraries = plan.get("itineraries") if isinstance(plan, Mapping) else None
++        if not isinstance(itineraries, Sequence):
++            return []
++        return [self._parse_itinerary(itinerary) for itinerary in itineraries if isinstance(itinerary, Mapping)]
++
++    def _parse_itinerary(self, itinerary: Mapping[str, object]) -> dict[str, object]:
++        walk = _as_float(itinerary.get("walkTime"))
++        transit = _as_float(itinerary.get("transitTime"))
++        wait = _as_float(itinerary.get("waitingTime"))
++        fare_payload = itinerary.get("fare")
++        fare = 0.0
++        if isinstance(fare_payload, Mapping):
++            fare_amount = (
++                fare_payload.get("fare")
++                if isinstance(fare_payload.get("fare"), Mapping)
++                else None
++            )
++            if isinstance(fare_amount, Mapping):
++                regular = fare_amount.get("regular")
++                if isinstance(regular, Mapping):
++                    fare = _as_float(regular.get("amount"))
++        legs_payload = itinerary.get("legs")
++        leg_entries = legs_payload if isinstance(legs_payload, Sequence) else ()
+         legs = [
+             {
+-                "mode": leg.get("mode"),
+-                "duration": leg.get("duration"),
+-                "distance": leg.get("distance"),
+-                "from": leg.get("from", {}).get("name"),
+-                "to": leg.get("to", {}).get("name"),
++                "mode": leg.get("mode") if isinstance(leg.get("mode"), str) else None,
++                "duration": _as_float(leg.get("duration")),
++                "distance": _as_float(leg.get("distance")),
++                "from": _extract_name(leg.get("from")),
++                "to": _extract_name(leg.get("to")),
+             }
+-            for leg in itinerary.get("legs", [])
++            for leg in leg_entries
++            if isinstance(leg, Mapping)
+         ]
+         return {
+-            "duration": itinerary.get("duration"),
++            "duration": _as_float(itinerary.get("duration")),
+             "walk_time": walk,
+             "transit_time": transit,
+             "wait_time": wait,
+             "transfers": itinerary.get("transfers", 0),
+             "fare": fare,
+             "legs": legs,
+         }
+
+
+ def _build_plan_query() -> str:
+     return """
+     query($from: InputCoordinates!, $to: InputCoordinates!, $modes: [TransportMode!], $date: String!, $time: String!, $numItineraries: Int!) {
+       plan(
+         from: $from,
+         to: $to,
+         transportModes: $modes,
+         date: $date,
+         time: $time,
+         numItineraries: $numItineraries
+       ) {
+         itineraries {
+           duration
+           walkTime
+           transitTime
+           waitingTime
+           transfers
+           fare { fare { regular { amount } } }
+           legs {
+             mode
+             duration
+             distance
+             from { name }
+             to { name }
+           }
+         }
+       }
+     }
+     """
+
+
+ __all__ = ["OTPClient", "OTPConfig", "OTPError"]
++
++
++def _as_float(value: object) -> float:
++    if isinstance(value, (int, float)):
++        return float(value)
++    return 0.0
++
++
++def _extract_name(payload: object) -> str | None:
++    if isinstance(payload, Mapping):
++        name = payload.get("name")
++        if isinstance(name, str):
++            return name
++    return None
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index e19f4c8968470e81aae0b83389c36f56f302d642..610dfc1beb7011fcadc7c8156ec151d6355e6e0f 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -112,25 +112,31 @@ def test_aggregate_and_export_cli(tmp_path: Path) -> None:
+             str(subscores_path),
+             "--weights",
+             weights,
+             "--output",
+             str(output),
+             "--explainability-output",
+             str(explain),
+             "--report-path",
+             str(report),
+         ],
+     )
+     assert result.exit_code == 0, result.output
+     aggregated = pd.read_parquet(output)
+     assert "aucs" in aggregated.columns
+     assert explain.exists()
+     assert report.exists()
+
+     show_result = runner.invoke(app, ["show", "--hex", "hex1", "--scores", str(output)])
+     assert show_result.exit_code == 0, show_result.output
+
+     export_path = tmp_path / "aucs.geojson"
+     export_result = runner.invoke(app, ["export", str(export_path), "--scores", str(output)])
+     assert export_result.exit_code == 0, export_result.output
+     geojson = json.loads(export_path.read_text())
+     assert geojson["features"], "GeoJSON export should include features"
++    for feature in geojson["features"]:
++        properties = feature["properties"]
++        assert isinstance(properties, dict)
++        for key, value in properties.items():
++            assert isinstance(key, str)
++            assert not isinstance(value, (pd.Series, pd.Index))
+
+EOF
+)
