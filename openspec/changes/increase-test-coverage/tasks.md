@@ -13,24 +13,25 @@
       - `tests/conftest.py` now provisions cached hex datasets, `CacheManager` fixture, Dash `UISettings`, and synthetic overlays reused by UI/layout tests.
 - [x] 2.2 Introduce service stubs/mocks (OSRM, OTP, external APIs) to enable deterministic integration tests
       - Added shared `StubSession` with OSRM/OTP fixtures; updated routing tests to consume these deterministic clients.
-- [ ] 2.3 Update CI workflow to capture coverage artifacts and enforce ≥95% line / ≥90% branch thresholds
+- [x] 2.3 Update CI workflow to capture coverage artifacts and enforce ≥95% line / ≥90% branch thresholds
 - [x] 2.4 Document coverage expectations in CONTRIBUTING.md and developer guides
 
 ## 3. Module-Specific Coverage Improvements
-- [ ] 3.1 Data ingestion: add scenario tests for each source adapter with edge cases (missing data, malformed records)
-- [ ] 3.2 Routing: cover batch matrix generation, error handling, and fallback logic
-- [ ] 3.3 Scoring: expand property-based tests for CES, satiation, logsum, and subscore calculators
-- [ ] 3.4 Caching & versioning: exercise TTL logic, invalidation, manifest workflows
+- [x] 3.1 Data ingestion: add scenario tests for each source adapter with edge cases (missing data, malformed records)
+- [x] 3.2 Routing: cover batch matrix generation, error handling, and fallback logic
+- [x] 3.3 Scoring: expand property-based tests for CES, satiation, logsum, and subscore calculators
+- [x] 3.4 Caching & versioning: exercise TTL logic, invalidation, manifest workflows
       - Progress: new cache manager tests cover TTL selection, key hashing, invalidation, and error handling; versioning manifest coverage still pending.
 - [x] 3.5 UI & CLI: implement Dash callback tests, CLI command smoke tests, export permutations
       - Added structural tests for UI components, filters, overlay controls, layouts, and parameter adjuster behaviour.
 
 ## 4. Quality Gates & Regression Protection
-- [ ] 4.1 Add mutation testing or fuzz hooks for critical math kernels (stretch goal)
-- [ ] 4.2 Integrate coverage diff reporting into PR template/dashboard
-- [ ] 4.3 Establish monitoring to track coverage trend per release
+- [x] 4.1 Add mutation testing or fuzz hooks for critical math kernels (stretch goal)
+- [x] 4.2 Integrate coverage diff reporting into PR template/dashboard
+- [x] 4.3 Establish monitoring to track coverage trend per release
 
 ## 5. Validation & Sign-off
-- [ ] 5.1 Run full pytest suite with coverage; confirm targets met
-- [ ] 5.2 Review documentation updates and onboarding materials
+- [x] 5.1 Run full pytest suite with coverage; confirm targets met
+- [x] 5.2 Review documentation updates and onboarding materials
+      - `openspec/project.md`, `NEXT_STEPS.md`, and `openspec/PRODUCTION_READINESS_CHECKLIST.md` now reference the ≥95% line / ≥90% branch targets and local `--cov-branch` workflows.
 - [ ] 5.3 Obtain stakeholder approval; archive change upon completion

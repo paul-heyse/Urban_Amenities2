@@ -146,9 +146,9 @@
 
 **Test Coverage:**
 
-- Target 80%+ coverage for core math and accessibility modules
-- 60%+ for I/O and routing modules (harder to test, more mocked)
-- Use `pytest --cov` to track
+- Maintain ≥95% line coverage and ≥90% branch coverage across first-party modules
+- Prioritise historically flaky areas (I/O, routing, UI) to keep thresholds sustainable
+- Use `pytest --cov --cov-branch` locally and review the CI coverage summary on every PR
 
 **Test Organization:**
 

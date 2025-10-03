@@ -1,9 +1,12 @@
 import gzip
+import json
 import zipfile
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+import pytest
 from shapely.geometry import LineString, Polygon
 
 from Urban_Amenities2.config.loader import load_params
@@ -257,3 +260,70 @@ def test_enrichment_and_quality(tmp_path: Path) -> None:
     assert summary.loc[0, "mean_quality"] >= 0
 
 
+def test_noaa_normalise_handles_missing_columns() -> None:
+    frame = pd.DataFrame(
+        {
+            "station": ["ST1"],
+            "month": ["2"],
+            "latitude": [39.0],
+            "longitude": [-104.0],
+            "MLY-TAVG-NORMAL": [15.0],
+        }
+    )
+    ingestor = NoaaNormalsIngestor(NOAAConfig())
+    normalised = ingestor._normalise_columns(frame)
+    assert normalised.loc[0, "month"] == 2
+    assert "precip_probability" not in normalised.columns
+    assert normalised.loc[0, "tavg_c"] == pytest.approx(15.0)
+
+
+def test_noaa_comfort_handles_missing_values() -> None:
+    frame = pd.DataFrame(
+        {
+            "hex_id": ["abc", "def"],
+            "month": [1, 1],
+            "tavg_c": [np.nan, 20.0],
+            "precip_probability": [0.2, 0.0],
+            "wind_mps": [None, 0.0],
+        }
+    )
+    ingestor = NoaaNormalsIngestor(NOAAConfig())
+    comfort = ingestor.compute_comfort_index(frame)
+    assert comfort["sigma_out"].between(0.0, 1.0).all()
+    assert comfort.loc[comfort["hex_id"] == "abc", "sigma_out"].iloc[0] == pytest.approx(0.0)
+    assert comfort.loc[comfort["hex_id"] == "def", "sigma_out"].iloc[0] > 0.9
+
+
+def test_childcare_registry_missing_columns_raises() -> None:
+    with pytest.raises(ValueError):
+        combine_registries({
+            "CO": pd.DataFrame({"provider_id": ["1"], "FacilityName": ["Missing"], "Latitude": [39.0]})
+        })
+
+
+def test_merge_enrichment_handles_null_quality_attrs() -> None:
+    pois = pd.DataFrame(
+        {
+            "poi_id": ["p1"],
+            "name": ["Library"],
+            "lat": [39.0],
+            "lon": [-104.0],
+            "aucstype": ["library"],
+            "brand": ["City"],
+            "hours_per_day": [None],
+        }
+    )
+    wikidata = pd.DataFrame({"poi_id": ["p1"], "wikidata_qid": [None]})
+    enriched = merge_enrichment(pois, wikidata=wikidata, wikipedia=None)
+    attrs = json.loads(enriched.loc[0, "quality_attrs"])
+    assert attrs == {}
+
+
+def test_wikidata_enricher_returns_defaults_for_empty_response() -> None:
+    class EmptyClient:
+        def query(self, query: str) -> dict:
+            return {"results": {"bindings": []}}
+
+    enricher = WikidataEnricher(client=EmptyClient())
+    record = enricher.match("Test", 39.0, -104.0)
+    assert record == {"wikidata_qid": None, "capacity": None, "heritage_status": None}

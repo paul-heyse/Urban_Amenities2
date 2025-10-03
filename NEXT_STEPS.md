@@ -97,11 +97,11 @@ pytest -v
 
 #### 4. Expand Test Coverage
 
-Current: ~13 test files, unknown coverage
-Target: 70%+ for core math, 60%+ for I/O
+Current: ~13 test files, coverage trending toward spec thresholds
+Target: ≥95% line / ≥90% branch across all first-party modules
 
 ```bash
-pytest --cov=src/Urban_Amenities2 --cov-report=html
+pytest --cov=src/Urban_Amenities2 --cov-branch --cov-report=html
 open htmlcov/index.html
 ```
 

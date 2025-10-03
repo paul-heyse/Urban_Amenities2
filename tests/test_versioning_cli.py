@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -13,7 +14,13 @@ from Urban_Amenities2.versioning.data_snapshot import (
     list_snapshots,
     register_snapshot,
 )
-from Urban_Amenities2.versioning.manifest import create_run_manifest, list_manifests
+from Urban_Amenities2.versioning.manifest import (
+    RunManifest,
+    append_manifest,
+    create_run_manifest,
+    get_manifest,
+    list_manifests,
+)
 
 
 def test_create_run_manifest(tmp_path: Path) -> None:
@@ -52,3 +59,25 @@ def test_snapshot_registration(tmp_path: Path) -> None:
     register_snapshot(snapshot, storage)
     snapshots = list_snapshots(storage)
     assert snapshots[0].source_name == "Overture"
+
+
+def test_run_manifest_append_and_lookup(tmp_path: Path) -> None:
+    storage = tmp_path / "runs.jsonl"
+    manifest = RunManifest(
+        run_id="run-1",
+        timestamp=datetime.now(UTC),
+        param_hash="abc",
+        data_snapshot_ids=["snap-1"],
+        git_commit="deadbeef",
+    )
+    append_manifest(manifest, storage)
+    listed = list_manifests(storage)
+    assert listed[0].run_id == "run-1"
+    fetched = get_manifest("run-1", storage)
+    assert fetched is not None
+    assert fetched.git_commit == "deadbeef"
+
+
+def test_list_manifests_missing_file(tmp_path: Path) -> None:
+    storage = tmp_path / "absent.jsonl"
+    assert list_manifests(storage) == []

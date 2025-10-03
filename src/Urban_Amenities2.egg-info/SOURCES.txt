@@ -63,6 +63,8 @@ src/Urban_Amenities2/math/diversity.py
 src/Urban_Amenities2/math/gtc.py
 src/Urban_Amenities2/math/logsum.py
 src/Urban_Amenities2/math/satiation.py
+src/Urban_Amenities2/monitoring/health.py
+src/Urban_Amenities2/monitoring/metrics.py
 src/Urban_Amenities2/quality/__init__.py
 src/Urban_Amenities2/quality/dedupe.py
 src/Urban_Amenities2/quality/scoring.py
@@ -86,6 +88,7 @@ src/Urban_Amenities2/scores/hub_airport_access.py
 src/Urban_Amenities2/scores/leisure_culture_access.py
 src/Urban_Amenities2/scores/mobility_reliability.py
 src/Urban_Amenities2/scores/normalization.py
+src/Urban_Amenities2/scores/parks_access.py
 src/Urban_Amenities2/scores/penalties.py
 src/Urban_Amenities2/scores/seasonal_outdoors.py
 src/Urban_Amenities2/ui/__init__.py
@@ -114,6 +117,7 @@ src/Urban_Amenities2/ui/layouts/data_management.py
 src/Urban_Amenities2/ui/layouts/home.py
 src/Urban_Amenities2/ui/layouts/map_view.py
 src/Urban_Amenities2/ui/layouts/settings.py
+src/Urban_Amenities2/utils/resilience.py
 src/Urban_Amenities2/versioning/__init__.py
 src/Urban_Amenities2/versioning/data_snapshot.py
 src/Urban_Amenities2/versioning/manifest.py
@@ -130,10 +134,15 @@ tests/test_hex.py
 tests/test_hub_airport_access.py
 tests/test_integration_pipeline.py
 tests/test_leisure_culture_access.py
+tests/test_logging.py
 tests/test_math.py
+tests/test_metrics.py
 tests/test_mobility_reliability.py
+tests/test_monitoring_health.py
 tests/test_params.py
+tests/test_parks_access.py
 tests/test_quality.py
+tests/test_resilience.py
 tests/test_routing.py
 tests/test_schemas.py
 tests/test_scores.py
@@ -143,3 +152,4 @@ tests/test_ui_export.py
 tests/test_ui_filters.py
 tests/test_ui_module.py
 tests/test_versioning_cli.py
+tests/test_wikipedia_client.py
