@@ -29,6 +29,16 @@ def invalid_type_config_file(tmp_path: Path, config_fixtures_dir: Path) -> Path:
 
 
 @pytest.fixture()
+def invalid_range_config_file(tmp_path: Path, config_fixtures_dir: Path) -> Path:
+    return _copy_fixture(tmp_path, config_fixtures_dir / "invalid_range.yml")
+
+
+@pytest.fixture()
+def missing_required_config_file(tmp_path: Path, config_fixtures_dir: Path) -> Path:
+    return _copy_fixture(tmp_path, config_fixtures_dir / "missing_required.yml")
+
+
+@pytest.fixture()
 def yaml_loader() -> Iterator[YAML]:
     loader = YAML(typ="safe")
     yield loader
