@@ -16,7 +16,7 @@ class StubBigQueryJob:
         self._frame = frame
         self.requested = False
 
-    def result(self) -> "StubBigQueryJob":
+    def result(self) -> StubBigQueryJob:
         self.requested = True
         return self
 

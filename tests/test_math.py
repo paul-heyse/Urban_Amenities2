@@ -5,7 +5,7 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
-from Urban_Amenities2.math.ces import ces_aggregate, compute_z
+from Urban_Amenities2.math.ces import MAX_RHO, ces_aggregate, compute_z
 from Urban_Amenities2.math.diversity import DiversityConfig, compute_diversity, diversity_multiplier
 from Urban_Amenities2.math.gtc import GTCParameters, generalized_travel_cost
 from Urban_Amenities2.math.logsum import (
@@ -69,7 +69,7 @@ def test_ces_invalid_rho_raises() -> None:
     quality = np.array([[1.0, 0.5]])
     accessibility = np.array([[1.0, 1.0]])
     with pytest.raises(ValueError):
-        ces_aggregate(quality, accessibility, rho=1.2)
+        ces_aggregate(quality, accessibility, rho=MAX_RHO + 1.0)
 
 
 def test_ces_geometric_rho_matches_geometric_mean() -> None:
@@ -199,10 +199,16 @@ def test_ces_homogeneous_in_quality(
     assume(np.all(accessibility > 0))
     assume(abs(rho) > 1e-6)
     base = ces_aggregate(quality[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1)[0]
+    max_float = np.finfo(np.float64).max
+    assume(base < max_float / scale)
     scaled = ces_aggregate(
         (quality * scale)[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1
     )[0]
-    assert pytest.approx(scaled, rel=1e-6, abs=1e-6) == scale * base
+    expected = scale * base
+    if expected >= max_float:
+        assert scaled == pytest.approx(max_float, rel=1e-6, abs=1e-6)
+    else:
+        assert pytest.approx(scaled, rel=1e-6, abs=1e-6) == expected
 
 
 @settings(deadline=None)
@@ -220,6 +226,8 @@ def test_ces_homogeneous_in_accessibility(
     assume(np.all(quality > 0))
     assume(abs(rho) > 1e-6)
     base = ces_aggregate(quality[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1)[0]
+    max_float = np.finfo(np.float64).max
+    assume(base < max_float / scale)
     scaled = ces_aggregate(
         quality[np.newaxis, :], (accessibility * scale)[np.newaxis, :], rho, axis=1
     )[0]

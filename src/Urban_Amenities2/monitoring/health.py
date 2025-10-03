@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 import requests
 
+from ..config.loader import ParameterLoadError, load_params
+
 
 class _DiskUsage(Protocol):
     free: int
@@ -38,8 +40,6 @@ else:
         PSUTIL: _PsutilModule | None = None
     else:
         PSUTIL = cast(_PsutilModule, _psutil_import)
-
-from ..config.loader import ParameterLoadError, load_params
 
 __all__ = [
     "HealthCheckResult",

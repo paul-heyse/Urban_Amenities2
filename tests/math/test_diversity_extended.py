@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 from hypothesis import given, settings
+from tests.fixtures.math_samples import DIVERSITY_REGRESSION_VECTORS
+from tests.math.strategies import diversity_counts
 
 from Urban_Amenities2.math.diversity import (
     DiversityConfig,
@@ -15,8 +17,6 @@ from Urban_Amenities2.math.diversity import (
     diversity_multiplier,
     shannon_entropy,
 )
-from tests.fixtures.math_samples import DIVERSITY_REGRESSION_VECTORS
-from tests.math.strategies import diversity_counts
 
 
 def test_uniform_distribution_maximises_entropy() -> None:

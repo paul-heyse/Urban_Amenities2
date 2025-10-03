@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from numpy.exceptions import AxisError
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
-
-from Urban_Amenities2.math.ces import MAX_RHO, ces_aggregate, compute_z
+from numpy.exceptions import AxisError
 from tests.fixtures.math_samples import CES_REGRESSION_VECTORS
 from tests.math.strategies import ces_inputs, elasticity_params, scale_factors
+
+from Urban_Amenities2.math.ces import MAX_RHO, ces_aggregate, compute_z
 
 
 def _as_row(values: list[float]) -> np.ndarray:

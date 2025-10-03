@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
+from tests.fixtures.math_samples import SATIATION_REGRESSION_VECTORS
+from tests.math.strategies import amenity_counts, satiation_lambdas
 
 from Urban_Amenities2.math.satiation import (
     apply_satiation,
@@ -15,8 +17,6 @@ from Urban_Amenities2.math.satiation import (
     resolve_kappa,
     satiation_weight,
 )
-from tests.fixtures.math_samples import SATIATION_REGRESSION_VECTORS
-from tests.math.strategies import amenity_counts, satiation_lambdas
 
 
 def test_satiation_weight_matches_closed_form() -> None:

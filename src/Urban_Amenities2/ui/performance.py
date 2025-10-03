@@ -7,14 +7,10 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import wraps
 from statistics import mean
-from typing import ParamSpec, TypeVar
 
 import structlog
 
 logger = structlog.get_logger()
-
-P = ParamSpec("P")
-T = TypeVar("T")
 
 
 @contextmanager
@@ -33,7 +29,7 @@ def timer(operation: str) -> Iterator[None]:
         logger.info("operation_timed", operation=operation, elapsed_ms=elapsed * 1000)
 
 
-def profile_function(func: Callable[P, T]) -> Callable[P, T]:
+def profile_function[**P, T](func: Callable[P, T]) -> Callable[P, T]:
     """
     Decorator to profile function execution time.
 

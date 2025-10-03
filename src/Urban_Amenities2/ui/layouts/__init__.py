@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Optional
 
 from dash import Dash, dcc, html, page_container
 

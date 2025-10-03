@@ -7,7 +7,7 @@ import pytest
 
 from Urban_Amenities2.math.ces import ces_aggregate
 from Urban_Amenities2.math.logsum import nest_inclusive
-from Urban_Amenities2.math.satiation import apply_satiation, satiation_weight
+from Urban_Amenities2.math.satiation import satiation_weight
 
 
 def test_ces_handles_mixed_magnitude_inputs() -> None:

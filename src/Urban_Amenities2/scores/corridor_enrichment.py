@@ -154,7 +154,7 @@ class TransitPathIdentifier:
                 continue
             raw_legs = itinerary.get("legs", [])
             legs: Sequence[Mapping[str, object]]
-            if isinstance(raw_legs, Sequence) or isinstance(raw_legs, Iterable):
+            if isinstance(raw_legs, (Sequence, Iterable)):
                 legs = [entry for entry in raw_legs if isinstance(entry, Mapping)]
             else:
                 legs = []

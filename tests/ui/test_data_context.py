@@ -32,7 +32,6 @@ def _settings(data_path: Path) -> UISettings:
 
 
 def _build_scores(hex_ids: list[str], aucs: list[float]) -> pd.DataFrame:
-    states = ["CO" if idx % 2 == 0 else "UT" for idx in range(len(hex_ids))]
     frame = pd.DataFrame(
         {
             "hex_id": hex_ids,

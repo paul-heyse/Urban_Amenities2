@@ -14,18 +14,18 @@ import pandas as pd
 import pytest
 from requests import HTTPError
 
-pytest_plugins = [
-    "tests.config.conftest",
-]
-
-from Urban_Amenities2.cache.manager import CacheConfig, CacheManager
-from Urban_Amenities2.ui.config import UISettings
-from Urban_Amenities2.ui.data_loader import DataContext
-
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+
+from Urban_Amenities2.cache.manager import CacheConfig, CacheManager  # noqa: E402
+from Urban_Amenities2.ui.config import UISettings  # noqa: E402
+from Urban_Amenities2.ui.data_loader import DataContext  # noqa: E402
+
+pytest_plugins = [
+    "tests.config.conftest",
+]
 
 
 def _load_package_thresholds() -> dict[str, float]:
