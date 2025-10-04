@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from pathlib import Path
 
 import pandas as pd
@@ -43,8 +44,15 @@ def test_great_circle_osrm() -> None:
     client = GreatCircleOSRM("car")
     route = client.route([(0.0, 0.0), (1.0, 1.0)])
     assert route.duration > 0
+    assert isinstance(route, Mapping)
+    assert route["duration"] == pytest.approx(route.duration)
+    route_dict = dict(route)
+    assert route_dict["distance"] == pytest.approx(route.distance)
     matrix = client.table([(0.0, 0.0)], [(1.0, 1.0)])
     assert matrix.durations[0][0] > 0
+    assert isinstance(matrix, Mapping)
+    assert matrix["durations"][0][0] == pytest.approx(matrix.durations[0][0])
+    assert matrix["distances"][0][0] == pytest.approx(matrix.distances[0][0])
 
 
 def test_routing_api_and_batch(tmp_path: Path) -> None:
@@ -110,8 +118,16 @@ def test_osrm_client_route_and_table(osrm_stub_session) -> None:
     client = OSRMClient(OSRMConfig(base_url="http://osrm"), session=osrm_stub_session)
     route = client.route([(0.0, 0.0), (1.0, 1.0)])
     assert route.duration == 100.0
+    assert isinstance(route, Mapping)
+    assert route["duration"] == pytest.approx(route.duration)
+    assert route.get("distance") == pytest.approx(route.distance)
     table = client.table([(0.0, 0.0)], [(1.0, 1.0)])
     assert table.durations[0][0] == 10.0
+    assert isinstance(table, Mapping)
+    assert table["durations"][0][0] == pytest.approx(table.durations[0][0])
+    distances = table.get("distances")
+    if distances is not None and table.distances is not None:
+        assert distances[0][0] == pytest.approx(table.distances[0][0])
 
 
 def test_osrm_client_parses_leg_payloads(osrm_stub_session) -> None:

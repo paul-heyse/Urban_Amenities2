@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
 import requests
@@ -18,8 +18,30 @@ class OSRMConfig:
     max_matrix: int = 100
 
 
+class _MappingPayload(Mapping[str, object]):
+    __slots__ = ()
+
+    def as_dict(self) -> dict[str, object]:
+        raise NotImplementedError
+
+    def __getitem__(self, key: str) -> object:
+        return self.as_dict()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.as_dict())
+
+    def __len__(self) -> int:
+        return len(self.as_dict())
+
+    def keys(self) -> list[str]:
+        return list(self.as_dict().keys())
+
+    def items(self) -> list[tuple[str, object]]:
+        return list(self.as_dict().items())
+
+
 @dataclass(slots=True)
-class OSRMLeg:
+class OSRMLeg(_MappingPayload):
     duration: float
     distance: float | None
 
@@ -31,7 +53,7 @@ class OSRMLeg:
 
 
 @dataclass(slots=True)
-class OSRMRoute:
+class OSRMRoute(_MappingPayload):
     duration: float
     distance: float | None
     legs: list[OSRMLeg]
@@ -43,18 +65,9 @@ class OSRMRoute:
             "legs": [leg.as_dict() for leg in self.legs],
         }
 
-    def __getitem__(self, key: str) -> object:
-        return self.as_dict()[key]
-
-    def keys(self) -> list[str]:
-        return ["duration", "distance", "legs"]
-
-    def items(self) -> list[tuple[str, object]]:
-        return list(self.as_dict().items())
-
 
 @dataclass(slots=True)
-class OSRMTable:
+class OSRMTable(_MappingPayload):
     durations: list[list[float | None]]
     distances: list[list[float | None]] | None
 
@@ -63,15 +76,6 @@ class OSRMTable:
             "durations": self.durations,
             "distances": self.distances,
         }
-
-    def __getitem__(self, key: str) -> object:
-        return self.as_dict()[key]
-
-    def keys(self) -> list[str]:
-        return ["durations", "distances"]
-
-    def items(self) -> list[tuple[str, object]]:
-        return list(self.as_dict().items())
 
 
 class RoutingError(RuntimeError):
