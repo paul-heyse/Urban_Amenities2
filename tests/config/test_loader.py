@@ -134,3 +134,61 @@ def test_load_and_document_includes_hash(minimal_config_file: Path) -> None:
     summary = load_and_document(minimal_config_file)
     assert "AUCS Parameters" in summary
     assert "hash:" in summary
+
+def test_load_params_requires_mapping(tmp_path: Path) -> None:
+    path = tmp_path / "list.yml"
+    path.write_text("- not a mapping", encoding="utf-8")
+
+    with pytest.raises(ParameterLoadError) as excinfo:
+        load_params(path)
+
+    assert "mapping" in str(excinfo.value)
+
+
+def test_load_params_env_nested_override(minimal_config_file: Path) -> None:
+    env = {"AUCS_categories__diversity__essentials__weight": "0.4"}
+
+    params, _ = load_params(minimal_config_file, env=env)
+
+    essentials_diversity = params.categories.diversity["essentials"]
+    assert essentials_diversity.weight == pytest.approx(0.4)
+
+
+def test_load_and_document_includes_derived_satiation(
+    minimal_config_file: Path, tmp_path: Path, yaml_loader: YAML
+) -> None:
+    data = yaml_loader.load(minimal_config_file.read_text())
+    data["categories"]["satiation_mode"] = "direct"
+    data["categories"]["satiation_kappa"] = 0.5
+    override = tmp_path / "override.yml"
+    with override.open("w", encoding="utf-8") as handle:
+        yaml_loader.dump(data, handle)
+
+    summary = load_and_document(override)
+
+    assert "Derived satiation kappas" in summary
+    assert "groceries" in summary
+
+
+def test_load_params_rejects_mixed_indentation(tmp_path: Path) -> None:
+    malformed = tmp_path / "malformed_tabs.yml"
+    malformed.write_text("grid:\n\thex_size_m: 250\n", encoding="utf-8")
+
+    with pytest.raises(ParameterLoadError) as excinfo:
+        load_params(malformed)
+
+    assert "Failed to parse" in str(excinfo.value)
+
+
+def test_golden_configs_load(minimal_config_file: Path, config_fixtures_dir: Path) -> None:
+    golden_v1 = config_fixtures_dir / "golden_v1.yml"
+    golden_v2 = config_fixtures_dir / "golden_v2.yml"
+
+    params_v1, hash_v1 = load_params(golden_v1)
+    params_v2, hash_v2 = load_params(golden_v2)
+
+    assert params_v1.grid.hex_size_m == 240
+    assert params_v1.compute.cache_dir == "cache/v1"
+    assert params_v2.grid.hex_size_m == 260
+    assert params_v2.compute.cache_dir == "cache/v2"
+    assert hash_v1 != hash_v2

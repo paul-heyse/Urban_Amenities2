@@ -1,0 +1,97 @@
+grid:
+  hex_size_m: 260
+  isochrone_minutes: [5, 20]
+  search_cap_minutes: 25
+subscores:
+  EA: 28
+  LCA: 17
+  MUHAA: 15
+  JEA: 10
+  MORR: 10
+  CTE: 10
+  SOU: 10
+time_slices:
+  - id: peak
+    weight: 0.55
+    VOT_per_hour: 20
+  - id: offpeak
+    weight: 0.45
+    VOT_per_hour: 13
+modes:
+  walk:
+    name: walk
+    theta_iv: -0.1
+    theta_wait: -0.2
+    theta_walk: -0.3
+    transfer_penalty_min: 0
+    half_life_min: 14
+    beta0: 0
+nests:
+  - id: base
+    modes: [walk]
+    mu: 1.0
+    eta: 1.0
+logit:
+  mu_top: 1.0
+carry_penalty:
+  category_multipliers:
+    groceries: 1.0
+  per_mode_extra_minutes:
+    walk: 0.0
+quality:
+  component_weights:
+    size: 0.55
+    popularity: 0.45
+  z_clip_abs: 2.8
+  opening_hours_bonus_xi: 1.05
+  dedupe_beta_per_km: 0.25
+categories:
+  essentials: [groceries, pharmacies]
+  leisure: [parks]
+  ces_rho:
+    groceries: 0.65
+    pharmacies: 0.55
+    parks: 0.45
+  satiation_mode: direct
+  satiation_kappa: 0.35
+leisure_cross_category:
+  weights:
+    arts: 1.0
+    sports: 0.75
+  elasticity_zeta: 1.3
+hubs_airports:
+  hub_mass_weights:
+    DEN: 0.6
+    LAX: 0.4
+  hub_decay_alpha: 0.22
+  airport_decay_alpha: 0.16
+jobs_education:
+  university_weight_kappa: 0.65
+  industry_weights:
+    tech: 0.8
+    health: 0.2
+morr:
+  frequent_exposure: 0.25
+  span: 0.35
+  reliability: 0.45
+  redundancy: 0.55
+  micromobility: 0.65
+corridor:
+  max_paths: 2
+  stop_buffer_m: 15.0
+  detour_cap_min: 5.0
+  pair_categories:
+    - [groceries, parks]
+  walk_decay_alpha: 0.11
+  major_hubs: {}
+  chain_weights: {}
+seasonality:
+  comfort_index_default: 0.65
+normalization:
+  mode: metro
+  metro_percentile: 88.0
+  standards: []
+compute:
+  topK_per_category: 6
+  hub_max_minutes: 42
+  cache_dir: cache/v2

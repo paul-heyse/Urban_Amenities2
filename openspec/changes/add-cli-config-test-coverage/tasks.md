@@ -106,9 +106,9 @@
 
     - [x] All parameters parsed
     - [x] Types correct (float, int, etc.)
-  - [x] Test malformed YAML:
+- [x] Test malformed YAML:
     - [x] Invalid syntax → `yaml.YAMLError` with line number
-    - [ ] Tab/space mixing → parsing error
+    - [x] Tab/space mixing → parsing error
   - [x] Test missing required sections:
     - [x] Config without `scoring` section → error
     - [x] Clear message: "Required section 'scoring' missing"
@@ -232,14 +232,14 @@
 ## 6. Golden Configuration Files
 
 - [ ] 6.1 Create golden config files in `tests/fixtures/configs/`:
-  - [ ] `golden_v1.yaml` - Full config with all parameters (version 1.0)
-  - [ ] `golden_v2.yaml` - Updated config (version 2.0)
+  - [x] `golden_v1.yaml` - Full config with all parameters (version 1.0)
+  - [x] `golden_v2.yaml` - Updated config (version 2.0)
   - [x] `minimal.yaml` - Minimal valid config
   - [x] `invalid_type.yaml` - Config with type error
   - [ ] `invalid_range.yaml` - Config with out-of-range value
   - [ ] `missing_required.yaml` - Config missing required section
 
-- [ ] 6.2 Test golden configs:
+- [x] 6.2 Test golden configs:
 
   ```python
   def test_golden_v1_loads_correctly():
@@ -274,12 +274,12 @@
 ## 8. CLI Help and Documentation Testing
 
 - [ ] 8.1 Create `tests/cli/test_cli_help.py`
-  - [ ] Test `cli --help`:
-    - [ ] Help text displayed
-    - [ ] All commands listed
-  - [ ] Test `cli score --help`:
-    - [ ] Command description
-    - [ ] All options listed
+  - [x] Test `cli --help`:
+    - [x] Help text displayed
+    - [x] All commands listed
+  - [x] Test `cli score --help`:
+    - [x] Command description
+    - [x] All options listed
     - [ ] Examples provided
 
 ## 9. Configuration Utilities Testing
