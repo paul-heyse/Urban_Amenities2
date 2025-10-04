@@ -7,17 +7,33 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import TypeVar
+from typing import Protocol, TypeVar
 
 __all__ = [
     "CircuitBreaker",
+    "CircuitBreakerProtocol",
     "CircuitBreakerOpenError",
     "RateLimiter",
+    "RateLimiterProtocol",
     "retry_with_backoff",
 ]
 
 
 T = TypeVar("T")
+
+
+class RateLimiterProtocol(Protocol):
+    """Structural protocol for rate limiter implementations used in tests."""
+
+    def acquire(self) -> float:
+        """Acquire permission to execute an operation, returning wait time."""
+
+
+class CircuitBreakerProtocol(Protocol):
+    """Structural protocol for circuit breaker implementations used in tests."""
+
+    def call(self, func: Callable[[], T]) -> T:
+        """Execute ``func`` applying circuit breaker semantics."""
 
 
 class RateLimiter:

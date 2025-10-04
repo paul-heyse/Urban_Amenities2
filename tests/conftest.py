@@ -5,7 +5,7 @@ import json
 import os
 import sys
 import xml.etree.ElementTree as ET
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -243,9 +243,10 @@ def timestamp() -> datetime:
 class StubResponse:
     """Minimal response stub compatible with ``requests``."""
 
-    def __init__(self, payload: object, status_code: int = 200):
+    def __init__(self, payload: object, status_code: int = 200) -> None:
         self._payload = payload
         self.status_code = status_code
+        self.url: str | None = None
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -258,10 +259,11 @@ class StubResponse:
 class StubSession:
     """Simple HTTP session stub returning canned responses."""
 
-    def __init__(self, responses: dict):
-        self.responses = responses
+    def __init__(self, responses: Mapping[object, object]):
+        self.responses = dict(responses)
         self.calls: list[str] = []
         self.requests: list[dict[str, object]] = []
+        self._last_response: StubResponse | None = None
 
     def _lookup(self, method: str, url: str) -> object:
         parsed = urlparse(url)
@@ -297,19 +299,59 @@ class StubSession:
             body, status = payload
         return StubResponse(body, status)
 
-    def get(self, url: str, params=None, timeout: int | None = None):
-        self.calls.append(url)
-        record = {"method": "GET", "url": url, "params": params or {}, "timeout": timeout}
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: Mapping[str, object] | None = None,
+        json: object | None = None,
+        timeout: float | None = None,
+    ) -> StubResponse:
+        payload = self._lookup(method, url)
+        record = {"method": method.upper(), "url": url, "timeout": timeout}
+        if params is not None:
+            record["params"] = dict(params)
+        if json is not None:
+            record["json"] = json
         self.requests.append(record)
-        payload = self._lookup("GET", url)
-        return self._make_response(payload)
+        self.calls.append(url)
+        response = self._make_response(payload)
+        response.url = url
+        self._last_response = response
+        return response
 
-    def post(self, url: str, json=None, timeout: int | None = None):
-        self.calls.append(url)
-        record = {"method": "POST", "url": url, "json": json or {}, "timeout": timeout}
-        self.requests.append(record)
-        payload = self._lookup("POST", url)
-        return self._make_response(payload)
+    def get(
+        self,
+        url: str,
+        params: Mapping[str, object] | None = None,
+        timeout: float | None = None,
+    ) -> StubResponse:
+        return self.request("GET", url, params=params, timeout=timeout)
+
+    def post(
+        self,
+        url: str,
+        *,
+        data: Mapping[str, object] | None = None,
+        json: object | None = None,
+        timeout: float | None = None,
+    ) -> StubResponse:
+        payload: object | None = json
+        if payload is None and data is not None:
+            payload = dict(data)
+        return self.request("POST", url, json=payload, timeout=timeout)
+
+    @property
+    def last_response(self) -> StubResponse | None:
+        """Return the most recent stubbed response."""
+
+        return self._last_response
+
+    def queue_response(self, key: object, payload: object) -> None:
+        """Register an additional response mapping for lookup."""
+
+        self.responses[key] = payload
 
 
 @pytest.fixture

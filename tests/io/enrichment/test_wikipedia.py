@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 import pytest
@@ -10,9 +10,10 @@ import requests
 
 from Urban_Amenities2.io.enrichment import wikipedia
 from Urban_Amenities2.utils.resilience import CircuitBreakerOpenError
+from tests.io.protocols import ResponseProtocol, SessionProtocol
 
 
-class StubResponse:
+class StubResponse(ResponseProtocol):
     def __init__(self, payload: dict[str, Any], *, status_code: int = 200) -> None:
         self._payload = payload
         self.status_code = status_code
@@ -26,25 +27,63 @@ class StubResponse:
             raise requests.HTTPError("error")
 
 
-class RecordingSession:
+class RecordingSession(SessionProtocol):
     def __init__(self, responses: list[StubResponse]) -> None:
         self._responses = responses
         self.calls = 0
         self.last_url: str | None = None
 
-    def get(self, url: str, timeout: int) -> StubResponse:
-        self.calls += 1
-        self.last_url = url
+    def _pop(self) -> StubResponse:
         if not self._responses:
             raise AssertionError("no responses left")
         return self._responses.pop(0)
+
+    def get(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> StubResponse:
+        self.calls += 1
+        self.last_url = url
+        return self._pop()
+
+    def post(
+        self,
+        url: str,
+        *,
+        data: dict[str, Any] | None = None,
+        json: Any | None = None,
+        timeout: float | None = None,
+    ) -> StubResponse:
+        self.calls += 1
+        self.last_url = url
+        return self._pop()
+
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> StubResponse:
+        self.calls += 1
+        self.last_url = url
+        return self._pop()
 
 
 def _patch_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(wikipedia, "retry_with_backoff", lambda func, **_: func())
 
 
-def test_fetch_uses_cache_on_request_failure(tmp_path: Path, dummy_rate_limiter, dummy_breaker, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[assignment]
+def test_fetch_uses_cache_on_request_failure(
+    tmp_path: Path,
+    dummy_rate_limiter,
+    dummy_breaker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     payload = {
         "items": [
             {"timestamp": "2024010100", "views": 10},
@@ -69,7 +108,7 @@ def test_fetch_uses_cache_on_request_failure(tmp_path: Path, dummy_rate_limiter,
     monkeypatch.setattr(wikipedia, "datetime", FixedDatetime)
     client = wikipedia.WikipediaClient(
         cache_dir=tmp_path / "cache",
-        session=session,  # type: ignore[arg-type]
+        session=session,
         rate_limiter=dummy_rate_limiter,
         circuit_breaker=dummy_breaker,
     )
@@ -82,23 +121,55 @@ def test_fetch_uses_cache_on_request_failure(tmp_path: Path, dummy_rate_limiter,
     assert "20230306" in session.last_url
     assert "20240229" in session.last_url
 
-    client.session = RecordingSession([])  # type: ignore[assignment]
+    client.session = RecordingSession([])
 
-    def _fail(*args: Any, **kwargs: Any) -> StubResponse:
-        raise requests.RequestException("boom")
+    class FailingSession(SessionProtocol):
+        def get(
+            self,
+            url: str,
+            *,
+            params: dict[str, Any] | None = None,
+            timeout: float | None = None,
+        ) -> StubResponse:
+            raise requests.RequestException("boom")
 
-    client.session.get = _fail  # type: ignore[assignment]
+        def post(
+            self,
+            url: str,
+            *,
+            data: dict[str, Any] | None = None,
+            json: Any | None = None,
+            timeout: float | None = None,
+        ) -> StubResponse:
+            raise requests.RequestException("boom")
+
+        def request(
+            self,
+            method: str,
+            url: str,
+            *,
+            timeout: float | None = None,
+            **kwargs: Any,
+        ) -> StubResponse:
+            raise requests.RequestException("boom")
+
+    client.session = FailingSession()
     cached = client.fetch("Example Article")
     assert cached.equals(frame)
     assert dummy_breaker.calls == 2
 
 
-def test_fetch_returns_empty_for_no_items(tmp_path: Path, dummy_rate_limiter, dummy_breaker, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[assignment]
+def test_fetch_returns_empty_for_no_items(
+    tmp_path: Path,
+    dummy_rate_limiter,
+    dummy_breaker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     session = RecordingSession([StubResponse({"items": []})])
     _patch_retry(monkeypatch)
     client = wikipedia.WikipediaClient(
         cache_dir=tmp_path / "cache",
-        session=session,  # type: ignore[arg-type]
+        session=session,
         rate_limiter=dummy_rate_limiter,
         circuit_breaker=dummy_breaker,
     )
@@ -106,14 +177,18 @@ def test_fetch_returns_empty_for_no_items(tmp_path: Path, dummy_rate_limiter, du
     assert frame.empty
 
 
-def test_fetch_raises_when_circuit_open_without_cache(tmp_path: Path, dummy_rate_limiter, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[assignment]
+def test_fetch_raises_when_circuit_open_without_cache(
+    tmp_path: Path,
+    dummy_rate_limiter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _patch_retry(monkeypatch)
     breaker = wikipedia.CircuitBreaker()
     breaker._state = "open"  # type: ignore[attr-defined]
     breaker._opened_at = breaker.clock()  # type: ignore[attr-defined]
     client = wikipedia.WikipediaClient(
         cache_dir=tmp_path / "cache",
-        session=RecordingSession([]),  # type: ignore[arg-type]
+        session=RecordingSession([]),
         rate_limiter=dummy_rate_limiter,
         circuit_breaker=breaker,
     )
@@ -151,13 +226,18 @@ def test_enrich_with_pageviews(monkeypatch: pytest.MonkeyPatch) -> None:
     assert client.calls == ["Article One", "Article Two"]
 
 
-def test_fetch_handles_redirect_payload(tmp_path: Path, dummy_rate_limiter, dummy_breaker, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[assignment]
+def test_fetch_handles_redirect_payload(
+    tmp_path: Path,
+    dummy_rate_limiter,
+    dummy_breaker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     payload = {"items": [{"timestamp": "2024010100", "views": 0, "type": "redirect"}]}
     session = RecordingSession([StubResponse(payload)])
     _patch_retry(monkeypatch)
     client = wikipedia.WikipediaClient(
         cache_dir=tmp_path / "cache",
-        session=session,  # type: ignore[arg-type]
+        session=session,
         rate_limiter=dummy_rate_limiter,
         circuit_breaker=dummy_breaker,
     )
@@ -165,19 +245,24 @@ def test_fetch_handles_redirect_payload(tmp_path: Path, dummy_rate_limiter, dumm
     assert list(frame["pageviews"]) == [0]
 
 
-def test_fetch_invokes_retry_wrapper(tmp_path: Path, dummy_rate_limiter, dummy_breaker, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[assignment]
+def test_fetch_invokes_retry_wrapper(
+    tmp_path: Path,
+    dummy_rate_limiter,
+    dummy_breaker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     payload = {"items": [{"timestamp": "2024010100", "views": 1}]}
     session = RecordingSession([StubResponse(payload)])
     calls: list[dict[str, Any]] = []
 
-    def _record_retry(func, **kwargs):  # type: ignore[explicit-any]
+    def _record_retry(func: Callable[[], pd.DataFrame], **kwargs: Any) -> pd.DataFrame:
         calls.append(kwargs)
         return func()
 
     monkeypatch.setattr(wikipedia, "retry_with_backoff", _record_retry)
     client = wikipedia.WikipediaClient(
         cache_dir=tmp_path / "cache",
-        session=session,  # type: ignore[arg-type]
+        session=session,
         rate_limiter=dummy_rate_limiter,
         circuit_breaker=dummy_breaker,
     )
