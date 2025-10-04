@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/versioning/snapshots.py
+# hypothesis_version: 6.140.2
+
+['SnapshotRecord', 'SnapshotRegistry', 'a', 'data/snapshots.jsonl', 'r', 'utf-8']

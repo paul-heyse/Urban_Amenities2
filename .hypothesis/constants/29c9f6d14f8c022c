@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/monitoring/health.py
+# hypothesis_version: 6.140.2
+
+[8.0, 100.0, 400, 500, 1024, '-', 'Data fresh', 'Data is stale', 'File present', 'HealthCheckResult', 'HealthStatus', 'Memory available', 'OSRM reachable', 'OTP reachable', 'Parameters validated', 'age_days', 'available_gb', 'critical', 'disk', 'error', 'errors', 'format_report', 'free_gb', 'hash', 'max_age_days', 'memory', 'ok', 'otp', 'overall_status', 'params', 'query', 'required_gb', 'run_health_checks', 'time_slices', 'warning', '{__typename}', '⚠️', '✅', '❌']

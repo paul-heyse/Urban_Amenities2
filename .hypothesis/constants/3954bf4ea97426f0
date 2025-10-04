@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/performance.py
+# hypothesis_version: 6.140.2
+
+[0.0, -1000, 100, 1000, 'count', 'function_profiled', 'max', 'mean', 'min', 'operation_timed', 'p50', 'p95', 'p99']

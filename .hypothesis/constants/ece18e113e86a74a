@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/export/parquet.py
+# hypothesis_version: 6.140.2
+
+[0.05, 0.95, 'aucs', 'aucs.export.parquet', 'generated_at', 'max', 'mean', 'median', 'min', 'p5', 'p95', 'scores_written', 'summary_statistics', 'write_explainability', 'write_scores']

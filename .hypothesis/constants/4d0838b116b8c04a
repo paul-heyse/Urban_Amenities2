@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/router/otp.py
+# hypothesis_version: 6.140.2
+
+[0.0, '%H:%M', '%Y-%m-%d', 'OTPClient', 'OTPConfig', 'OTPError', 'amount', 'aucs.router.otp', 'data', 'date', 'distance', 'duration', 'errors', 'fare', 'from', 'itineraries', 'lat', 'legs', 'lon', 'mode', 'modes', 'name', 'numItineraries', 'otp_error', 'plan', 'query', 'regular', 'time', 'to', 'transfers', 'transitTime', 'transit_time', 'variables', 'wait_time', 'waitingTime', 'walkTime', 'walk_time']

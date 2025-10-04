@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/io/education/nces.py
+# hypothesis_version: 6.140.2
+
+['.parquet', 'ENR_TOTAL', 'LAT', 'LEVEL', 'LON', 'NCESSCH', 'PUPTCH', 'SCH_NAME', 'TOTFTE', 'enrollment', 'hex_id', 'ingest_schools', 'lat', 'level', 'lon', 'name', 'prepare_schools', 'private', 'public', 'school_id', 'source', 'teachers_fte']

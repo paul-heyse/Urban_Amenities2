@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/router/osrm.py
+# hypothesis_version: 6.140.2
+
+[100, ';', 'No route found', 'OSRM request failed', 'OSRMClient', 'OSRMConfig', 'OSRMLeg', 'OSRMRoute', 'OSRMTable', 'Ok', 'RoutingError', 'annotations', 'aucs.router.osrm', 'car', 'code', 'destinations', 'distance', 'distances', 'duration', 'duration,distance', 'durations', 'false', 'legs', 'message', 'osrm_error', 'overview', 'routes', 'sources']

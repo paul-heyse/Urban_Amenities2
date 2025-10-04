@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/scores/mobility_reliability.py
+# hypothesis_version: 6.140.2
+
+[0.0, 1.0, 3.0, 15.0, 24.0, 100.0, 500.0, 'C1', 'C2', 'C3', 'C4', 'C5', 'MORR', 'MorrConfig', 'MorrWeights', 'area_sqkm', 'compute_service_span', 'coverage_score', 'density', 'distance_m', 'frequency_weight', 'frequent', 'has_early', 'has_late', 'has_weekend', 'headway_peak', 'hex_id', 'hours_score', 'on_time_pct', 'outer', 'road_routes', 'route_total', 'service_hours', 'stations', 'transit_routes', 'weight']

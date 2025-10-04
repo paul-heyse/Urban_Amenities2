@@ -1,0 +1,4 @@
+# file: /home/paul/Urban_Amenities2/src/Urban_Amenities2/ui/layouts/__init__.py
+# hypothesis_version: 6.140.2
+
+['app-body', 'app-content', 'app-shell', 'register_layouts', 'url']
