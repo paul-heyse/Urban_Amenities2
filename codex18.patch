@@ -1,0 +1,432 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/tests/ui/test_callbacks_helpers.py b/tests/ui/test_callbacks_helpers.py
+index 6297ace4977d9a0831d834dfef502d12ee5f25a7..4f9a55000583ee2030f7f52e820fce604521dd56 100644
+--- a/tests/ui/test_callbacks_helpers.py
++++ b/tests/ui/test_callbacks_helpers.py
+@@ -1,56 +1,335 @@
+ from __future__ import annotations
+
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pandas as pd
++import pytest
++
++from Urban_Amenities2.ui import callbacks as callbacks_module
+ from Urban_Amenities2.ui.callbacks import (
+     _extract_viewport_bounds,
+     _normalise_filters,
+     _normalise_overlays,
+     _resolution_for_zoom,
++    register_callbacks,
+ )
++from Urban_Amenities2.ui.config import UISettings
++from Urban_Amenities2.ui.layers import OverlayPayload
++
++
++class DummyDashApp:
++    """Minimal stub mimicking the Dash callback registration interface."""
++
++    def __init__(self) -> None:
++        self.callbacks: list[dict[str, object]] = []
++
++    def callback(self, *args: object, **kwargs: object):
++        def _decorator(func):
++            self.callbacks.append({"args": args, "kwargs": kwargs, "func": func})
++            return func
++
++        return _decorator
++
++
++class StubDataContext:
++    """Deterministic stand-in for UI data context interactions."""
++
++    def __init__(self) -> None:
++        self.scores = pd.DataFrame(
++            {
++                "hex_id": ["hex-1", "hex-2", "hex-3"],
++                "aucs": [80.0, 60.0, 40.0],
++                "EA": [78.0, 58.0, 42.0],
++                "state": ["CO", "CO", "UT"],
++                "metro": ["Denver", "Denver", "Salt Lake City"],
++                "county": ["Denver", "Denver", "Salt Lake"],
++            }
++        )
++        self.geometries = pd.DataFrame(
++            {
++                "hex_id": ["hex-1", "hex-2", "hex-3", "parent-hex"],
++                "centroid_lat": [39.7, 39.8, 40.7, 39.75],
++                "centroid_lon": [-104.9, -104.8, -111.9, -104.85],
++                "geometry_wkt": [
++                    "POINT(-104.9 39.7)",
++                    "POINT(-104.8 39.8)",
++                    "POINT(-111.9 40.7)",
++                    "POINT(-104.85 39.75)",
++                ],
++                "resolution": [9, 9, 9, 6],
++            }
++        )
++        self.base_resolution = 9
++        self.bounds = (-105.0, 39.5, -104.7, 39.9)
++        self.version = SimpleNamespace(identifier="2024-02-01")
++        self.filter_calls: list[dict[str, object]] = []
++        self.frame_calls: list[tuple[int, tuple[str, ...]]] = []
++        self.last_viewport: tuple[int, tuple[float, float, float, float] | None] | None = None
++        self.refreshed = 0
++        self.exported: list[tuple[str, Path]] = []
++
++    def filter_scores(
++        self,
++        *,
++        state: list[str] | None = None,
++        metro: list[str] | None = None,
++        county: list[str] | None = None,
++        score_range: tuple[float, float] | None = None,
++    ) -> pd.DataFrame:
++        payload = {
++            "state": list(state or []),
++            "metro": list(metro or []),
++            "county": list(county or []),
++            "score_range": score_range,
++        }
++        self.filter_calls.append(payload)
++        frame = self.scores.copy()
++        if payload["state"]:
++            frame = frame[frame["state"].isin(payload["state"])]
++        if payload["metro"]:
++            frame = frame[frame["metro"].isin(payload["metro"])]
++        if payload["county"]:
++            frame = frame[frame["county"].isin(payload["county"])]
++        if score_range is not None:
++            low, high = score_range
++            frame = frame[frame["aucs"].between(low, high)]
++        return frame.reset_index(drop=True)
++
++    def frame_for_resolution(self, resolution: int, columns: list[str] | None = None) -> pd.DataFrame:
++        columns = columns or ["aucs"]
++        self.frame_calls.append((resolution, tuple(columns)))
++        if resolution >= self.base_resolution:
++            required = ["hex_id", *columns, "state", "metro", "county"]
++            available = [col for col in required if col in self.scores.columns]
++            return self.scores.loc[:, available].copy()
++        aggregated = pd.DataFrame(
++            {
++                "hex_id": ["parent-hex"],
++                columns[0]: [float(self.scores[columns[0]].mean())],
++                "aucs": [float(self.scores["aucs"].mean())],
++                "count": [len(self.scores)],
++            }
++        )
++        return aggregated
++
++    def apply_viewport(
++        self,
++        frame: pd.DataFrame,
++        resolution: int,
++        bounds: tuple[float, float, float, float] | None,
++    ) -> pd.DataFrame:
++        self.last_viewport = (resolution, bounds)
++        if resolution >= self.base_resolution and not frame.empty:
++            return frame.iloc[[0]].copy()
++        return frame
++
++    def attach_geometries(self, frame: pd.DataFrame) -> pd.DataFrame:
++        return frame.merge(self.geometries, on="hex_id", how="left")
++
++    def to_geojson(self, frame: pd.DataFrame) -> dict[str, object]:
++        features = [
++            {
++                "type": "Feature",
++                "geometry": {
++                    "type": "Point",
++                    "coordinates": [row.get("centroid_lon", 0.0), row.get("centroid_lat", 0.0)],
++                },
++                "properties": row.drop(labels=[col for col in ["centroid_lon", "centroid_lat"] if col in row]).to_dict(),
++            }
++            for _, row in frame.fillna(0.0).iterrows()
++        ]
++        return {"type": "FeatureCollection", "features": features}
++
++    def refresh(self) -> None:
++        self.refreshed += 1
++
++    def export_csv(self, path: Path) -> Path:
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text("hex_id,aucs\nhex-1,80.0\n")
++        self.exported.append(("csv", path))
++        return path
++
++    def export_geojson(self, path: Path) -> Path:
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
++        self.exported.append(("geojson", path))
++        return path
++
++
++def _find_callback(app: DummyDashApp, component_id: str):
++    for entry in app.callbacks:
++        outputs = entry["args"]
++        if any(getattr(output, "component_id", None) == component_id for output in outputs):
++            return entry["func"]
++    raise AssertionError(f"Callback for {component_id} not registered")
+
+
+ def test_normalise_filters_and_overlays() -> None:
+     assert _normalise_filters(None) == []
+     assert _normalise_filters("CO") == ["CO"]
+     assert _normalise_filters(["CO", "", "UT"]) == ["CO", "UT"]
+
+     overlays = _normalise_overlays(["states", "unknown", "parks"])
+     assert overlays == ["states", "parks"]
+
+
+ def test_resolution_for_zoom_thresholds() -> None:
+     assert _resolution_for_zoom(None) == 8
+     assert _resolution_for_zoom(4.5) == 6
+     assert _resolution_for_zoom(7.2) == 7
+     assert _resolution_for_zoom(10.5) == 8
+     assert _resolution_for_zoom(12.0) == 9
+
+
+ def test_extract_viewport_bounds_from_coordinates() -> None:
+     relayout = {
+         "mapbox._derived": {
+             "coordinates": [
+                 [[-105.0, 39.7], [-104.9, 39.7], [-104.9, 39.8], [-105.0, 39.8]],
+             ]
+         }
+     }
+     bounds = _extract_viewport_bounds(relayout, None)
+     assert bounds == (-105.0, 39.7, -104.9, 39.8)
+
+
+ def test_extract_viewport_bounds_from_center_zoom() -> None:
+     relayout = {
+         "mapbox.center.lon": -105.0,
+         "mapbox.center.lat": 39.7,
+         "mapbox.zoom": 8.0,
+     }
+     fallback = (-106.0, 38.5, -104.0, 40.5)
+     bounds = _extract_viewport_bounds(relayout, fallback)
+     assert bounds is not None
+     assert bounds[0] < relayout["mapbox.center.lon"]
+     assert bounds[2] > relayout["mapbox.center.lon"]
+
+
+ def test_extract_viewport_bounds_invalid_returns_fallback() -> None:
+     fallback = (-1.0, -1.0, 1.0, 1.0)
+     assert _extract_viewport_bounds({}, fallback) == fallback
+     assert _extract_viewport_bounds(None, fallback) == fallback
++
++
++def test_register_callbacks_updates_map_and_handles_filters(monkeypatch: pytest.MonkeyPatch) -> None:
++    app = DummyDashApp()
++    context = StubDataContext()
++    settings = UISettings(title="Test UI", mapbox_token="token")
++
++    overlay_payload = OverlayPayload(layers=[{"type": "fill", "id": "states"}], traces=["trace"])
++    overlay_calls: list[tuple[list[str], float]] = []
++
++    def fake_overlay(selection, data_context, *, opacity=0.35):
++        assert data_context is context
++        overlay_calls.append((list(selection), opacity))
++        return overlay_payload
++
++    choropleth_calls: list[dict[str, object]] = []
++
++    def fake_choropleth(**kwargs):
++        choropleth_calls.append(kwargs)
++        return SimpleNamespace(**kwargs)
++
++    trigger = SimpleNamespace(triggered_id=None)
++
++    monkeypatch.setattr(callbacks_module, "build_overlay_payload", fake_overlay)
++    monkeypatch.setattr(callbacks_module, "create_choropleth", fake_choropleth)
++    monkeypatch.setattr(callbacks_module, "callback_context", trigger)
++
++    register_callbacks(app, context, settings)
++
++    update_callback = _find_callback(app, "hex-map")
++
++    trigger.triggered_id = "apply-filters"
++    figure, summary, description = update_callback(
++        "EA",
++        "carto-positron",
++        ["states", "unknown"],
++        0.5,
++        relayout_data={"mapbox.zoom": 12.0},
++        state_values=["CO"],
++        metro_values=None,
++        county_values=None,
++        score_range=[50.0, 85.0],
++    )
++
++    assert isinstance(figure, SimpleNamespace)
++    assert summary.startswith("Showing 2 of 3 hexes")
++    assert "Access" in description
++    assert overlay_calls[-1] == (["states"], 0.5)
++    assert context.filter_calls[-1]["state"] == ["CO"]
++    assert context.frame_calls == []
++    assert context.last_viewport == (9, context.bounds)
++    assert "EA" in choropleth_calls[-1]["hover_columns"]
++
++    trigger.triggered_id = "clear-filters"
++    figure2, summary2, _description2 = update_callback(
++        "EA",
++        "mapbox://styles/mapbox/outdoors-v11",
++        None,
++        None,
++        relayout_data={"mapbox.zoom": 4.0},
++        state_values=["CO"],
++        metro_values=["Denver"],
++        county_values=["Denver"],
++        score_range=None,
++    )
++
++    assert isinstance(figure2, SimpleNamespace)
++    assert summary2.startswith("Showing 3 of 3 hexes")
++    assert overlay_calls[-1] == ([], 0.35)
++    assert context.filter_calls[-1]["state"] == []
++    assert context.filter_calls[-1]["score_range"] == (0.0, 100.0)
++    assert context.frame_calls[-1][0] == 6
++    assert "count" in choropleth_calls[-1]["hover_columns"]
++
++
++def test_register_callbacks_refresh_and_exports(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    app = DummyDashApp()
++    context = StubDataContext()
++    settings = UISettings(title="Test UI")
++
++    overlay_payload = OverlayPayload(layers=[], traces=[])
++    monkeypatch.setattr(callbacks_module, "build_overlay_payload", lambda *_args, **_kwargs: overlay_payload)
++    monkeypatch.setattr(callbacks_module, "create_choropleth", lambda **kwargs: SimpleNamespace(**kwargs))
++
++    trigger = SimpleNamespace(triggered_id=None)
++    monkeypatch.setattr(callbacks_module, "callback_context", trigger)
++    monkeypatch.setattr(
++        callbacks_module,
++        "Path",
++        lambda value: tmp_path / Path(str(value)).name,
++    )
++    sent_paths: list[Path] = []
++
++    def fake_send_file(path: Path):
++        sent_paths.append(path)
++        return {"path": str(path)}
++
++    monkeypatch.setattr(callbacks_module, "send_file", fake_send_file)
++
++    register_callbacks(app, context, settings)
++
++    refresh_callback = _find_callback(app, "refresh-status")
++    span = refresh_callback(1)
++    assert context.refreshed == 1
++    assert "2024-02-01" in str(span.children)
++
++    export_callback = _find_callback(app, "download-data")
++    trigger.triggered_id = "export-csv"
++    payload_csv = export_callback(1, None)
++    assert sent_paths[-1].name == "ui-export.csv"
++    assert payload_csv == {"path": str(sent_paths[-1])}
++
++    trigger.triggered_id = "export-geojson"
++    payload_geojson = export_callback(None, 1)
++    assert sent_paths[-1].name == "ui-export.geojson"
++    assert payload_geojson == {"path": str(sent_paths[-1])}
++
++    trigger.triggered_id = None
++    assert export_callback(None, None) is callbacks_module.no_update
+diff --git a/tests/ui/test_performance.py b/tests/ui/test_performance.py
+index 892bf4c12886dae7332484b2649fdf0c4348b768..140a0c5edc65f4afaf664c8bf122892652875d5e 100644
+--- a/tests/ui/test_performance.py
++++ b/tests/ui/test_performance.py
+@@ -1,60 +1,72 @@
+ from __future__ import annotations
+
+ import pytest
+
+ from Urban_Amenities2.ui import performance
+
+
++class _CaptureLogger:
++    """Simple stand-in for the structlog logger used in performance helpers."""
++
++    def __init__(self) -> None:
++        self.events: list[tuple[str, dict[str, object]]] = []
++
++    def info(self, event: str, **payload: object) -> None:
++        self.events.append((event, dict(payload)))
++
++
+ class FakeTime:
+     def __init__(self) -> None:
+         self._calls = 0
+
+     def perf_counter(self) -> float:
+         value = self._calls * 0.05
+         self._calls += 1
+         return value
+
+
+-def test_timer_logs_elapsed_time(
+-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+-) -> None:
++def test_timer_logs_elapsed_time(monkeypatch: pytest.MonkeyPatch) -> None:
+     fake_time = FakeTime()
+     monkeypatch.setattr(performance, "time", fake_time)
++    logger = _CaptureLogger()
++    monkeypatch.setattr(performance, "logger", logger)
+
+-    with caplog.at_level("INFO"), performance.timer("load-data"):
++    with performance.timer("load-data"):
+         pass
+
+-    assert any("operation_timed" in message for message in caplog.messages)
++    assert ("operation_timed", {"operation": "load-data", "elapsed_ms": 50.0}) in [
++        (event, {"operation": payload.get("operation"), "elapsed_ms": payload.get("elapsed_ms")})
++        for event, payload in logger.events
++    ]
+
+
+-def test_profile_function_logs(
+-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+-) -> None:
++def test_profile_function_logs(monkeypatch: pytest.MonkeyPatch) -> None:
+     fake_time = FakeTime()
+     monkeypatch.setattr(performance, "time", fake_time)
++    logger = _CaptureLogger()
++    monkeypatch.setattr(performance, "logger", logger)
+
+     @performance.profile_function
+     def add(a: int, b: int) -> int:
+         return a + b
+
+-    with caplog.at_level("INFO"):
+-        assert add(1, 2) == 3
++    assert add(1, 2) == 3
+
+-    assert any("function_profiled" in message for message in caplog.messages)
++    assert any(event == "function_profiled" for event, _payload in logger.events)
+
+
+ def test_performance_monitor_statistics() -> None:
+     monitor = performance.PerformanceMonitor()
+     for value in [10.0, 20.0, 30.0]:
+         monitor.record("load", value)
+
+     stats = monitor.get_stats("load")
+     assert stats is not None
+     assert stats["min"] == pytest.approx(10.0)
+     assert stats["max"] == pytest.approx(30.0)
+     assert stats["mean"] == pytest.approx(20.0)
+     assert stats["count"] == 3
+
+     assert monitor.get_stats("missing") is None
+     all_stats = monitor.get_all_stats()
+     assert "load" in all_stats
+
+EOF
+)
