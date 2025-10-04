@@ -61,16 +61,16 @@
 
 ## 3. Stub Type Protocol Compliance (Medium Priority)
 
-- [ ] 3.1 **Create protocol definitions in tests/io/protocols.py**
-  - [ ] Define `SessionProtocol` for HTTP client stubs
-  - [ ] Define `WikidataClientProtocol` with `query` method signature
-  - [ ] Define `WikipediaClientProtocol` with `get_pageviews` signature
-  - [ ] Define `RateLimiterProtocol` and `CircuitBreakerProtocol`
+- [x] 3.1 **Create protocol definitions in tests/io/protocols.py**
+  - [x] Define `SessionProtocol` for HTTP client stubs
+  - [x] Define `WikidataClientProtocol` with `query` method signature
+  - [x] Define `WikipediaClientProtocol` with `get_pageviews` signature
+  - [x] Define `RateLimiterProtocol` and `CircuitBreakerProtocol`
 
-- [ ] 3.2 **Update StubSession to implement SessionProtocol**
-  - [ ] Add `request`, `get`, `post` method signatures to match `requests.Session`
-  - [ ] Implement `response` property for recording/playback
-  - [ ] Add type hints to `queue_response` method
+- [x] 3.2 **Update StubSession to implement SessionProtocol**
+  - [x] Add `request`, `get`, `post` method signatures to match `requests.Session`
+  - [x] Implement `response` property for recording/playback
+  - [x] Add type hints to `queue_response` method
 
 - [ ] 3.3 **Update WikidataClient stubs in tests/test_data_ingestion.py**
   - [ ] Make `StubClient` (line 335) implement `WikidataClientProtocol`
@@ -78,11 +78,11 @@
   - [ ] Make `RecordingClient` implement `WikidataClientProtocol`
   - [ ] Add explicit return types (`dict[str, Any]` vs `dict`)
 
-- [ ] 3.4 **Update WikipediaClient stubs in tests/io/enrichment/test_wikipedia.py**
-  - [ ] Fix `_StubSession` (line 389) to match `Session` protocol
-  - [ ] Fix `_StubRateLimiter` (line 390) to match `RateLimiter` interface
-  - [ ] Fix `_StubCircuitBreaker` (line 391) to match `CircuitBreaker` interface
-  - [ ] Add `CircuitBreaker` to explicit exports in wikipedia module (line 111)
+- [x] 3.4 **Update WikipediaClient stubs in tests/io/enrichment/test_wikipedia.py**
+  - [x] Fix `_StubSession` (line 389) to match `Session` protocol
+  - [x] Fix `_StubRateLimiter` (line 390) to match `RateLimiter` interface
+  - [x] Fix `_StubCircuitBreaker` (line 391) to match `CircuitBreaker` interface
+  - [x] Add `CircuitBreaker` to explicit exports in wikipedia module (line 111)
 
 - [ ] 3.5 **Update routing test stubs in tests/test_routing.py**
   - [ ] Make `StubSession` (lines 151, 156, 172, 177, 181) implement `SessionProtocol`

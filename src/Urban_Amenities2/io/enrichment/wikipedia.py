@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, Protocol, cast
 
 import pandas as pd
 import requests
@@ -14,7 +16,9 @@ from ...logging_utils import get_logger
 from ...utils.resilience import (
     CircuitBreaker,
     CircuitBreakerOpenError,
+    CircuitBreakerProtocol,
     RateLimiter,
+    RateLimiterProtocol,
     retry_with_backoff,
 )
 
@@ -24,6 +28,52 @@ API_URL = (
     "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{project}/all-access/"
     "all-agents/{title}/daily/{start}/{end}"
 )
+
+
+class ResponseProtocol(Protocol):
+    """Protocol for HTTP responses consumed by :class:`WikipediaClient`."""
+
+    status_code: int
+    url: str | None
+
+    def json(self) -> Any:
+        ...
+
+    def raise_for_status(self) -> None:
+        ...
+
+
+class SessionProtocol(Protocol):
+    """Protocol capturing the subset of :class:`requests.Session` that we rely on."""
+
+    def get(
+        self,
+        url: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> ResponseProtocol:
+        ...
+
+    def post(
+        self,
+        url: str,
+        *,
+        data: Mapping[str, Any] | None = None,
+        json: Any | None = None,
+        timeout: float | None = None,
+    ) -> ResponseProtocol:
+        ...
+
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> ResponseProtocol:
+        ...
 
 
 class WikipediaClient:
@@ -36,21 +86,28 @@ class WikipediaClient:
         cache_dir: str | Path = Path("cache/api/wikipedia"),
         cache_ttl_seconds: int = 60 * 60 * 24,
         max_requests_per_sec: int = 100,
-        session: requests.Session | None = None,
-        rate_limiter: RateLimiter | None = None,
-        circuit_breaker: CircuitBreaker | None = None,
+        session: SessionProtocol | None = None,
+        rate_limiter: RateLimiterProtocol | None = None,
+        circuit_breaker: CircuitBreakerProtocol | None = None,
     ) -> None:
         self.project = project
-        self.session = session or requests.Session()
+        self.session = cast(SessionProtocol, session or requests.Session())
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache = Cache(directory=str(self.cache_dir), size_limit=10 * 1024**3)
         self.cache_ttl_seconds = cache_ttl_seconds
-        self.rate_limiter = rate_limiter or RateLimiter(max_requests_per_sec, per=1.0)
-        self.circuit_breaker = circuit_breaker or CircuitBreaker(
-            failure_threshold=5,
-            recovery_timeout=60.0,
-            expected_exceptions=(requests.RequestException,),
+        self.rate_limiter = cast(
+            RateLimiterProtocol,
+            rate_limiter or RateLimiter(max_requests_per_sec, per=1.0),
+        )
+        self.circuit_breaker = cast(
+            CircuitBreakerProtocol,
+            circuit_breaker
+            or CircuitBreaker(
+                failure_threshold=5,
+                recovery_timeout=60.0,
+                expected_exceptions=(requests.RequestException,),
+            ),
         )
 
     def fetch(
@@ -174,4 +231,11 @@ def enrich_with_pageviews(
     return stats
 
 
-__all__ = ["WikipediaClient", "enrich_with_pageviews", "compute_statistics"]
+__all__ = [
+    "ResponseProtocol",
+    "SessionProtocol",
+    "WikipediaClient",
+    "enrich_with_pageviews",
+    "compute_statistics",
+    "CircuitBreaker",
+]

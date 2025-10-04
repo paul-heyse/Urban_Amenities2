@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar, cast
 
 import pandas as pd
 import pytest
+from diskcache import Cache
 
 from Urban_Amenities2.io.enrichment import wikidata
+from Urban_Amenities2.utils.resilience import CircuitBreakerProtocol, RateLimiterProtocol
+from tests.io.protocols import WikidataClientProtocol
+
+T = TypeVar("T")
 
 
 def test_build_query_contains_coordinates() -> None:
@@ -17,7 +22,7 @@ def test_build_query_contains_coordinates() -> None:
 
 
 def test_wikidata_enricher_match_returns_fields() -> None:
-    class StubClient:
+    class StubClient(WikidataClientProtocol):
         def query(self, _: str) -> dict[str, object]:
             return {
                 "results": {
@@ -37,7 +42,7 @@ def test_wikidata_enricher_match_returns_fields() -> None:
 
 
 def test_wikidata_enricher_handles_missing_results() -> None:
-    class EmptyClient:
+    class EmptyClient(WikidataClientProtocol):
         def query(self, _: str) -> dict[str, object]:
             return {"results": {"bindings": []}}
 
@@ -47,7 +52,7 @@ def test_wikidata_enricher_handles_missing_results() -> None:
 
 
 def test_wikidata_enricher_enriches_dataframe() -> None:
-    class RecordingClient:
+    class RecordingClient(WikidataClientProtocol):
         def __init__(self) -> None:
             self.calls: list[str] = []
 
@@ -73,7 +78,7 @@ class DummyCache(dict[str, Any]):
 
 def test_wikidata_client_returns_cache_on_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = wikidata.WikidataClient(cache_dir=tmp_path)
-    client._cache = DummyCache()  # type: ignore[assignment]
+    client._cache = cast(Cache, DummyCache())
     cached_key = client._cache_key("SELECT 1")
     client._cache.set(cached_key, {"results": {"bindings": []}})
     monkeypatch.setattr(client, "_execute", lambda query: (_ for _ in ()).throw(Exception("boom")))
@@ -83,13 +88,13 @@ def test_wikidata_client_returns_cache_on_failure(tmp_path: Path, monkeypatch: p
 
 def test_wikidata_client_retries_on_transient_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     client = wikidata.WikidataClient(cache_dir=tmp_path)
-    client._cache = DummyCache()  # type: ignore[assignment]
+    client._cache = cast(Cache, DummyCache())
 
     class StubResponse:
         def convert(self) -> dict[str, object]:
             return {"results": {"bindings": []}}
 
-    class StubClient:
+    class StubClient(WikidataClientProtocol):
         def __init__(self) -> None:
             self.calls = 0
 
@@ -105,11 +110,17 @@ def test_wikidata_client_retries_on_transient_error(monkeypatch: pytest.MonkeyPa
         calls["retry"] += 1
         return func()
 
-    breaker = type("Breaker", (), {"call": lambda self, func: func()})()
-    rate_limiter = type("Limiter", (), {"acquire": lambda self: 0.0})()
-    client._client = StubClient()  # type: ignore[assignment]
-    client._breaker = breaker  # type: ignore[assignment]
-    client._rate_limiter = rate_limiter  # type: ignore[assignment]
+    class _Breaker(CircuitBreakerProtocol):
+        def call(self, func: Callable[[], T]) -> T:
+            return func()
+
+    class _Limiter(RateLimiterProtocol):
+        def acquire(self) -> float:
+            return 0.0
+
+    client._client = cast(WikidataClientProtocol, StubClient())
+    client._breaker = cast(CircuitBreakerProtocol, _Breaker())
+    client._rate_limiter = cast(RateLimiterProtocol, _Limiter())
     monkeypatch.setattr(wikidata, "retry_with_backoff", _fake_retry)
 
     result = client.query("SELECT ?item WHERE {}")
