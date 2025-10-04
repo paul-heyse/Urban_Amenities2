@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from typing import NoReturn
 
 import requests
 
@@ -21,7 +22,7 @@ class OSRMConfig:
 class _MappingPayload(Mapping[str, object]):
     __slots__ = ()
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> Mapping[str, object]:
         raise NotImplementedError
 
     def __getitem__(self, key: str) -> object:
@@ -33,19 +34,13 @@ class _MappingPayload(Mapping[str, object]):
     def __len__(self) -> int:
         return len(self.as_dict())
 
-    def keys(self) -> list[str]:
-        return list(self.as_dict().keys())
-
-    def items(self) -> list[tuple[str, object]]:
-        return list(self.as_dict().items())
-
 
 @dataclass(slots=True)
 class OSRMLeg(_MappingPayload):
     duration: float
     distance: float | None
 
-    def as_dict(self) -> dict[str, float | None]:
+    def as_dict(self) -> Mapping[str, object]:
         return {
             "duration": self.duration,
             "distance": self.distance,
@@ -58,7 +53,7 @@ class OSRMRoute(_MappingPayload):
     distance: float | None
     legs: list[OSRMLeg]
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> Mapping[str, object]:
         return {
             "duration": self.duration,
             "distance": self.distance,
@@ -68,14 +63,46 @@ class OSRMRoute(_MappingPayload):
 
 @dataclass(slots=True)
 class OSRMTable(_MappingPayload):
+    """OSRM table response with optional durations/distances.
+
+    The OSRM API returns ``null`` for unreachable origin/destination pairs. We
+    preserve those ``None`` values so downstream callers can handle them
+    explicitly.
+    """
+
     durations: list[list[float | None]]
     distances: list[list[float | None]] | None
 
-    def as_dict(self) -> dict[str, object]:
+    def __post_init__(self) -> None:
+        self.durations = [
+            _normalise_matrix_row(row, "duration") for row in self.durations
+        ]
+        if self.distances is not None:
+            self.distances = [
+                _normalise_matrix_row(row, "distance") for row in self.distances
+            ]
+
+    def as_dict(self) -> Mapping[str, object]:
         return {
             "durations": self.durations,
             "distances": self.distances,
         }
+
+
+def _normalise_matrix_row(row: Sequence[object], kind: str) -> list[float | None]:
+    normalised: list[float | None] = []
+    for value in row:
+        if isinstance(value, (int, float)):
+            normalised.append(float(value))
+        elif value is None:
+            normalised.append(None)
+        else:
+            _raise_invalid_matrix_value(kind, value)
+    return normalised
+
+
+def _raise_invalid_matrix_value(kind: str, value: object) -> NoReturn:
+    raise RoutingError(f"OSRM {kind} matrix contains invalid value {value!r}")
 
 
 class RoutingError(RuntimeError):

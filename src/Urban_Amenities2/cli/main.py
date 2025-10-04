@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Hashable, Mapping, Sequence
 from collections.abc import Iterable as IterableABC
-from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import numpy as np
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 import typer
 
 from ..calibration.essentials import sensitivity_analysis
@@ -37,6 +38,7 @@ from ..scores.essentials_access import (
     EssentialsAccessConfig,
 )
 from ..scores.explainability import top_contributors
+from ..utils.types import cast_to_dataframe
 from ..versioning.manifest import create_run_manifest, get_manifest, list_manifests
 
 app = typer.Typer(help="AUCS utilities")
@@ -142,8 +144,29 @@ def _json_safe(value: object) -> object:
     return value
 
 
+def _ensure_str_mapping(
+    record: Mapping[Hashable, object], *, context: str | None = None
+) -> Mapping[str, object]:
+    """Validate that *record* only uses string keys.
+
+    Pandas may expose records with :class:`Hashable` keys when round-tripping
+    through :meth:`DataFrame.to_dict`.  The GeoJSON export code expects string
+    keys, so we validate eagerly and raise a descriptive :class:`TypeError`
+    rather than silently coercing unexpected values.
+    """
+
+    if all(isinstance(key, str) for key in record):
+        return cast(Mapping[str, object], record)
+    offending = [repr(key) for key in record if not isinstance(key, str)]
+    location = f" for {context}" if context else ""
+    raise TypeError(
+        "Non-string keys encountered"
+        f"{location}: {', '.join(offending) if offending else 'unknown key types'}"
+    )
+
+
 def _sanitize_properties(record: Mapping[str, object]) -> dict[str, object]:
-    return {str(key): _json_safe(value) for key, value in record.items()}
+    return {key: _json_safe(value) for key, value in record.items()}
 
 
 def _load_coords(path: Path, id_column: str) -> dict[str, tuple[float, float]]:
@@ -438,12 +461,15 @@ def cli_export(
         raise typer.Exit(code=1)
     features = []
     for record in frame.to_dict(orient="records"):
-        hex_id = record["hex_id"]
-        properties = _sanitize_properties(record)
+        raw_mapping = _ensure_str_mapping(record, context="geojson properties")
+        hex_id_value = raw_mapping.get("hex_id")
+        if not isinstance(hex_id_value, str):
+            raise TypeError("GeoJSON export requires string hex_id values")
+        properties = _sanitize_properties(raw_mapping)
         try:
-            boundary = [(float(lon), float(lat)) for lat, lon in hex_boundary(hex_id)]
+            boundary = [(float(lon), float(lat)) for lat, lon in hex_boundary(hex_id_value)]
         except ValueError:
-            logger.warning("invalid_hex", hex_id=hex_id)
+            logger.warning("invalid_hex", hex_id=hex_id_value)
             features.append(
                 {
                     "type": "Feature",
@@ -504,9 +530,14 @@ def score_ea(
     pois = pd.read_parquet(pois_path)
     accessibility = pd.read_parquet(accessibility_path)
     if hex_id:
-        accessibility = accessibility[
-            accessibility.get("hex_id", accessibility.get("origin_hex")) == hex_id
-        ]
+        if "hex_id" in accessibility.columns:
+            filter_series = accessibility["hex_id"]
+        elif "origin_hex" in accessibility.columns:
+            filter_series = accessibility["origin_hex"]
+        else:
+            raise typer.BadParameter("Accessibility table must include hex_id or origin_hex")
+        filtered = accessibility.loc[filter_series == hex_id]
+        accessibility = cast_to_dataframe(filtered)
         if accessibility.empty:
             typer.echo(f"No accessibility records for hex {hex_id}")
             raise typer.Exit(code=1)

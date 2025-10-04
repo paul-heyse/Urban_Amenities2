@@ -4,10 +4,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, TypedDict, cast
 
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 
+from ..logging_utils import get_logger
 from .osrm import OSRMLeg, OSRMRoute, OSRMTable
 from .otp import OTPClient
+
+LOGGER = get_logger("aucs.router.api")
 
 
 class OSRMClientProtocol(Protocol):
@@ -91,18 +94,30 @@ class RoutingAPI:
         result = self.osrm_clients[mode].table(origins, destinations)
         table = _coerce_table(result)
         durations = table.durations
-        distances = table.distances or []
+        distances = table.distances
         records: list[dict[str, object]] = []
         for i, origin in enumerate(origins):
             for j, destination in enumerate(destinations):
                 duration_value: float | None = (
                     durations[i][j] if i < len(durations) and j < len(durations[i]) else None
                 )
-                distance_value: float | None = (
-                    distances[i][j]
-                    if distances and i < len(distances) and j < len(distances[i])
-                    else None
-                )
+                if duration_value is None:
+                    LOGGER.warning(
+                        "routing_duration_missing",
+                        mode=mode,
+                        origin_index=i,
+                        destination_index=j,
+                    )
+                distance_value: float | None = None
+                if distances is not None and i < len(distances) and j < len(distances[i]):
+                    distance_value = distances[i][j]
+                    if distance_value is None:
+                        LOGGER.warning(
+                            "routing_distance_missing",
+                            mode=mode,
+                            origin_index=i,
+                            destination_index=j,
+                        )
                 records.append(
                     {
                         "origin_index": i,
