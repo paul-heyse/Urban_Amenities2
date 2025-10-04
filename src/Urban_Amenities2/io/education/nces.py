@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from ...hex.aggregation import points_to_hex
@@ -38,10 +39,9 @@ def _normalise_frame(frame: pd.DataFrame, source: str) -> pd.DataFrame:
     if "student_teacher_ratio" not in frame.columns and {"enrollment", "teachers_fte"}.issubset(
         frame.columns
     ):
-        with pd.option_context("mode.use_inf_as_na", True):
-            frame["student_teacher_ratio"] = frame["enrollment"] / frame["teachers_fte"].replace(
-                {0: pd.NA}
-            )
+        teachers = frame["teachers_fte"].replace({0: pd.NA})
+        ratio = frame["enrollment"] / teachers
+        frame["student_teacher_ratio"] = ratio.replace([np.inf, -np.inf], pd.NA)
     frame["source"] = source
     missing = REQUIRED_COLUMNS - set(frame.columns)
     if missing:

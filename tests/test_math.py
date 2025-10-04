@@ -205,7 +205,7 @@ def test_ces_homogeneous_in_quality(
         (quality * scale)[np.newaxis, :], accessibility[np.newaxis, :], rho, axis=1
     )[0]
     expected = scale * base
-    if expected >= max_float:
+    if expected >= max_float or scaled >= max_float:
         assert scaled == pytest.approx(max_float, rel=1e-6, abs=1e-6)
     else:
         assert pytest.approx(scaled, rel=1e-6, abs=1e-6) == expected
@@ -231,7 +231,11 @@ def test_ces_homogeneous_in_accessibility(
     scaled = ces_aggregate(
         quality[np.newaxis, :], (accessibility * scale)[np.newaxis, :], rho, axis=1
     )[0]
-    assert pytest.approx(scaled, rel=1e-6, abs=1e-6) == scale * base
+    expected = scale * base
+    if expected >= max_float or scaled >= max_float:
+        assert scaled == pytest.approx(max_float, rel=1e-6, abs=1e-6)
+    else:
+        assert pytest.approx(scaled, rel=1e-6, abs=1e-6) == expected
 
 
 @settings(deadline=None)

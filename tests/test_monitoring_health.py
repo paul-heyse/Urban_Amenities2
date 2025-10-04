@@ -110,3 +110,50 @@ def test_run_health_checks_warn_on_stale_data(monkeypatch, tmp_path):
 
     status_map = {result.name: result.status for result in results}
     assert status_map["data:stale.parquet"] == HealthStatus.WARNING
+
+
+def test_run_health_checks_reports_failures(monkeypatch, tmp_path):
+    missing_params = tmp_path / "missing.yml"
+    missing_data = tmp_path / "missing.parquet"
+
+    psutil_stub = types.SimpleNamespace(
+        disk_usage=lambda _: types.SimpleNamespace(free=1 * 1024**3),
+        virtual_memory=lambda: types.SimpleNamespace(available=int(0.5 * 1024**3)),
+    )
+    monkeypatch.setattr("Urban_Amenities2.monitoring.health.PSUTIL", psutil_stub, raising=False)
+
+    def failing_get(url: str, timeout: int) -> DummyResponse:  # pragma: no cover - patched
+        raise requests.ConnectionError("boom")
+
+    def graphql_errors(url: str, json: dict[str, Any], timeout: int) -> DummyResponse:
+        return DummyResponse(200, {"errors": ["bad"]})
+
+    monkeypatch.setattr("requests.get", failing_get)
+    monkeypatch.setattr("requests.post", graphql_errors)
+
+    results = run_health_checks(
+        osrm_urls={"car": "http://osrm", "bike": None},
+        otp_url="http://otp/graphql",
+        params_path=missing_params,
+        data_paths=[(missing_data, 3)],
+        min_disk_gb=10,
+        min_memory_gb=4,
+    )
+
+    status_map = {result.name: result.status for result in results}
+    assert status_map["osrm:car"] == HealthStatus.CRITICAL
+    assert status_map["osrm:bike"] == HealthStatus.CRITICAL
+    assert status_map["otp"] == HealthStatus.WARNING
+    assert status_map["params"] == HealthStatus.CRITICAL
+    assert status_map["data:missing.parquet"] == HealthStatus.CRITICAL
+    assert status_map["disk"] == HealthStatus.CRITICAL
+    assert status_map["memory"] == HealthStatus.CRITICAL
+
+    assert overall_status(results) == HealthStatus.CRITICAL
+
+    report = format_report(results)
+    assert "OSRM health check failed" in report
+    assert "Parameter validation failed" in report
+    assert "Required data file missing" in report
+    assert "required_gb" in report
+    assert "available_gb" in report

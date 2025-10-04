@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 import requests
 
@@ -35,7 +35,7 @@ class OTPClient:
         max_itineraries: int = 3,
     ) -> list[dict[str, object]]:
         query = _build_plan_query()
-        departure = departure or datetime.utcnow()
+        departure = departure or datetime.now(UTC)
         variables: dict[str, object] = {
             "from": {"lat": origin[1], "lon": origin[0]},
             "to": {"lat": destination[1], "lon": destination[0]},

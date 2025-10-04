@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -85,7 +85,7 @@ class WikipediaClient:
     def _fetch_remote(self, title: str, months: int) -> list[dict[str, object]] | None:
         def _execute() -> list[dict[str, object]] | None:
             self.rate_limiter.acquire()
-            end = datetime.utcnow().date().replace(day=1) - timedelta(days=1)
+            end = datetime.now(UTC).date().replace(day=1) - timedelta(days=1)
             start = end - timedelta(days=30 * months)
             url = API_URL.format(
                 project=self.project,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -31,7 +31,7 @@ def summary_statistics(frame: pd.DataFrame, score_column: str = "aucs") -> dict[
         "median": float(series.median()),
         "p5": float(series.quantile(0.05)),
         "p95": float(series.quantile(0.95)),
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }
 
 

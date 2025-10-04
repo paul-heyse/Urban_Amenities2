@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable as IterableABC
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -362,7 +362,7 @@ def routing_build_otp(
     feeds = sorted(p.name for p in gtfs_dir.glob("*.zip"))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
-        json.dumps({"feeds": feeds, "generated_at": datetime.utcnow().isoformat()}),
+        json.dumps({"feeds": feeds, "generated_at": datetime.now(UTC).isoformat()}),
         encoding="utf-8",
     )
     typer.echo(f"OTP manifest written to {output_path}")
@@ -394,7 +394,7 @@ def cli_aggregate(
         typer.echo("Operation cancelled by user")
         raise typer.Exit(code=1) from exc
     aggregated["run_id"] = run_id or "manual"
-    aggregated["generated_at"] = datetime.utcnow().isoformat()
+    aggregated["generated_at"] = datetime.now(UTC).isoformat()
     write_scores(aggregated, output)
     typer.echo(f"Wrote AUCS scores to {output}")
     if explainability_output and "contributors" in frame.columns:

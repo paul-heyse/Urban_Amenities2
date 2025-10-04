@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -31,7 +31,7 @@ class SnapshotRegistry:
         if latest and latest.sha256 == sha:
             return latest
         record = SnapshotRecord(
-            source=source, url=url, sha256=sha, timestamp=datetime.utcnow().isoformat()
+            source=source, url=url, sha256=sha, timestamp=datetime.now(UTC).isoformat()
         )
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(record.to_json() + "\n")

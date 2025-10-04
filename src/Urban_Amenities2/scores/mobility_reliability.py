@@ -85,7 +85,8 @@ def compute_on_time_reliability(
             0.0
             if df["weight"].sum() == 0
             else float(np.average(df[on_time_column].clip(0.0, 100.0), weights=df["weight"]))
-        )
+        ),
+        include_groups=False,
     )
     return weighted.reset_index().rename(columns={0: output_column})
 

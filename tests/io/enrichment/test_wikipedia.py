@@ -59,6 +59,13 @@ def test_fetch_uses_cache_on_request_failure(tmp_path: Path, dummy_rate_limiter,
         def utcnow(cls) -> datetime:
             return cls(2024, 3, 15)
 
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            base = cls(2024, 3, 15)
+            if tz is not None:
+                return base.replace(tzinfo=tz)
+            return base
+
     monkeypatch.setattr(wikipedia, "datetime", FixedDatetime)
     client = wikipedia.WikipediaClient(
         cache_dir=tmp_path / "cache",

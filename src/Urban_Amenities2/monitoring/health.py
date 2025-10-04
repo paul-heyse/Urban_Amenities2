@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
@@ -221,8 +221,8 @@ def _check_data_paths(data_paths: Sequence[tuple[Path, int | None]]) -> Iterable
                 HealthCheckResult(name=name, status=HealthStatus.OK, message="File present")
             )
             continue
-        modified = datetime.fromtimestamp(path.stat().st_mtime)
-        age_days = (datetime.utcnow() - modified).days
+        modified = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+        age_days = (datetime.now(UTC) - modified).days
         if age_days > max_age:
             results.append(
                 HealthCheckResult(
