@@ -5,9 +5,33 @@ from typing import Any
 
 import pandas as pd
 import pytest
-from shapely.geometry import LineString
+from shapely.geometry import LineString, MultiLineString
 
 from Urban_Amenities2.io.overture import transportation
+
+
+class StubBigQueryJob:
+    def __init__(self, frame: pd.DataFrame) -> None:
+        self._frame = frame
+        self.requested = False
+
+    def result(self) -> StubBigQueryJob:
+        self.requested = True
+        return self
+
+    def to_dataframe(self, *, create_bqstorage_client: bool = False) -> pd.DataFrame:
+        assert create_bqstorage_client is False
+        return self._frame
+
+
+class RecordingClient:
+    def __init__(self, frame: pd.DataFrame) -> None:
+        self.frame = frame
+        self.last_query: str | None = None
+
+    def query(self, query: str, job_config: Any | None = None) -> StubBigQueryJob:
+        self.last_query = query
+        return StubBigQueryJob(self.frame)
 
 
 def test_build_transportation_query_with_custom_classes() -> None:
@@ -108,3 +132,57 @@ def test_prepare_transportation_filters_and_sets_modes(monkeypatch: pytest.Monke
     monkeypatch.setattr(transportation, "filter_transportation", lambda frame, classes=None: frame[frame["class"] == "road"])
     prepared = transportation.prepare_transportation(data)
     assert set(["mode_car", "mode_foot", "mode_bike"]).issubset(prepared.columns)
+
+
+def test_read_transportation_from_bigquery_uses_client_query() -> None:
+    frame = pd.DataFrame({"id": ["1"], "class": ["road"], "geometry": ["LINESTRING (0 0, 1 1)"]})
+    client = RecordingClient(frame)
+    config = transportation.TransportationBigQueryConfig(project="proj", dataset="data")
+    result = transportation.read_transportation_from_bigquery(config, client=client)  # type: ignore[arg-type]
+    assert not result.empty
+    assert client.last_query is not None and "transportation_segments" in client.last_query
+
+
+def test_parse_geometry_rejects_non_linestring() -> None:
+    frame = pd.DataFrame({"geometry": [MultiLineString([[(0, 0), (1, 1)], [(1, 1), (2, 2)]])]})
+    with pytest.raises(TypeError):
+        transportation.parse_geometry(frame)
+
+
+def test_index_segments_passes_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    frame = pd.DataFrame({"geometry": [LineString([(0, 0), (1, 1)])]})
+    captured: dict[str, Any] = {}
+
+    def _fake_lines_to_hex(data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
+        captured["kwargs"] = kwargs
+        return data.assign(hex_id=["hex"])
+
+    monkeypatch.setattr(transportation, "lines_to_hex", _fake_lines_to_hex)
+    transportation.index_segments(frame, resolution=8)
+    assert captured["kwargs"]["resolution"] == 8
+
+
+def test_prepare_transportation_converts_string_geometry() -> None:
+    data = pd.DataFrame({"class": ["road"], "geometry": ["LINESTRING (0 0, 1 1)"]})
+    prepared = transportation.prepare_transportation(data)
+    assert isinstance(prepared.loc[0, "geometry"], LineString)
+
+
+def test_export_mode_geojson_skips_when_no_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    frame = pd.DataFrame({"geometry": [LineString([(0, 0), (1, 1)])], "mode_car": [False]})
+    _ = transportation.gpd.GeoDataFrame(frame, geometry="geometry", crs="EPSG:4326")
+
+    called: dict[str, Any] = {}
+
+    def _capture_warning(event: str, **kwargs: object) -> None:
+        called["event"] = event
+        called["kwargs"] = kwargs
+
+    def _noop_to_file(self, path: str, driver: str) -> None:  # type: ignore[override]
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(transportation.LOGGER, "warning", _capture_warning)
+    monkeypatch.setattr(transportation.gpd.GeoDataFrame, "to_file", _noop_to_file)
+    transportation.export_mode_geojson(frame, tmp_path / "network.geojson", "mode_car")
+    assert called.get("event") == "empty_network_export"

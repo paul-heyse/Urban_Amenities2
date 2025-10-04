@@ -188,3 +188,109 @@ def test_compute_comfort_index_handles_empty_frame() -> None:
     ingestor = noaa.NoaaNormalsIngestor()
     result = ingestor.compute_comfort_index(pd.DataFrame())
     assert list(result.columns) == ["hex_id", "month", "sigma_out"]
+
+def test_fetch_adds_auth_header_when_token_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = StubResponse(
+        [
+            {
+                "station": "001",
+                "month": "01",
+                "MLY-TAVG-NORMAL": "10",
+                "latitude": "40",
+                "longitude": "-105",
+            }
+        ]
+    )
+    session = StubSession([response])
+    ingestor = noaa.NoaaNormalsIngestor(noaa.NOAAConfig(token="secret"))
+    ingestor.fetch("CO", session=session)  # type: ignore[arg-type]
+    assert session.calls[0][2] == {"token": "secret"}
+
+
+def test_interpolate_to_hex_uses_latlon_to_hex(monkeypatch: pytest.MonkeyPatch) -> None:
+    inputs: list[tuple[float, float, int]] = []
+
+    def _fake_latlon_to_hex(lat: float, lon: float, resolution: int) -> str:
+        inputs.append((lat, lon, resolution))
+        return "hex"
+
+    monkeypatch.setattr(noaa, "latlon_to_hex", _fake_latlon_to_hex)
+    ingestor = noaa.NoaaNormalsIngestor()
+    frame = pd.DataFrame(
+        {
+            "latitude": [40.0, 41.0],
+            "longitude": [-104.0, -105.0],
+            "month": [1, 2],
+            "tavg_c": [10.0, 12.0],
+        }
+    )
+    result = ingestor.interpolate_to_hex(frame, resolution=7)
+    assert list(result["hex_id"]) == ["hex", "hex"]
+    assert inputs == [(40.0, -104.0, 7), (41.0, -105.0, 7)]
+
+
+def test_compute_comfort_index_averages_values() -> None:
+    frame = pd.DataFrame(
+        {
+            "hex_id": ["a", "a"],
+            "month": [1, 1],
+            "tavg_c": [20.0, 24.0],
+            "precip_probability": [0.0, 0.0],
+            "wind_mps": [3.0, 5.0],
+        }
+    )
+    ingestor = noaa.NoaaNormalsIngestor()
+    comfort = ingestor.compute_comfort_index(frame)
+    assert pytest.approx(comfort.loc[0, "sigma_out"], rel=1e-6) == 0.5
+
+
+def test_fetch_states_reuses_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    responses = [
+        StubResponse(
+            [
+                {
+                    "station": "001",
+                    "month": "01",
+                    "MLY-TAVG-NORMAL": "10",
+                    "latitude": "40",
+                    "longitude": "-105",
+                }
+            ]
+        ),
+        StubResponse(
+            [
+                {
+                    "station": "002",
+                    "month": "02",
+                    "MLY-TAVG-NORMAL": "12",
+                    "latitude": "41",
+                    "longitude": "-104",
+                }
+            ]
+        ),
+    ]
+    session = StubSession(responses)
+    ingestor = noaa.NoaaNormalsIngestor()
+    ingestor.fetch_states(["CO", "UT"], session=session)  # type: ignore[arg-type]
+    assert len(session.calls) == 2
+
+
+def test_ingest_uses_registry(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    response = StubResponse(
+        [
+            {
+                "station": "001",
+                "month": "01",
+                "MLY-TAVG-NORMAL": "10",
+                "latitude": "40",
+                "longitude": "-105",
+            }
+        ]
+    )
+    session = StubSession([response])
+    registry = DummyRegistry()
+    ingestor = noaa.NoaaNormalsIngestor(registry=registry)
+    output = tmp_path / "comfort.parquet"
+    monkeypatch.setattr(noaa, "latlon_to_hex", lambda lat, lon, resolution: "hex")
+    ingestor.ingest(["CO"], session=session, output_path=output)  # type: ignore[arg-type]
+    assert registry.snapshots

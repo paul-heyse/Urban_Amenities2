@@ -479,3 +479,12 @@ Remember: Specs are truth. Changes are proposals. Keep them in sync.
 
 ## Project layout
 - Code in `src/<package>/`, tests in `tests/`, config in `.vscode/`, rules in `.cursor/rules/`.
+
+## I/O testing notes
+- Prefer stubbed HTTP clients (`RecordingSession`, `StubSession`) over live requests. Queue
+  responses and assert on the recorded `params`, `headers`, and URL values.
+- Use fixtures under `tests/io/` to patch geospatial helpers (`points_to_hex`, `lines_to_hex`,
+  `latlon_to_hex`) so tests run without heavy native dependencies.
+- When network retry behaviour is required, patch `retry_with_backoff` to a deterministic
+  helper that records the configured attempts/delays. This keeps resilience logic covered
+  without slow sleeps.

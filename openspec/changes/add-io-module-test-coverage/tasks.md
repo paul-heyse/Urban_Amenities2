@@ -3,24 +3,24 @@
 ## 1. Test Infrastructure Setup
 
 - [x] 1.1 Create `tests/io/` directory structure mirroring `src/Urban_Amenities2/io/`
-- [ ] 1.2 Install `responses` library for HTTP mocking: `micromamba install -p ./.venv -c conda-forge responses`
+- [x] 1.2 Install `responses` library for HTTP mocking: `micromamba install -p ./.venv -c conda-forge responses`
 - [x] 1.3 Create `tests/fixtures/io_samples/` for sample API responses
 - [x] 1.4 Define shared fixtures in `tests/io/conftest.py` (mock sessions, sample geometries, etc.)
 
 ## 2. Overture Maps Testing (High Priority)
 
-- [ ] 2.1 Create `tests/io/overture/test_places.py`
-  - [ ] Test BigQuery result parsing with complete and incomplete schemas
-  - [ ] Test category mapping for all supported Overture categories
-  - [ ] Test handling of null/missing geometry fields
-  - [ ] Test deduplication logic when multiple records share coordinates
-  - [ ] Test pagination with large result sets (>10K POIs)
-- [ ] 2.2 Create `tests/io/overture/test_transportation.py`
-  - [ ] Test segment extraction from LineString and MultiLineString geometries
-  - [ ] Test road classification mapping for all supported types
-  - [ ] Test coordinate transformation between CRS systems
-  - [ ] Test handling of disconnected network components
-  - [ ] Test network simplification for rendering
+- [x] 2.1 Create `tests/io/overture/test_places.py`
+  - [x] Test BigQuery result parsing with complete and incomplete schemas
+  - [x] Test category mapping for all supported Overture categories
+  - [x] Test handling of null/missing geometry fields
+  - [x] Test deduplication logic when multiple records share coordinates
+  - [x] Test pagination with large result sets (>10K POIs)
+- [x] 2.2 Create `tests/io/overture/test_transportation.py`
+  - [x] Test segment extraction from LineString and MultiLineString geometries
+  - [x] Test road classification mapping for all supported types
+  - [x] Test coordinate transformation between CRS systems
+  - [x] Test handling of disconnected network components
+  - [x] Test network simplification for rendering
 
 ## 3. Parks & Recreation Testing (High Priority)
 
@@ -30,10 +30,10 @@
   - [ ] Test handling of multi-polygon park complexes
   - [ ] Test filtering by park type and access level
 - [ ] 3.2 Create `tests/io/parks/test_ridb.py`
-  - [ ] Test API pagination with cursor-based navigation
+  - [x] Test API pagination with cursor-based navigation
   - [ ] Test rate limiting and retry logic
   - [ ] Test facility filtering by activity types
-  - [ ] Test handling of incomplete facility records
+  - [x] Test handling of incomplete facility records
 - [ ] 3.3 Create `tests/io/parks/test_trails.py`
   - [ ] Test GPX parsing with valid and malformed tracks
   - [ ] Test KML parsing with nested folder structures
@@ -56,11 +56,11 @@
   - [x] Test SPARQL query construction for entity resolution
   - [x] Test parsing of Wikidata JSON responses
   - [x] Test handling of entities with no English labels
-  - [ ] Test timeout and retry logic for slow queries
-  - [ ] Test batch querying for multiple entities
+  - [x] Test timeout and retry logic for slow queries
+  - [x] Test batch querying for multiple entities
 - [x] 5.2 Create `tests/io/enrichment/test_wikipedia.py`
   - [x] Test pageview API requests with date ranges
-  - [ ] Test handling of redirects and disambiguation pages
+  - [x] Test handling of redirects and disambiguation pages
   - [x] Test rate limiting with exponential backoff
   - [x] Test caching of pageview statistics
   - [x] Test fallback to zero pageviews when API unavailable
@@ -111,7 +111,7 @@
 
 ## 10. Verification & Documentation
 
-- [ ] 10.1 Run full test suite: `pytest tests/io/ -v --cov=src/Urban_Amenities2/io --cov-report=term-missing`
+- [x] 10.1 Run full test suite: `pytest tests/io/ -v --cov=src/Urban_Amenities2/io --cov-report=term-missing`
 - [ ] 10.2 Verify `io` module coverage meets 85% threshold
-- [ ] 10.3 Update `tests/README.md` with I/O testing patterns and fixtures
-- [ ] 10.4 Document external API mocking strategy in `AGENTS.md`
+- [x] 10.3 Update `tests/README.md` with I/O testing patterns and fixtures
+- [x] 10.4 Document external API mocking strategy in `AGENTS.md`

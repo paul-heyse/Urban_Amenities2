@@ -92,3 +92,59 @@ def test_ingest_writes_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     result = ingestor.ingest(["CO"], output_path=output)
     assert output.exists()
     assert not result.empty
+
+
+def test_fetch_includes_headers_when_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    responses = [
+        DummyResponse(
+            {
+                "RECDATA": [
+                    {
+                        "RecAreaID": 1,
+                        "RecAreaName": "Area",
+                        "RecAreaLatitude": 40.0,
+                        "RecAreaLongitude": -105.0,
+                    }
+                ],
+                "METADATA": {},
+            }
+        ),
+        DummyResponse({"RECDATA": []}),
+    ]
+    session = RecordingSession(responses)
+    config = ridb.RIDBConfig(api_key="secret", page_size=1)
+    ingestor = ridb.RIDBIngestor(config=config, registry=DummyRegistry())
+    ingestor.fetch(["CO"], session=session)  # type: ignore[arg-type]
+    assert session.calls[0]["headers"] == {"apikey": "secret"}
+
+
+def test_fetch_handles_incomplete_records() -> None:
+    responses = [
+        DummyResponse(
+            {
+                "RECDATA": [
+                    {"RecAreaID": 1, "RecAreaName": "Area"}
+                ],
+                "METADATA": {},
+            }
+        )
+    ]
+    session = RecordingSession(responses)
+    frame = ridb.RIDBIngestor(registry=DummyRegistry()).fetch(["CO"], session=session)  # type: ignore[arg-type]
+    assert frame.loc[0, "lat"] == pytest.approx(0.0)
+    assert frame.loc[0, "lon"] == pytest.approx(0.0)
+
+
+def test_index_to_hex_uses_points_to_hex(monkeypatch: pytest.MonkeyPatch) -> None:
+    ingestor = ridb.RIDBIngestor()
+    frame = pd.DataFrame({"lat": [40.0], "lon": [-105.0]})
+    called: dict[str, Any] = {}
+
+    def _capture_points(frame: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
+        called["kwargs"] = kwargs
+        return frame.assign(hex_id=["hex"])
+
+    monkeypatch.setattr(ridb, "points_to_hex", _capture_points)
+    indexed = ingestor.index_to_hex(frame)
+    assert indexed.loc[0, "hex_id"] == "hex"
+    assert called["kwargs"]["hex_column"] == "hex_id"

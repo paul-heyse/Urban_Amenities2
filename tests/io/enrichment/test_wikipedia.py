@@ -149,3 +149,51 @@ def test_enrich_with_pageviews(monkeypatch: pytest.MonkeyPatch) -> None:
     assert set(summary["poi_id"]) == {"p1", "p2"}
     assert all(summary["median_views"] == 15)
     assert client.calls == ["Article One", "Article Two"]
+
+
+def test_fetch_handles_redirect_payload(tmp_path: Path, dummy_rate_limiter, dummy_breaker, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[assignment]
+    payload = {"items": [{"timestamp": "2024010100", "views": 0, "type": "redirect"}]}
+    session = RecordingSession([StubResponse(payload)])
+    _patch_retry(monkeypatch)
+    client = wikipedia.WikipediaClient(
+        cache_dir=tmp_path / "cache",
+        session=session,  # type: ignore[arg-type]
+        rate_limiter=dummy_rate_limiter,
+        circuit_breaker=dummy_breaker,
+    )
+    frame = client.fetch("Redirect Article")
+    assert list(frame["pageviews"]) == [0]
+
+
+def test_fetch_invokes_retry_wrapper(tmp_path: Path, dummy_rate_limiter, dummy_breaker, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[assignment]
+    payload = {"items": [{"timestamp": "2024010100", "views": 1}]}
+    session = RecordingSession([StubResponse(payload)])
+    calls: list[dict[str, Any]] = []
+
+    def _record_retry(func, **kwargs):  # type: ignore[explicit-any]
+        calls.append(kwargs)
+        return func()
+
+    monkeypatch.setattr(wikipedia, "retry_with_backoff", _record_retry)
+    client = wikipedia.WikipediaClient(
+        cache_dir=tmp_path / "cache",
+        session=session,  # type: ignore[arg-type]
+        rate_limiter=dummy_rate_limiter,
+        circuit_breaker=dummy_breaker,
+    )
+    frame = client.fetch("Example")
+    assert not frame.empty
+    assert calls and calls[0]["attempts"] == 3
+
+
+def test_enrich_with_pageviews_batches_titles(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: list[str] = []
+
+    class StubClient:
+        def fetch(self, title: str) -> pd.DataFrame:
+            called.append(title)
+            return pd.DataFrame({"timestamp": [datetime(2024, 1, 1)], "pageviews": [5]})
+
+    titles = {"a": "Title A", "b": "Title B", "c": "Title C"}
+    wikipedia.enrich_with_pageviews(titles, client=StubClient())
+    assert called == ["Title A", "Title B", "Title C"]

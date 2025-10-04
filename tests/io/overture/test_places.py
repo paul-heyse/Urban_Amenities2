@@ -177,3 +177,112 @@ def test_ingest_places_accepts_dataframe(monkeypatch: pytest.MonkeyPatch, tmp_pa
     result = places.ingest_places(data, output_path=output)
     assert output.exists()
     assert not result.empty
+
+
+def test_read_places_from_bigquery_handles_missing_optional_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    frame = pd.DataFrame(
+        {
+            "id": ["1"],
+            "display.name": ["Cafe"],
+            "categories.primary": ["food.cafe"],
+            "geometry.latitude": [40.0],
+            "geometry.longitude": [-105.0],
+        }
+    )
+
+    class PassingJob(StubBigQueryJob):
+        def to_dataframe(self, *, create_bqstorage_client: bool = False) -> pd.DataFrame:  # type: ignore[override]
+            assert create_bqstorage_client is False
+            return frame
+
+    class Client(RecordingBigQueryClient):
+        def query(self, query: str, job_config: Any | None = None) -> StubBigQueryJob:  # type: ignore[override]
+            self.last_query = query
+            self.last_config = job_config
+            return PassingJob(frame)
+
+    client = Client(frame)
+    config = places.BigQueryConfig(project="proj", dataset="data", table="custom")
+    result = places.read_places_from_bigquery(config, client=client)  # type: ignore[arg-type]
+    assert "id" in result.columns
+    assert client.last_query is not None and "custom" in client.last_query
+
+
+def test_extract_fields_prefers_categories_column() -> None:
+    frame = pd.DataFrame(
+        {
+            "id": ["poi-1"],
+            "name": ["Bike Shop"],
+            "categories": [["services.bike", "retail.bike"]],
+            "lat": [39.9],
+            "lon": [-104.9],
+        }
+    )
+    extracted = places.extract_fields(frame)
+    assert extracted.loc[0, "categories"] == ["services.bike", "retail.bike"]
+
+
+def test_filter_operating_excludes_closed_records() -> None:
+    frame = pd.DataFrame(
+        {
+            "id": ["open", "closed"],
+            "operating_status": ["open", "closed"],
+        }
+    )
+    filtered = places.filter_operating(frame)
+    assert list(filtered["id"]) == ["open"]
+
+
+def test_pipeline_drops_rows_with_missing_coordinates(monkeypatch: pytest.MonkeyPatch) -> None:
+    data = pd.DataFrame(
+        {
+            "id": ["a", "b"],
+            "name": ["Cafe", "Bakery"],
+            "primary_category": ["food.cafe", "food.bakery"],
+            "lat": [np.nan, 39.5],
+            "lon": [-105.0, np.nan],
+            "operating_status": ["open", "open"],
+        }
+    )
+
+    def _fake_dedupe(frame: pd.DataFrame, **_: Any) -> pd.DataFrame:
+        return frame.dropna(subset=["lat", "lon"])
+
+    def _fake_points_to_hex(frame: pd.DataFrame, **_: Any) -> pd.DataFrame:
+        assert frame["lat"].notna().all()
+        assert frame["lon"].notna().all()
+        return frame.assign(hex_id=[f"hex-{idx}" for idx in range(len(frame))])
+
+    monkeypatch.setattr(places, "points_to_hex", _fake_points_to_hex)
+    monkeypatch.setattr(places, "deduplicate_pois", _fake_dedupe)
+    pipeline = places.PlacesPipeline(matcher=StubMatcher())
+    result = pipeline.run(data)
+    assert result.empty
+
+
+def test_ingest_places_accepts_path_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    frame = pd.DataFrame(
+        {
+            "id": ["1"],
+            "name": ["Cafe"],
+            "primary_category": ["food.cafe"],
+            "lat": [40.0],
+            "lon": [-105.0],
+            "operating_status": ["open"],
+        }
+    )
+    source = tmp_path / "pois.parquet"
+    frame.to_parquet(source)
+
+    monkeypatch.setattr(places, "load_default_pipeline", lambda *_: places.PlacesPipeline(matcher=StubMatcher()))
+    monkeypatch.setattr(places, "points_to_hex", lambda frame, **_: frame.assign(hex_id=["hex-0"]))
+    monkeypatch.setattr(places, "deduplicate_pois", lambda frame, **_: frame)
+    result = places.ingest_places(source, output_path=None)
+    assert list(result["poi_id"]) == ["1"]
+
+
+def test_bbox_to_wkt_formats_polygon() -> None:
+    bbox = (-105.0, 39.0, -104.0, 40.0)
+    polygon = places._bbox_to_wkt(bbox)
+    assert polygon.startswith("POLYGON((")
+    assert "-105.0 39.0" in polygon
