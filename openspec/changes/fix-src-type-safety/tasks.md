@@ -2,24 +2,24 @@
 
 ## 1. CLI Type Corrections (High Priority)
 
-- [ ] 1.1 **Remove unused type ignore in cli/main.py**
-  - [ ] Review line 11 to understand original ignore purpose
-  - [ ] Verify mypy no longer reports error without ignore
-  - [ ] Remove `# type: ignore` comment
-  - [ ] Run `mypy src/Urban_Amenities2/cli/main.py` to confirm
+- [x] 1.1 **Remove unused type ignore in cli/main.py**
+  - [x] Review line 11 to understand original ignore purpose
+  - [x] Verify mypy no longer reports error without ignore
+  - [x] Remove `# type: ignore` comment
+  - [x] Run `mypy src/Urban_Amenities2/cli/main.py` to confirm
 
-- [ ] 1.2 **Fix _sanitize_properties type mismatch (line 442)**
-  - [ ] Review `_sanitize_properties` function signature
-  - [ ] Identify why `dict[Hashable, Any]` incompatible with `Mapping[str, object]`
-  - [ ] Option A: Cast Hashable keys to str with validation
-  - [ ] Option B: Update function to accept `Mapping[Hashable, object]`
-  - [ ] Add test case for non-string keys if accepted
+- [x] 1.2 **Fix _sanitize_properties type mismatch (line 442)**
+  - [x] Review `_sanitize_properties` function signature
+  - [x] Identify why `dict[Hashable, Any]` incompatible with `Mapping[str, object]`
+  - [x] Option A: Cast Hashable keys to str with validation
+  - [x] Option B: Update function to accept `Mapping[Hashable, object]`
+  - [x] Add test case for non-string keys if accepted
 
-- [ ] 1.3 **Fix DataFrame/Series union assignment (line 507)**
-  - [ ] Review code context: what operation returns `DataFrame | Series[Any]`?
-  - [ ] Add explicit type narrowing: `if isinstance(result, pd.DataFrame): ...`
-  - [ ] Document when Series is expected vs DataFrame
-  - [ ] Add runtime assertion if DataFrame is guaranteed
+- [x] 1.3 **Fix DataFrame/Series union assignment (line 507)**
+  - [x] Review code context: what operation returns `DataFrame | Series[Any]`?
+  - [x] Add explicit type narrowing: `if isinstance(result, pd.DataFrame): ...`
+  - [x] Document when Series is expected vs DataFrame
+  - [x] Add runtime assertion if DataFrame is guaranteed
 
 - [ ] 1.4 **Validate CLI type corrections**
   - [ ] Run `mypy src/Urban_Amenities2/cli/main.py` (expect 0 errors)
@@ -33,22 +33,22 @@
   - [ ] Check if `None` represents unreachable pairs or missing data
   - [ ] Document expected None behavior in docstrings
 
-- [ ] 2.2 **Update OSRMTable dataclass type hints**
-  - [ ] Change `durations: list[list[float]]` to `list[list[float | None]]`
-  - [ ] Change `distances: list[list[float]]` to `list[list[float | None]]` (already Optional at top level)
-  - [ ] Update `__post_init__` validation to handle None values
-  - [ ] Add docstring examples with None values
+- [x] 2.2 **Update OSRMTable dataclass type hints**
+  - [x] Change `durations: list[list[float]]` to `list[list[float | None]]`
+  - [x] Change `distances: list[list[float]]` to `list[list[float | None]]` (already Optional at top level)
+  - [x] Update `__post_init__` validation to handle None values
+  - [x] Add docstring examples with None values
 
-- [ ] 2.3 **Update test fixtures in test_routing.py**
+- [x] 2.3 **Update test fixtures in test_routing.py**
   - [ ] Fix line 40: change `list[list[float]]` to `list[list[float | None]]`
   - [ ] Fix line 228: update durations fixture to match new type
-  - [ ] Add test case with None values in matrix (unreachable pair)
-  - [ ] Verify matrix indexing handles None correctly
+  - [x] Add test case with None values in matrix (unreachable pair)
+  - [x] Verify matrix indexing handles None correctly
 
-- [ ] 2.4 **Add runtime None handling in routing clients**
-  - [ ] Review `OSRMClient.table()` response parsing
-  - [ ] Add explicit None checks before using duration/distance values
-  - [ ] Document how `RoutingAPI.matrix()` handles None (drop rows? fill with inf?)
+- [x] 2.4 **Add runtime None handling in routing clients**
+  - [x] Review `OSRMClient.table()` response parsing
+  - [x] Add explicit None checks before using duration/distance values
+  - [x] Document how `RoutingAPI.matrix()` handles None (drop rows? fill with inf?)
   - [ ] Add integration test with unreachable OD pairs
 
 - [ ] 2.5 **Fix test_routing.py type errors (lines 52-68)**
@@ -64,24 +64,24 @@
 
 ## 3. Type Narrowing Patterns (Medium Priority)
 
-- [ ] 3.1 **Create type narrowing utilities in src/Urban_Amenities2/utils/types.py**
+- [x] 3.1 **Create type narrowing utilities in src/Urban_Amenities2/utils/types.py**
   - [ ] Implement `cast_to_dataframe(obj: DataFrame | Series[Any]) -> DataFrame`
   - [ ] Add runtime validation raising TypeError if Series
   - [ ] Implement `ensure_dataframe(obj: DataFrame | Series[Any]) -> DataFrame` (coerce Series)
   - [ ] Add docstrings with usage examples
 
-- [ ] 3.2 **Apply type narrowing in cli/main.py**
+- [x] 3.2 **Apply type narrowing in cli/main.py**
   - [ ] Replace bare assignment at line 507 with `cast_to_dataframe(result)`
   - [ ] Add try/except to provide helpful error message
   - [ ] Document when narrowing is safe vs needs runtime check
 
-- [ ] 3.3 **Document type narrowing patterns**
+- [x] 3.3 **Document type narrowing patterns**
   - [ ] Add "Type Safety Patterns" section to CONTRIBUTING.md
   - [ ] Explain `isinstance` check + narrowing pattern
   - [ ] Explain `typing.cast` vs runtime validation
   - [ ] Provide decision tree: when to use each approach
 
-- [ ] 3.4 **Validate type narrowing utilities**
+- [x] 3.4 **Validate type narrowing utilities**
   - [ ] Add unit tests for `cast_to_dataframe` success and failure cases
   - [ ] Run `mypy src/Urban_Amenities2/utils/types.py` (0 errors)
   - [ ] Verify CLI no longer has DataFrame/Series type errors

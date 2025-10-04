@@ -158,6 +158,18 @@ def test_osrm_client_handles_missing_distances(osrm_stub_session) -> None:
         malformed_client.route([(0.0, 0.0), (1.0, 1.0)])
 
 
+def test_osrm_table_allows_none_entries() -> None:
+    table = OSRMTable(
+        durations=[[10, None], [None, 20]],
+        distances=[[0, None], [None, 5.5]],
+    )
+    assert table.durations[0][1] is None
+    assert table.durations[1][0] is None
+    assert table.distances is not None
+    assert table.distances[0][0] == pytest.approx(0.0)
+    assert table.distances[0][1] is None
+
+
 def test_otp_client_parsing(otp_stub_session) -> None:
     client = OTPClient(OTPConfig(base_url="http://otp"), session=otp_stub_session)
     plans = client.plan_trip((0.0, 0.0), (1.0, 1.0), ["TRANSIT"])

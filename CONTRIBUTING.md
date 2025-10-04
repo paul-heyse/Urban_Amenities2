@@ -24,6 +24,22 @@ Prefer these fixtures over ad-hoc mocks to keep scenarios consistent and fast.
 - Reuse helper types or factories (e.g., `DropdownOption`, `MapboxLayer`, test factories in `tests/ui_factories.py`) instead of ad-hoc dicts.
 - When adding new UI tests, prefer the shared factories so datasets stay aligned with typed interfaces.
 
+## Type Safety Patterns
+
+- Prefer runtime validation helpers over blanket `typing.cast`.  The utilities in
+  `Urban_Amenities2.utils.types` provide guardrails such as
+  `cast_to_dataframe` (fail if a Series slips through) and `ensure_dataframe`
+  (promote Series to a single-column DataFrame).  Use them whenever a pandas API
+  returns ``DataFrame | Series``.
+- Validate optional values before arithmetic.  For routing responses, check for
+  ``None`` explicitly (`if value is None: return`) before comparing or
+  normalising values; log a warning for unexpected gaps.
+- When mapping dynamic dictionaries to stricter types, confirm key/value types
+  at runtime (``all(isinstance(key, str) for key in mapping)``) before treating
+  them as strongly typed structures.
+- Document any remaining ``# type: ignore[code]`` usages inline with the error
+  code and a short justification so `warn_unused_ignores = True` remains useful.
+
 ## Pull Request Checklist
 
 1. Format and lint (`black`, `ruff`) before opening a PR.
